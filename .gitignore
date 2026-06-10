@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+logs/*.log
+logs/trace-*.jsonl
+workspace/agent_run_*.py
+outputs/*
+!outputs/.gitkeep
+

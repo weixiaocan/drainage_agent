@@ -1,0 +1,12 @@
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+openpyxl>=3.1.0
+xlsxwriter>=3.1.0
+python-docx>=1.1.0
+python-dotenv>=1.0.0
+openai>=1.0.0
+PyYAML>=6.0.0
+pydantic-ai>=0.0.40
+pytest>=8.0.0
