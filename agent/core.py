@@ -66,8 +66,13 @@ def build_agent(deps: AgentDeps):
             return run_dry_analysis_impl(ctx.deps, smooth_window_minutes=smooth_window_minutes)
 
         @agent.tool
-        def run_rainfall_analysis(ctx, rainfall_gap_hours: int = 12) -> dict:
-            return run_rainfall_analysis_impl(ctx.deps, rainfall_gap_hours=rainfall_gap_hours)
+        def run_rainfall_analysis(ctx, rainfall_gap_hours: int = 12, rainfall_range: str = "all") -> dict:
+            """Run rainfall analysis. rainfall_range: all, daily/降雨日, events/场次, or charts/图表."""
+            return run_rainfall_analysis_impl(
+                ctx.deps,
+                rainfall_gap_hours=rainfall_gap_hours,
+                rainfall_range=rainfall_range,
+            )
 
         @agent.tool
         def run_event_stats(ctx, event_ids: list[int]) -> dict:
@@ -82,8 +87,9 @@ def build_agent(deps: AgentDeps):
             return run_pattern_analysis_impl(ctx.deps)
 
         @agent.tool
-        def run_risk_analysis(ctx, event_ids: list[int] | None = None) -> dict:
-            return run_risk_analysis_impl(ctx.deps, event_ids=event_ids)
+        def run_risk_analysis(ctx, event_ids: list[int] | None = None, scope: str = "all") -> dict:
+            """Run risk analysis. scope: all, dry/旱天, or rainy/雨天."""
+            return run_risk_analysis_impl(ctx.deps, event_ids=event_ids, scope=scope)
 
         @agent.tool
         def run_report_assembler(ctx) -> dict:
@@ -100,4 +106,3 @@ def build_agent(deps: AgentDeps):
         return agent
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc
-

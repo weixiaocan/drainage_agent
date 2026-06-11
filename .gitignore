@@ -5,6 +5,6 @@ __pycache__/
 logs/*.log
 logs/trace-*.jsonl
 workspace/agent_run_*.py
+workspace/*.json
 outputs/*
 !outputs/.gitkeep
-

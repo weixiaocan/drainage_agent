@@ -77,7 +77,8 @@ def _xlsx_sheets(path: Path) -> list[str]:
     if not path.exists():
         return []
     try:
-        return pd.ExcelFile(path).sheet_names
+        with pd.ExcelFile(path) as xls:
+            return list(xls.sheet_names)
     except Exception:
         return []
 
@@ -122,6 +123,11 @@ def _artifacts(deps: AgentDeps) -> list[str]:
     return [_rel(deps, p) for p in deps.paths.outputs.rglob("*") if p.is_file()]
 
 
+def _normalize_choice(value: str, aliases: dict[str, str], default: str) -> str:
+    raw = (value or default).strip().lower()
+    return aliases.get(raw, raw if raw in set(aliases.values()) else default)
+
+
 def _run_tool(
     deps: AgentDeps,
     tool_name: str,
@@ -131,11 +137,12 @@ def _run_tool(
     *,
     params: dict[str, Any] | None = None,
     runner_kwargs: dict[str, Any] | None = None,
+    artifacts_fn: Callable[[AgentDeps, dict[str, Any]], list[str]] | None = None,
 ) -> ToolResult:
     deps.paths.outputs.mkdir(parents=True, exist_ok=True)
     try:
         result = runner(cfg, _logger(deps, tool_name), **(runner_kwargs or {}))
-        artifacts = _artifacts(deps)
+        artifacts = artifacts_fn(deps, result) if artifacts_fn else _artifacts(deps)
         record_result(deps, tool_name, artifacts, params=params)
         return ok(summary_fn(result), artifacts=artifacts, raw_keys=sorted(result.keys()))
     except Exception as exc:
@@ -208,7 +215,25 @@ def run_dry_analysis_impl(deps: AgentDeps, smooth_window_minutes: int = 20) -> T
     )
 
 
-def _summarize_rainfall(result: dict[str, Any]) -> str:
+RAINFALL_RANGE_ALIASES = {
+    "all": "all",
+    "全部": "all",
+    "日": "daily",
+    "降雨日": "daily",
+    "daily": "daily",
+    "day": "daily",
+    "场次": "events",
+    "事件": "events",
+    "events": "events",
+    "event": "events",
+    "图表": "charts",
+    "图": "charts",
+    "charts": "charts",
+    "chart": "charts",
+}
+
+
+def _summarize_rainfall(result: dict[str, Any], rainfall_range: str = "all") -> str:
     daily = result.get("daily_rain")
     event = result.get("event_rain")
     rainy_days = 0
@@ -222,10 +247,25 @@ def _summarize_rainfall(result: dict[str, Any]) -> str:
     if event is not None and not getattr(event, "empty", True):
         for _, row in event.head(5).iterrows():
             examples.append(" / ".join(str(x) for x in row.iloc[:4].tolist()))
+    if rainfall_range == "daily":
+        return f"降雨日统计完成：雨日 {rainy_days} 天，总雨量 {total_rain:.1f} mm，日统计 { _df_len(daily) } 行。"
+    if rainfall_range == "events":
+        return f"场次降雨统计完成：有效场次 { _df_len(event) } 场。场次示例: {'; '.join(examples)}"
+    if rainfall_range == "charts":
+        chart_count = len(result.get("rainfall_chart_paths", {}) or {})
+        return f"降雨图表生成完成：生成 {chart_count} 张图，日统计 { _df_len(daily) } 行，场次 { _df_len(event) } 场。"
     return f"降雨分析完成：雨日 {rainy_days} 天，总雨量 {total_rain:.1f} mm，有效场次 { _df_len(event) } 场。场次示例: {'; '.join(examples)}"
 
 
-def run_rainfall_analysis_impl(deps: AgentDeps, rainfall_gap_hours: int = 12) -> ToolResult:
+def _rainfall_artifacts(deps: AgentDeps, result: dict[str, Any], rainfall_range: str) -> list[str]:
+    artifacts = _artifacts(deps)
+    if rainfall_range == "charts":
+        return [p for p in artifacts if "降雨分析图" in p or p.lower().endswith((".png", ".jpg", ".jpeg"))]
+    return artifacts
+
+
+def run_rainfall_analysis_impl(deps: AgentDeps, rainfall_gap_hours: int = 12, rainfall_range: str = "all") -> ToolResult:
+    rainfall_range = _normalize_choice(rainfall_range, RAINFALL_RANGE_ALIASES, "all")
     if not deps.paths.rainfall_file.exists() or deps.paths.rainfall_file.stat().st_size == 0:
         return ok("未检测到有效降雨数据，雨天路径可跳过。")
     cfg = _build_config(deps, rainfall_gap_hours=rainfall_gap_hours)
@@ -234,8 +274,9 @@ def run_rainfall_analysis_impl(deps: AgentDeps, rainfall_gap_hours: int = 12) ->
         "run_rainfall_analysis",
         rainfall_analysis_run,
         cfg,
-        _summarize_rainfall,
-        params={"rainfall_gap_hours": rainfall_gap_hours},
+        lambda result: _summarize_rainfall(result, rainfall_range),
+        params={"rainfall_gap_hours": rainfall_gap_hours, "rainfall_range": rainfall_range},
+        artifacts_fn=lambda tool_deps, result: _rainfall_artifacts(tool_deps, result, rainfall_range),
     )
 
 
@@ -297,14 +338,37 @@ def run_rdii_analysis_impl(deps: AgentDeps, event_ids: list[int]) -> ToolResult:
     return _run_tool(deps, "run_rdii_analysis", rdii_analysis_run, cfg, _summarize_rdii, params={"event_ids": event_ids})
 
 
-def _summarize_risk(result: dict[str, Any]) -> str:
-    return f"风险分析完成：旱天风险 { _df_len(result.get('dry_risk')) } 行，雨天溢流风险 { _df_len(result.get('rainy_risk')) } 行。"
+RISK_SCOPE_ALIASES = {
+    "all": "all",
+    "全部": "all",
+    "旱天": "dry",
+    "旱天风险": "dry",
+    "dry": "dry",
+    "雨天": "rainy",
+    "雨天风险": "rainy",
+    "溢流": "rainy",
+    "rainy": "rainy",
+    "wet": "rainy",
+}
 
 
-def run_risk_analysis_impl(deps: AgentDeps, event_ids: list[int] | None = None) -> ToolResult:
-    if not _has_sheet(deps, "旱天分析"):
+def _summarize_risk(result: dict[str, Any], scope: str = "all") -> str:
+    dry_len = _df_len(result.get("dry_risk"))
+    rainy_len = _df_len(result.get("rainy_risk"))
+    if scope == "dry":
+        return f"旱天风险分析完成：旱天风险 {dry_len} 行。"
+    if scope == "rainy":
+        return f"雨天溢流风险分析完成：雨天溢流风险 {rainy_len} 行。"
+    return f"风险分析完成：旱天风险 {dry_len} 行，雨天溢流风险 {rainy_len} 行。"
+
+
+def run_risk_analysis_impl(deps: AgentDeps, event_ids: list[int] | None = None, scope: str = "all") -> ToolResult:
+    scope = _normalize_choice(scope, RISK_SCOPE_ALIASES, "all")
+    if scope in {"dry", "all"} and not _has_sheet(deps, "旱天分析"):
         return blocked("旱天分析结果", "请先调用 run_dry_analysis")
-    has_rainfall = _has_sheet(deps, "场次降雨统计")
+    if scope in {"rainy", "all"} and not _has_sheet(deps, "场次降雨统计"):
+        return blocked("场次降雨统计", "请先调用 run_rainfall_analysis")
+    has_rainfall = scope in {"rainy", "all"}
     if event_ids:
         deps.session.selected_event_ids = event_ids
     cfg = _build_config(deps, event_ids=event_ids)
@@ -313,8 +377,8 @@ def run_risk_analysis_impl(deps: AgentDeps, event_ids: list[int] | None = None) 
         "run_risk_analysis",
         risk_analysis_run,
         cfg,
-        _summarize_risk,
-        params={"event_ids": event_ids or [], "has_rainfall_data": has_rainfall},
+        lambda result: _summarize_risk(result, scope),
+        params={"event_ids": event_ids or [], "has_rainfall_data": has_rainfall, "scope": scope},
         runner_kwargs={"has_rainfall_data": has_rainfall},
     )
 
@@ -341,4 +405,3 @@ def run_report_assembler_impl(deps: AgentDeps) -> ToolResult:
         return blocked("报告模板", f"请将 docx 模板放入 {deps.paths.templates}")
     cfg = _build_config(deps)
     return _run_tool(deps, "run_report_assembler", report_assembler_run, cfg, _summarize_report)
-

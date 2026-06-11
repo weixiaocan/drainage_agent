@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Drainage Agent</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --border: #d8dee8;
+      --text: #20242c;
+      --muted: #657080;
+      --primary: #176b87;
+      --primary-dark: #0f5268;
+      --soft: #edf6f8;
+      --danger: #a63d40;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    aside {
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      padding: 18px;
+      overflow: auto;
+    }
+    main {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      min-height: 100vh;
+    }
+    header {
+      padding: 18px 24px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 650;
+    }
+    h2 {
+      margin: 20px 0 10px;
+      font-size: 15px;
+    }
+    .sub {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    label {
+      display: block;
+      margin: 10px 0 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      padding: 8px;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12px;
+    }
+    button {
+      border: 1px solid var(--primary);
+      background: var(--primary);
+      color: white;
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background: var(--primary-dark); }
+    button.secondary {
+      background: white;
+      color: var(--primary);
+    }
+    button.secondary:hover {
+      background: var(--soft);
+    }
+    .upload-btn { width: 100%; margin-top: 14px; }
+    .quick {
+      display: grid;
+      gap: 8px;
+    }
+    .chat {
+      padding: 22px 24px;
+      overflow: auto;
+    }
+    .msg {
+      max-width: 920px;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      line-height: 1.55;
+      border: 1px solid var(--border);
+    }
+    .msg.user {
+      margin-left: auto;
+      background: #eaf3f7;
+      border-color: #c8e2eb;
+    }
+    .msg.agent {
+      background: var(--panel);
+    }
+    .composer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--panel);
+    }
+    textarea {
+      min-height: 46px;
+      max-height: 160px;
+      resize: vertical;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      font: inherit;
+    }
+    .status {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 18px;
+    }
+    .status.error { color: var(--danger); }
+    .files {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .files a {
+      color: var(--primary);
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+    .files a:hover { text-decoration: underline; }
+    @media (max-width: 860px) {
+      .app { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--border); }
+      main { min-height: 70vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Drainage Agent</h1>
+      <div class="sub">本地排水监测数据分析网页</div>
+
+      <h2>上传数据</h2>
+      <form id="uploadForm">
+        <label>流量 CSV（可多选）</label>
+        <input name="flow_files" type="file" accept=".csv" multiple>
+        <label>降雨 CSV</label>
+        <input name="rainfall_file" type="file" accept=".csv">
+        <label>点位信息 XLSX</label>
+        <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
+        <label>报告模板 DOCX</label>
+        <input name="template_file" type="file" accept=".docx">
+        <button class="upload-btn" type="submit">上传并标记旧结果过期</button>
+      </form>
+      <div id="uploadStatus" class="status"></div>
+
+      <h2>快捷指令</h2>
+      <div class="quick">
+        <button class="secondary" data-prompt="描述当前数据">描述当前数据</button>
+        <button class="secondary" data-prompt="统计数据收集率">统计数据收集率</button>
+        <button class="secondary" data-prompt="只看降雨场次">只看降雨场次</button>
+        <button class="secondary" data-prompt="分析旱天风险">分析旱天风险</button>
+        <button class="secondary" data-prompt="列出已有结果">列出已有结果</button>
+      </div>
+
+      <h2>结果文件</h2>
+      <button class="secondary" id="refreshResults" type="button">刷新列表</button>
+      <div id="files" class="files"></div>
+    </aside>
+
+    <main>
+      <header>
+        <h1>对话分析</h1>
+        <div class="sub">上传数据后，直接描述要做的分析。</div>
+      </header>
+      <section id="chat" class="chat">
+        <div class="msg agent">已就绪。可以先点“描述当前数据”。</div>
+      </section>
+      <form id="chatForm" class="composer">
+        <textarea id="message" placeholder="例如：只看 3 月 7 日这场雨的场次统计"></textarea>
+        <button id="sendBtn" type="submit">发送</button>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    let sessionId = localStorage.getItem("drainage-agent-session") || "";
+    const chat = document.getElementById("chat");
+    const message = document.getElementById("message");
+    const uploadStatus = document.getElementById("uploadStatus");
+    const files = document.getElementById("files");
+
+    function addMessage(text, role) {
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = text;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function send(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      addMessage(trimmed, "user");
+      message.value = "";
+      document.getElementById("sendBtn").disabled = true;
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({message: trimmed, session_id: sessionId || null})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "请求失败");
+        sessionId = data.session_id;
+        localStorage.setItem("drainage-agent-session", sessionId);
+        addMessage(data.reply, "agent");
+        refreshResults();
+      } catch (err) {
+        addMessage(`请求失败：${err.message}`, "agent");
+      } finally {
+        document.getElementById("sendBtn").disabled = false;
+      }
+    }
+
+    document.getElementById("chatForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      send(message.value);
+    });
+
+    document.querySelectorAll("[data-prompt]").forEach((button) => {
+      button.addEventListener("click", () => send(button.dataset.prompt));
+    });
+
+    document.getElementById("uploadForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      uploadStatus.className = "status";
+      uploadStatus.textContent = "上传中...";
+      try {
+        const form = new FormData(event.target);
+        const res = await fetch("/api/upload", {method: "POST", body: form});
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "上传失败");
+        uploadStatus.textContent = `${data.message} ${data.saved.join("，")}`;
+        refreshResults();
+      } catch (err) {
+        uploadStatus.className = "status error";
+        uploadStatus.textContent = err.message;
+      }
+    });
+
+    async function refreshResults() {
+      const res = await fetch("/api/results");
+      const data = await res.json();
+      const all = [...data.outputs, ...data.workspace];
+      files.innerHTML = "";
+      if (all.length === 0) {
+        files.textContent = "暂无结果文件。";
+        return;
+      }
+      all.forEach((item) => {
+        const a = document.createElement("a");
+        a.href = `/files/${item.path}`;
+        a.textContent = `${item.path} (${item.size} bytes)`;
+        a.target = "_blank";
+        files.appendChild(a);
+      });
+    }
+
+    document.getElementById("refreshResults").addEventListener("click", refreshResults);
+    refreshResults();
+  </script>
+</body>
+</html>
+

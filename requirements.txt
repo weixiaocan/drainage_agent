@@ -10,3 +10,6 @@ openai>=1.0.0
 PyYAML>=6.0.0
 pydantic-ai>=0.0.40
 pytest>=8.0.0
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9

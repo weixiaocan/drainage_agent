@@ -9,6 +9,14 @@ pip install -r requirements.txt
 python agent_run.py
 ```
 
+Web 版启动：
+
+```powershell
+python web_run.py
+```
+
+浏览器打开 `http://127.0.0.1:8000`。Web 版支持上传流量 CSV、降雨 CSV、点位信息 XLSX 和报告模板 DOCX，并复用同一套 Agent 工具。
+
 `.env` 使用 OpenAI 兼容配置：
 
 ```env
@@ -21,6 +29,7 @@ AGENT_MODEL=deepseek-chat
 
 ```text
 agent/                 Agent 层：CLI、Pydantic AI agent、工具包装
+web/                   本地网页入口：FastAPI + 原生 HTML/CSS/JS
 pipeline/              从原项目复制的只读分析内核
 data/                  演示输入数据
 outputs/               固化工具标准输出
@@ -53,6 +62,20 @@ PROJECT_NOTES.md       项目记忆
 - `run_python`
 - `record_note`
 
+### Range Parameters
+
+Some pipeline modules contain several useful sub-analyses, so their Agent tools expose range parameters:
+
+- `run_rainfall_analysis(rainfall_range="all")`
+  - `all` / `全部`: daily rainfall, rainfall events, and charts
+  - `daily` / `降雨日`: daily rainfall summary
+  - `events` / `场次`: rainfall event summary
+  - `charts` / `图表`: rainfall charts
+- `run_risk_analysis(scope="all")`
+  - `all` / `全部`: dry-weather risk and rainy overflow risk
+  - `dry` / `旱天`: dry-weather risk only
+  - `rainy` / `雨天`: rainy overflow risk only
+
 ## Dependency Recovery
 
 模块工具缺少前置结果时返回统一结构：
@@ -76,4 +99,3 @@ Agent 读到 `blocked` 后应先补跑 `hint` 指向的工具，再回到原任�
 - `WORKSPACE_DIR`
 
 v1 仅做目录约束和提示词约束，不做操作系统级强沙箱。
-

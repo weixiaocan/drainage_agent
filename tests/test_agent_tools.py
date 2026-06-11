@@ -11,6 +11,7 @@ from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_dir
 from agent.tools.inspect_tools import describe_data_impl, list_results_impl
 from agent.tools.memory_tool import record_note_impl
 from agent.tools.module_tools import run_dry_analysis_impl
+from agent.tools.module_tools import run_rainfall_analysis_impl, run_risk_analysis_impl
 from agent.tools.python_tool import run_python_impl
 
 
@@ -68,6 +69,31 @@ class AgentToolTests(unittest.TestCase):
             self.assertEqual(result["status"], "blocked")
             self.assertIn("run_data_filter", result["hint"])
 
+    def test_run_risk_analysis_dry_scope_checks_dry_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            result = run_risk_analysis_impl(deps, scope="旱天")
+            self.assertEqual(result["status"], "blocked")
+            self.assertIn("旱天分析", result["missing"])
+            self.assertIn("run_dry_analysis", result["hint"])
+
+    def test_run_risk_analysis_rainy_scope_checks_rainfall_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            with pd.ExcelWriter(deps.paths.combined_xlsx) as writer:
+                pd.DataFrame({"a": [1]}).to_excel(writer, sheet_name="旱天分析", index=False)
+            result = run_risk_analysis_impl(deps, scope="雨天")
+            self.assertEqual(result["status"], "blocked")
+            self.assertIn("场次降雨统计", result["missing"])
+            self.assertIn("run_rainfall_analysis", result["hint"])
+
+    def test_run_rainfall_analysis_accepts_range_when_no_rain_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            result = run_rainfall_analysis_impl(deps, rainfall_range="图表")
+            self.assertEqual(result["status"], "ok")
+            self.assertIn("未检测到有效降雨数据", result["summary"])
+
     def test_run_python_success_and_workspace_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
@@ -105,4 +131,3 @@ class AgentToolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
