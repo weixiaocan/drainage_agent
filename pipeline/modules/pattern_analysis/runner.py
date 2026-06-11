@@ -9,59 +9,14 @@
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 from pipeline.core.config import Config
 from pipeline.core.llm_client import LLMClient
-from openpyxl import load_workbook
 
 from .analyzer import run_pattern_analysis, generate_curve_charts
-
-
-def _load_dry_curve_data_from_excel(combined_xlsx: Path, logger: logging.Logger) -> dict[str, pd.DataFrame]:
-    """从 Excel 读取旱天特征曲线数据
-
-    Args:
-        combined_xlsx: 综合分析结果 Excel 文件
-
-    Returns:
-        {点位编号: 特征曲线 DataFrame}
-    """
-    dry_curve_data: dict[str, pd.DataFrame] = {}
-
-    try:
-        wb = load_workbook(combined_xlsx, data_only=True)
-
-        # 查找旱天特征曲线 sheet（每个点位一个 sheet）
-        for sheet_name in wb.sheetnames:
-            if sheet_name.startswith("特征曲线_"):
-                ws = wb[sheet_name]
-                point_name = sheet_name.replace("特征曲线_", "")
-
-                # 读取数据
-                data = []
-                for row in ws.iter_rows(min_row=2, values_only=True):  # 跳过表头
-                    if row[0] is not None:
-                        data.append(row)
-
-                if data:
-                    df = pd.DataFrame(data, columns=["时间", "流量(L/s)", "液位(m)", "流速(m/s)"])
-                    df = df.dropna(subset=["时间"])
-                    # 重新设置时间索引
-                    df["时间"] = pd.date_range("00:00:00", "23:59:00", freq="min")[:len(df)]
-                    df = df.set_index("时间")
-                    df = df.rename(columns={"流量(L/s)": "f", "液位(m)": "l", "流速(m/s)": "velo"})
-                    dry_curve_data[point_name] = df
-
-        wb.close()
-
-    except Exception as e:
-        logger.warning(f"读取旱天特征曲线数据失败: {e}")
-
-    return dry_curve_data
 
 
 def run(
@@ -76,7 +31,7 @@ def run(
     排污规律分析入口。
 
     输入:
-        - 旱天特征曲线数据（从内存传入，或从 Excel 读取）
+        - 旱天特征曲线数据（从内存或中间产物传入）
 
     输出:
         - config.combined_xlsx_path 的 "排污规律分析" Sheet
@@ -95,10 +50,8 @@ def run(
     logger.info(f"开始排污规律分析")
     logger.info(f"  综合分析结果: {combined_xlsx}")
 
-    # 如果没有传入 dry_curve_data，从 Excel 读取
     if dry_curve_data is None:
-        logger.info("  从 Excel 读取旱天特征曲线数据...")
-        dry_curve_data = _load_dry_curve_data_from_excel(combined_xlsx, logger)
+        raise RuntimeError("排污规律分析需要 run_dry_analysis 传入旱天特征曲线数据；不再从综合分析结果.xlsx读取特征曲线_ sheet")
 
     if not dry_curve_data:
         logger.warning("未找到旱天特征曲线数据，跳过排污规律分析")
@@ -110,13 +63,8 @@ def run(
 
     logger.info(f"  加载点位数: {len(dry_curve_data)}")
 
-    # 创建LLM客户端（如果启用）
-    llm_client = None
-    try:
-        llm_client = LLMClient(config)
-        logger.info("  使用LLM分析排污规律")
-    except Exception as e:
-        logger.warning(f"  LLM初始化失败，使用规则判断: {e}")
+    llm_client = LLMClient(config)
+    logger.info("  使用LLM分析排污规律")
 
     # 执行分析
     result = run_pattern_analysis(

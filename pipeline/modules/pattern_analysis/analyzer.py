@@ -420,11 +420,7 @@ def _analyze_with_llm(
         return category, _build_report_description(point_name, features, category, peak_periods, valley_periods, description)
 
     except Exception as e:
-        # LLM调用失败，回退到规则判断
-        print(f"LLM分析失败({point_name}): {e}，使用规则判断")
-        category, reason = _classify_pattern(features)
-        description = _build_report_description(point_name, features, category, peak_periods, valley_periods, "")
-        return category, description
+        raise RuntimeError(f"LLM分析失败({point_name}): {e}") from e
 
 
 def _description_from_llm_result(result: dict) -> str:
@@ -592,7 +588,7 @@ def run_pattern_analysis(
         dry_curve_data: 旱天特征曲线数据（从内存传入）
         combined_xlsx: 综合分析结果 xlsx 文件（输出）
         config: 可选配置参数
-        llm_client: LLM客户端（可选，用于生成描述）
+        llm_client: LLM客户端（必需，用于生成描述）
 
     Returns:
         {
@@ -600,6 +596,9 @@ def run_pattern_analysis(
             "descriptions": dict,           # 点位描述
         }
     """
+    if llm_client is None:
+        raise RuntimeError("排污规律分析必须提供 LLMClient，不能回退到规则判断")
+
     # 合并配置
     cfg = PatternConfig()
     if config:
@@ -617,15 +616,9 @@ def run_pattern_analysis(
         # 提取波峰波谷时段
         peak_periods, valley_periods = _extract_peak_valley_periods(curve)
 
-        # 使用LLM分析（如果可用）
-        if llm_client is not None:
-            category, description = _analyze_with_llm(
-                point_name, curve, features, peak_periods, valley_periods, llm_client
-            )
-        else:
-            # 回退到规则判断
-            category, reason = _classify_pattern(features)
-            description = _build_report_description(point_name, features, category, peak_periods, valley_periods)
+        category, description = _analyze_with_llm(
+            point_name, curve, features, peak_periods, valley_periods, llm_client
+        )
 
         # 分类名称
         category_names = {

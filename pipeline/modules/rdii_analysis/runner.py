@@ -19,39 +19,6 @@ from openpyxl import load_workbook
 from .analyzer import draw_rdii_curves, run_rdii_analysis
 
 
-def _load_dry_curve_data_from_excel(combined_xlsx: Path, logger: logging.Logger) -> dict[str, pd.DataFrame]:
-    """从 Excel 读取旱天特征曲线数据"""
-    dry_curve_data: dict[str, pd.DataFrame] = {}
-
-    try:
-        wb = load_workbook(combined_xlsx, data_only=True)
-
-        for sheet_name in wb.sheetnames:
-            if sheet_name.startswith("特征曲线_"):
-                ws = wb[sheet_name]
-                point_name = sheet_name.replace("特征曲线_", "")
-
-                data = []
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    if row[0] is not None:
-                        data.append(row)
-
-                if data:
-                    df = pd.DataFrame(data, columns=["时间", "流量(L/s)", "液位(m)", "流速(m/s)"])
-                    df = df.dropna(subset=["时间"])
-                    df["时间"] = pd.date_range("00:00:00", "23:59:00", freq="min")[:len(df)]
-                    df = df.set_index("时间")
-                    df = df.rename(columns={"流量(L/s)": "f", "液位(m)": "l", "流速(m/s)": "velo"})
-                    dry_curve_data[point_name] = df
-
-        wb.close()
-
-    except Exception as e:
-        logger.warning(f"读取旱天特征曲线数据失败: {e}")
-
-    return dry_curve_data
-
-
 def _load_event_data_from_excel(combined_xlsx: Path, logger: logging.Logger) -> dict[int, dict]:
     """从 Excel 读取场次降雨数据"""
     event_data: dict[int, dict] = {}
@@ -99,7 +66,7 @@ def run(
 
     输入:
         - 流量数据目录（从 config.flow_data_dir）
-        - 旱天特征曲线数据（从内存传入，或从 Excel 读取）
+        - 旱天特征曲线数据（从内存或中间产物传入）
         - 场次降雨数据（从内存传入，或从 Excel 读取）
         - 降雨数据（从内存传入，用于绑制 RDII 过程线图）
         - 选中的场次编号（从 config.selected_rainfall_events）
@@ -125,10 +92,8 @@ def run(
     logger.info(f"  流量数据目录: {flow_dir}")
     logger.info(f"  综合分析结果: {combined_xlsx}")
 
-    # 如果没有传入数据，从 Excel 读取
     if dry_curve_data is None:
-        logger.info("  从 Excel 读取旱天特征曲线数据...")
-        dry_curve_data = _load_dry_curve_data_from_excel(combined_xlsx, logger)
+        raise RuntimeError("RDII分析需要 run_dry_analysis 传入旱天特征曲线数据；不再从综合分析结果.xlsx读取特征曲线_ sheet")
 
     if event_data is None:
         logger.info("  从 Excel 读取场次降雨数据...")

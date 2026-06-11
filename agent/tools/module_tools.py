@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import pickle
 import traceback
 from pathlib import Path
 from typing import Any, Callable
@@ -51,6 +52,9 @@ def _build_config(
         missing_rate_threshold=missing_rate_threshold,
         smooth_window_minutes=smooth_window_minutes,
         llm_enabled=True,
+        llm_api_key=deps.settings.api_key or "",
+        llm_base_url=deps.settings.base_url or "https://api.deepseek.com",
+        llm_model=deps.settings.model,
     )
     cfg._yaml.setdefault("output", {})
     cfg._yaml["output"].update(
@@ -89,6 +93,51 @@ def _has_sheet(deps: AgentDeps, sheet: str) -> bool:
 
 def _has_sheet_prefix(deps: AgentDeps, prefix: str) -> bool:
     return any(name.startswith(prefix) for name in _xlsx_sheets(deps.paths.combined_xlsx))
+
+
+DRY_CURVE_ARTIFACTS = {
+    "dry_curve_data": "dry_curve_data.pkl",
+    "dry_curve_data_workday": "dry_curve_data_workday.pkl",
+    "dry_curve_data_weekend": "dry_curve_data_weekend.pkl",
+    "day_num": "day_num.pkl",
+}
+
+
+def _intermediate_dir(deps: AgentDeps) -> Path:
+    return deps.paths.outputs / "intermediate"
+
+
+def _dry_curve_artifact_paths(deps: AgentDeps) -> dict[str, Path]:
+    base = _intermediate_dir(deps)
+    return {key: base / filename for key, filename in DRY_CURVE_ARTIFACTS.items()}
+
+
+def _save_dry_curve_artifacts(deps: AgentDeps, result: dict[str, Any]) -> None:
+    base = _intermediate_dir(deps)
+    base.mkdir(parents=True, exist_ok=True)
+    for key, path in _dry_curve_artifact_paths(deps).items():
+        if key in result:
+            with path.open("wb") as fh:
+                pickle.dump(result[key], fh)
+
+
+def _load_dry_curve_artifacts(deps: AgentDeps) -> dict[str, Any]:
+    loaded: dict[str, Any] = {}
+    for key, path in _dry_curve_artifact_paths(deps).items():
+        if path.exists():
+            with path.open("rb") as fh:
+                loaded[key] = pickle.load(fh)
+    return loaded
+
+
+def _require_dry_curve_artifacts(deps: AgentDeps) -> ToolResult | None:
+    required = _dry_curve_artifact_paths(deps)
+    missing = [path.name for key, path in required.items() if key == "dry_curve_data" and not path.exists()]
+    if missing:
+        return blocked("旱天特征曲线中间产物", "请先调用 run_dry_analysis")
+    if _manifest_stale(deps, "run_dry_analysis"):
+        return blocked("旱天特征曲线中间产物已过期", "数据已更新，请重新调用 run_dry_analysis")
+    return None
 
 
 def _manifest_stale(deps: AgentDeps, tool_name: str) -> bool:
@@ -138,10 +187,13 @@ def _run_tool(
     params: dict[str, Any] | None = None,
     runner_kwargs: dict[str, Any] | None = None,
     artifacts_fn: Callable[[AgentDeps, dict[str, Any]], list[str]] | None = None,
+    postprocess_fn: Callable[[AgentDeps, dict[str, Any]], None] | None = None,
 ) -> ToolResult:
     deps.paths.outputs.mkdir(parents=True, exist_ok=True)
     try:
         result = runner(cfg, _logger(deps, tool_name), **(runner_kwargs or {}))
+        if postprocess_fn:
+            postprocess_fn(deps, result)
         artifacts = artifacts_fn(deps, result) if artifacts_fn else _artifacts(deps)
         record_result(deps, tool_name, artifacts, params=params)
         return ok(summary_fn(result), artifacts=artifacts, raw_keys=sorted(result.keys()))
@@ -212,6 +264,7 @@ def run_dry_analysis_impl(deps: AgentDeps, smooth_window_minutes: int = 20) -> T
         cfg,
         _summarize_dry,
         params={"smooth_window_minutes": smooth_window_minutes},
+        postprocess_fn=_save_dry_curve_artifacts,
     )
 
 
@@ -310,10 +363,19 @@ def _summarize_pattern(result: dict[str, Any]) -> str:
 
 
 def run_pattern_analysis_impl(deps: AgentDeps) -> ToolResult:
-    if not _has_sheet_prefix(deps, "特征曲线_"):
-        return blocked("旱天特征曲线", "请先调用 run_dry_analysis")
+    precheck = _require_dry_curve_artifacts(deps)
+    if precheck:
+        return precheck
+    dry_artifacts = _load_dry_curve_artifacts(deps)
     cfg = _build_config(deps)
-    return _run_tool(deps, "run_pattern_analysis", pattern_analysis_run, cfg, _summarize_pattern)
+    return _run_tool(
+        deps,
+        "run_pattern_analysis",
+        pattern_analysis_run,
+        cfg,
+        _summarize_pattern,
+        runner_kwargs=dry_artifacts,
+    )
 
 
 def _summarize_rdii(result: dict[str, Any]) -> str:
@@ -328,14 +390,24 @@ def _summarize_rdii(result: dict[str, Any]) -> str:
 def run_rdii_analysis_impl(deps: AgentDeps, event_ids: list[int]) -> ToolResult:
     if not event_ids:
         return blocked("未选择降雨场次编号", "请先调用 run_rainfall_analysis 并让用户选择 event_ids")
-    if not _has_sheet_prefix(deps, "特征曲线_"):
-        return blocked("旱天特征曲线", "请先调用 run_dry_analysis")
+    curve_precheck = _require_dry_curve_artifacts(deps)
+    if curve_precheck:
+        return curve_precheck
     precheck = _require_sheet(deps, "场次降雨统计", "场次降雨统计", "请先调用 run_rainfall_analysis", "run_rainfall_analysis")
     if precheck:
         return precheck
     deps.session.selected_event_ids = event_ids
+    dry_artifacts = _load_dry_curve_artifacts(deps)
     cfg = _build_config(deps, event_ids=event_ids)
-    return _run_tool(deps, "run_rdii_analysis", rdii_analysis_run, cfg, _summarize_rdii, params={"event_ids": event_ids})
+    return _run_tool(
+        deps,
+        "run_rdii_analysis",
+        rdii_analysis_run,
+        cfg,
+        _summarize_rdii,
+        params={"event_ids": event_ids},
+        runner_kwargs={"dry_curve_data": dry_artifacts.get("dry_curve_data")},
+    )
 
 
 RISK_SCOPE_ALIASES = {
@@ -393,6 +465,9 @@ def _summarize_report(result: dict[str, Any]) -> str:
 
 
 def run_report_assembler_impl(deps: AgentDeps) -> ToolResult:
+    curve_precheck = _require_dry_curve_artifacts(deps)
+    if curve_precheck:
+        return curve_precheck
     for sheet, missing, hint in [
         ("旱天分析", "旱天分析结果", "请先调用 run_dry_analysis"),
         ("排污规律分析", "排污规律分析结果", "请先调用 run_pattern_analysis"),
@@ -403,5 +478,13 @@ def run_report_assembler_impl(deps: AgentDeps) -> ToolResult:
             return precheck
     if not deps.paths.report_template_file.exists():
         return blocked("报告模板", f"请将 docx 模板放入 {deps.paths.templates}")
+    dry_artifacts = _load_dry_curve_artifacts(deps)
     cfg = _build_config(deps)
-    return _run_tool(deps, "run_report_assembler", report_assembler_run, cfg, _summarize_report)
+    return _run_tool(
+        deps,
+        "run_report_assembler",
+        report_assembler_run,
+        cfg,
+        _summarize_report,
+        runner_kwargs={"dry_curve_data": dry_artifacts.get("dry_curve_data")},
+    )

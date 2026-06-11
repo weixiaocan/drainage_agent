@@ -58,6 +58,26 @@ def touch_report_template(deps: AgentDeps) -> None:
     (deps.paths.templates / "template.docx").write_bytes(b"sample template")
 
 
+def write_dry_curve_artifacts(deps: AgentDeps) -> None:
+    curve = pd.DataFrame(
+        {
+            "f": [1.0, 1.2, 1.1],
+            "l": [0.2, 0.21, 0.2],
+            "velo": [0.3, 0.31, 0.3],
+        },
+        index=pd.date_range("2026-01-01", periods=3, freq="min"),
+    )
+    mt._save_dry_curve_artifacts(
+        deps,
+        {
+            "dry_curve_data": {"W1": curve},
+            "dry_curve_data_workday": {"W1": curve},
+            "dry_curve_data_weekend": {},
+            "day_num": pd.DataFrame({"point": ["W1"], "days": [1]}),
+        },
+    )
+
+
 def ok_runner(payload: dict[str, Any]) -> Callable[..., dict[str, Any]]:
     def _runner(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
         return payload
@@ -123,7 +143,7 @@ MODULE_TOOL_CASES = [
         "pattern_analysis_run",
         {},
         {"pattern_df": pd.DataFrame({"point": ["W1"]}), "chart_count": {"flow_charts": 1, "level_charts": 1}},
-        lambda deps: write_combined_workbook(deps, ["特征曲线_W1"]),
+        write_dry_curve_artifacts,
     ),
     (
         "run_rdii_analysis",
@@ -135,7 +155,7 @@ MODULE_TOOL_CASES = [
             "avg_flow": pd.DataFrame({"point": ["W1"]}),
             "rdii_total": pd.DataFrame({"point": ["W1"]}),
         },
-        lambda deps: write_combined_workbook(deps, ["特征曲线_W1", "场次降雨统计"]),
+        lambda deps: (write_dry_curve_artifacts(deps), write_combined_workbook(deps, ["场次降雨统计"])),
     ),
     (
         "run_risk_analysis",
@@ -152,6 +172,7 @@ MODULE_TOOL_CASES = [
         {},
         {"stats": {"tables_filled": 1, "images_inserted": 1}, "output_file": "report.docx"},
         lambda deps: (
+            write_dry_curve_artifacts(deps),
             write_combined_workbook(deps, ["旱天分析", "排污规律分析", "旱天风险"]),
             touch_report_template(deps),
         ),
@@ -201,6 +222,21 @@ def test_module_tools_block_when_prerequisites_are_missing(
     result = tool_func(deps, **kwargs)
     assert result["status"] == "blocked"
     assert result["hint"]
+
+
+def test_pattern_analysis_requires_llm_client(tmp_path: Path) -> None:
+    from pipeline.modules.pattern_analysis.analyzer import run_pattern_analysis
+
+    curve = pd.DataFrame(
+        {
+            "f": [1.0, 1.2, 1.1],
+            "l": [0.2, 0.21, 0.2],
+            "velo": [0.3, 0.31, 0.3],
+        },
+        index=pd.date_range("2026-01-01", periods=3, freq="min"),
+    )
+    with pytest.raises(RuntimeError, match="LLMClient"):
+        run_pattern_analysis({"W1": curve}, tmp_path / "combined.xlsx", llm_client=None)
 
 
 @pytest.mark.parametrize("tool_name,tool_func,runner_attr,kwargs,payload,prepare", MODULE_TOOL_CASES)
