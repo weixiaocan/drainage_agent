@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 @dataclass(frozen=True)
 class Paths:
@@ -98,6 +100,7 @@ def ensure_directories(paths: Paths) -> None:
 
 def build_deps(root: Path | None = None) -> AgentDeps:
     paths = Paths.from_root(root or Path.cwd())
+    load_dotenv(paths.root / ".env")
     ensure_directories(paths)
     logger = logging.getLogger("drainage_agent")
     notes = paths.notes.read_text(encoding="utf-8") if paths.notes.exists() else ""

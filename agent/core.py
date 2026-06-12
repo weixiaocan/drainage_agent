@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from pydantic_ai import RunContext
+
 from .deps import AgentDeps
 from .tools.inspect_tools import list_results_impl
 from .tools.memory_tool import record_note_impl
@@ -30,24 +32,26 @@ def load_system_prompt(root: Path, project_notes: str = "") -> str:
 def build_agent(deps: AgentDeps) -> Any:
     try:
         from pydantic_ai import Agent
-        try:
-            from pydantic_ai.models.openai import OpenAIModel
-            from pydantic_ai.providers.openai import OpenAIProvider
+        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.providers.openai import OpenAIProvider
 
-            provider_kwargs = {}
-            if deps.settings.base_url:
-                provider_kwargs["base_url"] = deps.settings.base_url
-            if deps.settings.api_key:
-                provider_kwargs["api_key"] = deps.settings.api_key
+        provider_kwargs = {}
+        if deps.settings.base_url:
+            provider_kwargs["base_url"] = deps.settings.base_url
+        if deps.settings.api_key:
+            provider_kwargs["api_key"] = deps.settings.api_key
+        try:
             model = OpenAIModel(deps.settings.model, provider=OpenAIProvider(**provider_kwargs))
-        except Exception:
-            model = deps.settings.model
+        except Exception as exc:
+            raise RuntimeError(
+                "OpenAI-compatible model initialization failed. Check AGENT_API_KEY/AGENT_BASE_URL/AGENT_MODEL in .env."
+            ) from exc
 
         agent = Agent(model, deps_type=AgentDeps, system_prompt=load_system_prompt(deps.paths.root, deps.project_notes))
 
         @agent.tool
         def query_stats(
-            ctx: Any,
+            ctx: RunContext[AgentDeps],
             points: list[str] | None = None,
             time_range: list[str] | None = None,
             dry_only: bool = True,
@@ -59,13 +63,13 @@ def build_agent(deps: AgentDeps) -> Any:
             return query_stats_impl(ctx.deps, points=points, time_range=time_range, dry_only=dry_only, metrics=metrics, aggs=aggs, clean=clean)
 
         @agent.tool
-        def check_data(ctx: Any, points: list[str] | None = None) -> dict:
+        def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None) -> dict:
             """检查数据收集率、缺失、异常概况与格式问题。"""
             return check_data_impl(ctx.deps, points=points)
 
         @agent.tool
         def analyze_rainfall(
-            ctx: Any,
+            ctx: RunContext[AgentDeps],
             time_range: list[str] | None = None,
             output: str = "all",
             rainfall_gap_hours: int = 12,
@@ -74,18 +78,18 @@ def build_agent(deps: AgentDeps) -> Any:
             return analyze_rainfall_impl(ctx.deps, time_range=time_range, output=output, rainfall_gap_hours=rainfall_gap_hours)
 
         @agent.tool
-        def analyze_event_response(ctx: Any, event_ids: list[int] | None = None, points: list[str] | None = None) -> dict:
+        def analyze_event_response(ctx: RunContext[AgentDeps], event_ids: list[int] | None = None, points: list[str] | None = None) -> dict:
             """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。"""
             return analyze_event_response_impl(ctx.deps, event_ids=event_ids, points=points)
 
         @agent.tool
-        def analyze_patterns(ctx: Any, points: list[str] | None = None, output: str = "all") -> dict:
+        def analyze_patterns(ctx: RunContext[AgentDeps], points: list[str] | None = None, output: str = "all") -> dict:
             """分析排污规律并生成旱天特征曲线底料。"""
             return analyze_patterns_impl(ctx.deps, points=points, output=output)
 
         @agent.tool
         def analyze_rdii(
-            ctx: Any,
+            ctx: RunContext[AgentDeps],
             event_ids: list[int] | None = None,
             points: list[str] | None = None,
             output: str = "all",
@@ -94,27 +98,27 @@ def build_agent(deps: AgentDeps) -> Any:
             return analyze_rdii_impl(ctx.deps, event_ids=event_ids, points=points, output=output)
 
         @agent.tool
-        def assess_risk(ctx: Any, scope: str = "all", event_ids: list[int] | None = None) -> dict:
+        def assess_risk(ctx: RunContext[AgentDeps], scope: str = "all", event_ids: list[int] | None = None) -> dict:
             """评估运行风险。scope: all/dry/rainy。"""
             return assess_risk_impl(ctx.deps, scope=scope, event_ids=event_ids)
 
         @agent.tool
-        def generate_report(ctx: Any, sections: list[str] | None = None, event_ids: list[int] | None = None) -> dict:
+        def generate_report(ctx: RunContext[AgentDeps], sections: list[str] | None = None, event_ids: list[int] | None = None) -> dict:
             """生成排水监测分析报告。"""
             return generate_report_impl(ctx.deps, sections=sections, event_ids=event_ids)
 
         @agent.tool
-        def list_results(ctx: Any) -> dict:
+        def list_results(ctx: RunContext[AgentDeps]) -> dict:
             """列出已有结果、manifest 与新鲜度。"""
             return list_results_impl(ctx.deps)
 
         @agent.tool
-        def run_python(ctx: Any, code: str) -> dict:
+        def run_python(ctx: RunContext[AgentDeps], code: str) -> dict:
             """执行长尾现场 Python 分析，预置 analysis.io 数据访问函数。"""
             return run_python_impl(ctx.deps, code)
 
         @agent.tool
-        def record_note(ctx: Any, note: str) -> dict:
+        def record_note(ctx: RunContext[AgentDeps], note: str) -> dict:
             """写入项目记忆。"""
             return record_note_impl(ctx.deps, note)
 
