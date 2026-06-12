@@ -1,6 +1,6 @@
 # Drainage Agent
 
-排水监测数据分析 Agent。它把原固定顺序 Pipeline 包装成可对话调用的分析工具：用户用自然语言描述目标，Agent 自主选择探查工具、固化模块工具或 `run_python`。
+排水监测数据分析 Agent。它把监测数据读取、清洗、统计分析、降雨响应、RDII、风险评估和报告生成组织成可对话调用的工具。
 
 ## Run
 
@@ -28,74 +28,58 @@ AGENT_MODEL=deepseek-chat
 ## Structure
 
 ```text
-agent/                 Agent 层：CLI、Pydantic AI agent、工具包装
+analysis/              领域分析层：schema、数据读取、清洗、统计、降雨、RDII、风险、报告底料
+agent/                 Agent 层：Pydantic AI 注册、CLI、工具薄封装
 web/                   本地网页入口：FastAPI + 原生 HTML/CSS/JS
-pipeline/              从原项目复制的只读分析内核
 data/                  演示输入数据
 outputs/               固化工具标准输出
-workspace/             run_python 唯一可写目录
-logs/                  运行日志与 trace
+workspace/             run_python 可写目录
+logs/                  运行 trace
 PROJECT_NOTES.md       项目记忆
 ```
 
 ## Tools
 
-探查工具：
-
-- `describe_data`
+- `query_stats`
+- `check_data`
+- `analyze_rainfall`
+- `analyze_event_response`
+- `analyze_patterns`
+- `analyze_rdii`
+- `assess_risk`
+- `generate_report`
 - `list_results`
-
-固化模块工具：
-
-- `run_data_stats`
-- `run_data_filter`
-- `run_rainfall_analysis`
-- `run_dry_analysis`
-- `run_event_stats`
-- `run_pattern_analysis`
-- `run_rdii_analysis`
-- `run_risk_analysis`
-- `run_report_assembler`
-
-长尾工具：
-
 - `run_python`
 - `record_note`
 
-### Range Parameters
+## Tool Result Protocol
 
-Some pipeline modules contain several useful sub-analyses, so their Agent tools expose range parameters:
-
-- `run_rainfall_analysis(rainfall_range="all")`
-  - `all` / `全部`: daily rainfall, rainfall events, and charts
-  - `daily` / `降雨日`: daily rainfall summary
-  - `events` / `场次`: rainfall event summary
-  - `charts` / `图表`: rainfall charts
-- `run_risk_analysis(scope="all")`
-  - `all` / `全部`: dry-weather risk and rainy overflow risk
-  - `dry` / `旱天`: dry-weather risk only
-  - `rainy` / `雨天`: rainy overflow risk only
-
-## Dependency Recovery
-
-模块工具缺少前置结果时返回统一结构：
+工具统一返回：
 
 ```python
-{"status": "blocked", "missing": "...", "hint": "请先调用 ..."}
+{
+    "status": "ok | needs_input | error",
+    "summary": "...",
+    "artifacts": ["outputs/..."],
+    "data": {},
+}
 ```
 
-Agent 读到 `blocked` 后应先补跑 `hint` 指向的工具，再回到原任务。
+`needs_input` 只用于缺少降雨 `event_ids`，并附带可选场次列表。
 
 ## Freshness
 
-固化工具成功后写入 `outputs/manifest.json`，记录输入数据指纹、参数和产物。`list_results` 与前置检查会用 manifest 标记结果是否过期。
+固化工具成功后写入 `outputs/manifest.json`，记录输入数据指纹、参数和产物。`list_results` 会标记结果是否 fresh。
 
 ## run_python Boundary
 
-`run_python` 以子进程执行，超时 60 秒。它向代码注入：
+`run_python` 以子进程执行，超时 60 秒。它注入：
 
 - `DATA_DIR`
 - `OUTPUTS_DIR`
 - `WORKSPACE_DIR`
+- `load_flow`
+- `load_rain`
+- `load_sites`
 
-v1 仅做目录约束和提示词约束，不做操作系统级强沙箱。
+`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `outputs/`。

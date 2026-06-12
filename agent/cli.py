@@ -47,4 +47,3 @@ def run_cli(deps: AgentDeps) -> None:
             msg = f"Agent 调用失败: {exc}"
             print(f"\nAgent> {msg}")
             trace.write({"user": user_input, "error": msg})
-

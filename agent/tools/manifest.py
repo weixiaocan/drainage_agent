@@ -70,4 +70,3 @@ def result_is_fresh(deps: AgentDeps, tool_name: str) -> bool:
     if not item:
         return False
     return item.get("data_fingerprint") == data_fingerprint(deps)["digest"]
-

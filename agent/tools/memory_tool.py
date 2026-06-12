@@ -15,4 +15,3 @@ def record_note_impl(deps: AgentDeps, note: str) -> ToolResult:
         f.write(f"\n- {datetime.now().date().isoformat()}: {note}\n")
     deps.project_notes = deps.paths.notes.read_text(encoding="utf-8")
     return ok(f"已写入项目记忆: {note}", artifacts=[deps.paths.notes.relative_to(deps.paths.root).as_posix()])
-

@@ -90,7 +90,7 @@ class AgentDeps:
 
 
 def ensure_directories(paths: Paths) -> None:
-    for path in (paths.data, paths.outputs, paths.workspace, paths.logs, paths.templates):
+    for path in (paths.data, paths.flow_dir, paths.outputs, paths.workspace, paths.logs, paths.templates):
         path.mkdir(parents=True, exist_ok=True)
     if not paths.notes.exists():
         paths.notes.write_text("# Project Notes\n\n", encoding="utf-8")
@@ -102,4 +102,3 @@ def build_deps(root: Path | None = None) -> AgentDeps:
     logger = logging.getLogger("drainage_agent")
     notes = paths.notes.read_text(encoding="utf-8") if paths.notes.exists() else ""
     return AgentDeps(paths=paths, settings=AgentSettings.from_env(), logger=logger, project_notes=notes)
-

@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -46,7 +46,7 @@ def _safe_upload_name(upload: UploadFile, allowed_extensions: set[str]) -> str:
     suffix = Path(name).suffix.lower()
     if suffix not in allowed_extensions:
         allowed = ", ".join(sorted(allowed_extensions))
-        raise HTTPException(status_code=400, detail=f"{name} 文件类型不支持，仅允许: {allowed}")
+        raise HTTPException(status_code=400, detail=f"{name} 文件类型不支持，仅允许 {allowed}")
     return name
 
 
@@ -152,7 +152,8 @@ def create_app(
         if saved:
             _clear_manifest(deps)
 
-        return JSONResponse({"saved": saved, "message": "上传完成，旧分析结果已标记为可能过期。" if saved else "没有上传文件。"})
+        message = "上传完成，旧分析结果已标记为可能过期。" if saved else "没有上传文件。"
+        return JSONResponse({"saved": saved, "message": message})
 
     @app.get("/api/results")
     def results() -> dict[str, Any]:
@@ -171,4 +172,3 @@ def create_app(
 
 
 app = create_app()
-
