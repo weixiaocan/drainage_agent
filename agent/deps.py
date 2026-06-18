@@ -4,6 +4,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -80,6 +81,7 @@ class AgentSettings:
 class SessionState:
     selected_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
+    current_run_id: str | None = None
 
 
 @dataclass
@@ -89,6 +91,7 @@ class AgentDeps:
     logger: logging.Logger
     session: SessionState = field(default_factory=SessionState)
     project_notes: str = ""
+    trace: Any | None = None
 
 
 def ensure_directories(paths: Paths) -> None:

@@ -19,6 +19,7 @@ from agent.tools.module_tools import (
     analyze_rdii_impl,
     assess_risk_impl,
     check_data_impl,
+    data_filter_impl,
     generate_report_impl,
     query_stats_impl,
 )
@@ -59,6 +60,27 @@ def write_sample_data(deps: AgentDeps) -> None:
     pd.DataFrame({"点位编号": ["W1"], "管径": [1.0]}).to_excel(deps.paths.site_info_file, index=False)
 
 
+def write_filter_sample_data(deps: AgentDeps) -> None:
+    deps.paths.flow_dir.mkdir(parents=True, exist_ok=True)
+    rows = 4 * 1440
+    pd.DataFrame(
+        {
+            "数据时间": pd.date_range("2026-01-01", periods=rows, freq="min"),
+            "设备编号": ["100"] * rows,
+            "流量(L/s)(均值)": [1.0] * rows,
+            "液位(m)(均值)": [0.2] * rows,
+            "流速(m/s)(均值)": [0.3] * rows,
+        }
+    ).to_csv(deps.paths.flow_dir / "100_W1.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01", periods=4, freq="D"),
+            "rain": [0.0, 0.0, 3.0, 0.0],
+        }
+    ).to_csv(deps.paths.rainfall_file, index=False)
+    pd.DataFrame({"点位编号": ["W1"], "管径": [1.0]}).to_excel(deps.paths.site_info_file, index=False)
+
+
 def test_tool_status_values_are_v2_only() -> None:
     assert set(get_args(ToolStatus)) == {"ok", "needs_input", "error"}
 
@@ -74,6 +96,28 @@ def test_check_data_and_query_stats_success(tmp_path: Path) -> None:
     assert stats["status"] == "ok"
     assert deps.paths.combined_xlsx.exists()
     assert "清洗覆盖" in stats["summary"]
+
+
+def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:
+    from openpyxl import load_workbook
+
+    deps = make_deps(tmp_path)
+    write_filter_sample_data(deps)
+
+    result = data_filter_impl(deps)
+
+    assert result["status"] == "ok"
+    assert deps.paths.filter_result.exists()
+    assert result["data"]["selected"] == {"W1": ["2026-01-02"]}
+
+    wb = load_workbook(deps.paths.filter_result)
+    ws = wb["筛选结果"]
+    headers = [cell.value for cell in ws[1]]
+    assert headers[:5] == ["点位编号", "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"]
+    assert headers[-1] == "筛选说明"
+    assert ws.cell(row=2, column=1).value == "当天雨量"
+    assert ws.cell(row=3, column=1).value == "W1"
+    assert str(ws.cell(row=3, column=3).fill.start_color.index).upper().endswith("92D050")
 
 
 def test_rainfall_and_event_needs_input(tmp_path: Path) -> None:
@@ -108,7 +152,7 @@ def test_patterns_and_report_success(tmp_path: Path) -> None:
     write_sample_data(deps)
 
     patterns = analyze_patterns_impl(deps)
-    report = generate_report_impl(deps, sections=["数据体检", "聚合统计", "排污规律", "风险评估"])
+    report = generate_report_impl(deps, sections=["数据体检", "排污规律", "风险评估"])
 
     assert patterns["status"] == "ok"
     assert report["status"] == "ok"
@@ -163,3 +207,4 @@ def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.Monkey
     assert result["status"] == "error"
     assert elapsed < 10
     assert result["data"]["script"]
+

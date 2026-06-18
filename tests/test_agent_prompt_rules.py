@@ -22,7 +22,7 @@ def test_prompt_requires_fresh_result_reuse_and_stale_rerun() -> None:
 def test_prompt_documents_v2_workflow_order() -> None:
     prompt = read_prompt()
     expected_order = (
-        "`check_data -> query_stats -> analyze_rainfall -> "
+        "`data_filter -> check_data -> analyze_rainfall -> "
         "analyze_event_response -> analyze_patterns -> assess_risk -> generate_report`"
     )
     assert expected_order in prompt

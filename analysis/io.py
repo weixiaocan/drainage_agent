@@ -93,6 +93,75 @@ def load_flow(
     return filtered.reset_index(drop=True)
 
 
+def read_selected_days(filter_result: Path) -> dict[str, set[object]]:
+    if not filter_result.exists():
+        return {}
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(filter_result, data_only=True)
+        sheet = workbook["筛选结果"]
+    except Exception:
+        return {}
+
+    date_cols: list[tuple[int, object]] = []
+    for col in range(2, sheet.max_column + 1):
+        value = sheet.cell(row=1, column=col).value
+        if value and str(value) != "筛选说明":
+            date_cols.append((col, pd.to_datetime(value).date()))
+
+    selected: dict[str, set[object]] = {}
+    for row in range(3, sheet.max_row + 1):
+        point_id = str(sheet.cell(row=row, column=1).value or "").strip()
+        if not point_id or point_id.lower() == "nan":
+            continue
+        days: set[object] = set()
+        if "_" in point_id:
+            point_id = point_id.split("_", 1)[1]
+        for col, day in date_cols:
+            fill = sheet.cell(row=row, column=col).fill
+            color = str(fill.start_color.index).upper() if fill and fill.start_color else ""
+            if color.endswith("92D050"):
+                days.add(day)
+        selected[point_id] = days
+    return selected
+
+
+def load_flow_by_filter_result(
+    filter_result: Path,
+    points: Iterable[str] | str | None = None,
+    time_range: tuple[str, str] | list[str] | None = None,
+    root: Path | None = None,
+) -> pd.DataFrame:
+    selected_days = read_selected_days(filter_result)
+    if not selected_days:
+        return pd.DataFrame(columns=["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"])
+
+    flow = load_flow(points=points, time_range=time_range, clean=False, dry_only=False, root=root)
+    if flow.empty:
+        return flow
+    frames: list[pd.DataFrame] = []
+    for point_id, point_df in flow.groupby("point_id", sort=True):
+        point_df = point_df.sort_values("timestamp").copy()
+        full_index = pd.date_range(point_df["timestamp"].min(), point_df["timestamp"].max(), freq="min")
+        full_df = pd.DataFrame({"timestamp": full_index})
+        merged = full_df.merge(point_df, on="timestamp", how="left")
+        merged["point_id"] = str(point_id)
+        merged["device_id"] = merged["device_id"].ffill().bfill()
+        for col in ("flow_lps", "level_m", "velocity_mps"):
+            merged[col] = pd.to_numeric(merged[col], errors="coerce").interpolate(method="linear").fillna(0.0)
+        frames.append(merged)
+    df = pd.concat(frames, ignore_index=True) if frames else flow.copy()
+    df["date"] = df["timestamp"].dt.date
+    result = df[
+        df.apply(
+            lambda row: row["date"] in selected_days.get(str(row["point_id"]), set()),
+            axis=1,
+        )
+    ].drop(columns=["date"])
+    return result.reset_index(drop=True)
+
+
 def load_sites(root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
     path = base / "data" / "点位信息.xlsx"
@@ -106,4 +175,3 @@ def load_sites(root: Path | None = None) -> pd.DataFrame:
 
 def last_clean_report() -> CleanReport:
     return LAST_CLEAN_REPORT
-

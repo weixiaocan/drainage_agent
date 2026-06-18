@@ -35,11 +35,16 @@ def rainfall_events(rain: pd.DataFrame, gap_hours: int = 12, min_rainfall: float
                 "total_rain_mm",
                 "duration_h",
                 "peak_intensity_mmh",
+                "max_3h_rain_mm",
+                "max_6h_rain_mm",
+                "max_12h_rain_mm",
+                "max_24h_rain_mm",
                 "avg_intensity_mmh",
                 "rain_level",
             ]
         )
-    rainy = rain[rain["rain_mm"] > 0].sort_values("timestamp").copy()
+    rain_sorted = rain.sort_values("timestamp").copy()
+    rainy = rain_sorted[rain_sorted["rain_mm"] > 0].copy()
     if rainy.empty:
         return rainfall_events(pd.DataFrame(), gap_hours=gap_hours, min_rainfall=min_rainfall)
     groups: list[list[pd.Series]] = []
@@ -57,22 +62,27 @@ def rainfall_events(rain: pd.DataFrame, gap_hours: int = 12, min_rainfall: float
     rows = []
     event_id = 1
     for group in groups:
-        event = pd.DataFrame(group)
+        rainy_event = pd.DataFrame(group)
+        start = rainy_event["timestamp"].min()
+        end = rainy_event["timestamp"].max()
+        event = rain_sorted[(rain_sorted["timestamp"] >= start) & (rain_sorted["timestamp"] <= end)].copy()
         total = float(event["rain_mm"].sum())
         if total < min_rainfall:
             continue
-        start = event["timestamp"].min()
-        end = event["timestamp"].max()
         duration_h = max((end - start).total_seconds() / 3600, 1.0)
         rows.append(
             {
                 "event_id": event_id,
-                "start_time": start,
-                "end_time": end,
-                "total_rain_mm": total,
-                "duration_h": duration_h,
-                "peak_intensity_mmh": float(event["rain_mm"].max()),
-                "avg_intensity_mmh": total / duration_h,
+                "start_time": start.strftime("%Y-%m-%d %H:%M"),
+                "end_time": end.strftime("%Y-%m-%d %H:%M"),
+                "total_rain_mm": round(total, 2),
+                "duration_h": round(duration_h, 2),
+                "peak_intensity_mmh": round(float(event["rain_mm"].max()), 2),
+                "max_3h_rain_mm": round(float(event["rain_mm"].rolling(3).sum().max()), 2),
+                "max_6h_rain_mm": round(float(event["rain_mm"].rolling(6).sum().max()), 2),
+                "max_12h_rain_mm": round(float(event["rain_mm"].rolling(12).sum().max()), 2),
+                "max_24h_rain_mm": round(float(event["rain_mm"].rolling(24).sum().max()), 2),
+                "avg_intensity_mmh": round(total / duration_h, 2),
                 "rain_level": classify_rain(total),
             }
         )
@@ -85,4 +95,3 @@ def analyze_rainfall(rain: pd.DataFrame, gap_hours: int = 12) -> dict[str, pd.Da
         "daily": daily_rainfall(rain),
         "events": rainfall_events(rain, gap_hours=gap_hours),
     }
-

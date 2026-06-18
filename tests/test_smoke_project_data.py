@@ -18,8 +18,7 @@ class ProjectDataSmokeTests(unittest.TestCase):
         deps = build_deps(Path(__file__).resolve().parents[1])
         result = query_stats_impl(deps, dry_only=False)
         self.assertEqual(result["status"], "ok")
-        self.assertIn("聚合统计完成", result["summary"])
-        self.assertTrue(deps.paths.combined_xlsx.exists())
+        self.assertIn("查询统计完成", result["summary"])
         self.assertTrue(deps.paths.manifest.exists())
 
 

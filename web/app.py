@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
+from agent.logging_utils import TraceLogger, trace_event
 
 
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
@@ -96,6 +97,8 @@ def create_app(
     app = FastAPI(title="Drainage Agent", docs_url="/docs")
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
+    app.state.trace = TraceLogger(app.state.deps.paths.logs)
+    app.state.deps.trace = app.state.trace
     app.state.agent = agent_factory(app.state.deps)
     app.state.histories: dict[str, list[Any]] = {}
 
@@ -111,14 +114,20 @@ def create_app(
             raise HTTPException(status_code=400, detail="消息不能为空")
         session_id = request.session_id or uuid.uuid4().hex
         history = app.state.histories.setdefault(session_id, [])
+        run_id = uuid.uuid4().hex
+        app.state.deps.session.current_run_id = run_id
+        trace_event(app.state.trace, {"event": "turn_start", "run_id": run_id, "session_id": session_id, "user": message})
         try:
             result = app.state.agent.run_sync(message, deps=app.state.deps, message_history=history)
             reply = _result_text(result)
             if hasattr(result, "all_messages"):
                 app.state.histories[session_id] = result.all_messages()
+            trace_event(app.state.trace, {"event": "turn_end", "run_id": run_id, "session_id": session_id, "reply": reply})
+            app.state.deps.session.current_run_id = None
             return ChatResponse(session_id=session_id, reply=reply)
         except Exception as exc:
             app.state.deps.logger.exception("Web agent turn failed")
+            app.state.deps.session.current_run_id = None
             return ChatResponse(session_id=session_id, reply=f"Agent 调用失败: {exc}")
 
     @app.post("/api/upload")

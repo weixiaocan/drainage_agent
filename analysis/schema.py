@@ -27,6 +27,13 @@ RAINFALL_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 DISPLAY_COLUMNS: dict[str, dict[str, str]] = {
+    "data_check": {
+        "point_id": "点位编号",
+        "record_count": "监测数据条数",
+        "monitoring_days": "监测天数",
+        "theoretical_count": "理论数据条数",
+        "collection_rate": "数据收集率(%)",
+    },
     "flow": {
         "timestamp": "数据时间",
         "device_id": "设备编号",
@@ -47,8 +54,76 @@ DISPLAY_COLUMNS: dict[str, dict[str, str]] = {
         "total_rain_mm": "总降雨量(mm)",
         "duration_h": "降雨历时(h)",
         "peak_intensity_mmh": "峰值雨强(mm/h)",
+        "max_3h_rain_mm": "最大3小时降雨量(mm)",
+        "max_6h_rain_mm": "最大6小时降雨量(mm)",
+        "max_12h_rain_mm": "最大12小时降雨量(mm)",
+        "max_24h_rain_mm": "最大24小时降雨量(mm)",
         "avg_intensity_mmh": "平均强度(mm/h)",
         "rain_level": "降雨等级",
+    },
+    "query_stats": {
+        "point_id": "点位编号",
+        "flow_lps_mean": "流量均值(L/s)",
+        "flow_lps_max": "流量最大值(L/s)",
+        "flow_lps_min": "流量最小值(L/s)",
+        "level_m_mean": "液位均值(m)",
+        "level_m_max": "液位最大值(m)",
+        "level_m_min": "液位最小值(m)",
+        "velocity_mps_mean": "流速均值(m/s)",
+        "velocity_mps_max": "流速最大值(m/s)",
+        "velocity_mps_min": "流速最小值(m/s)",
+    },
+    "dry_stats": {
+        "point_id": "点位编号",
+        "daily_flow_m3d": "日均流量(m³/d)",
+        "max_flow_lps": "日最大流量(L/s)",
+        "min_flow_lps": "日最小流量(L/s)",
+        "max_level_m": "最大液位(m)",
+        "max_fullness": "最大充满度",
+        "overflow_risk": "外溢风险",
+        "avg_velocity_mps": "平均流速(m/s)",
+        "avg_level_m": "平均液位(m)",
+    },
+    "patterns": {
+        "point_id": "点位编号",
+        "category": "分类",
+        "category_name": "分类名称",
+        "kz": "Kz值",
+        "peak_valley_ratio": "峰谷比",
+        "peak_count": "峰数量",
+        "peak_periods": "波峰时段",
+        "valley_periods": "波谷时段",
+        "diagnosis_reason": "诊断理由",
+        "description": "排污规律描述",
+    },
+    "event_response": {
+        "point_id": "点位编号",
+    },
+    "rdii": {
+        "point_id": "点位编号",
+    },
+    "dry_risk": {
+        "serial_no": "序号",
+        "point_id": "点位编号",
+        "diameter_m": "管径(m)",
+        "well_depth_m": "井深(m)",
+        "daily_flow_m3d": "日均流量(m³/d)",
+        "dry_velocity_mps": "旱天流速(m/s)",
+        "max_level_m": "最大液位(m)",
+        "max_fullness": "最大充满度",
+        "overflow_value": "溢流风险值",
+        "silting_risk": "淤积风险",
+        "running_risk": "运行风险",
+        "overflow_risk": "溢流风险",
+    },
+    "rainy_risk": {
+        "event_id": "降雨场次编号",
+        "rain_level": "降雨等级",
+        "point_id": "点位编号",
+        "max_level_m": "最大液位(m)",
+        "well_depth_m": "井深(m)",
+        "overflow_value": "溢流风险值",
+        "overflow_risk": "溢流风险",
     },
 }
 
@@ -121,3 +196,8 @@ def to_display_columns(df: pd.DataFrame, table_type: str) -> pd.DataFrame:
     mapping = DISPLAY_COLUMNS.get(table_type, {})
     return df.rename(columns={k: v for k, v in mapping.items() if k in df.columns})
 
+
+def from_display_columns(df: pd.DataFrame, table_type: str) -> pd.DataFrame:
+    mapping = DISPLAY_COLUMNS.get(table_type, {})
+    reverse = {v: k for k, v in mapping.items()}
+    return df.rename(columns={k: v for k, v in reverse.items() if k in df.columns})

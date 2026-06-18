@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from typing import Any
 
 from pydantic_ai import RunContext
 
 from .deps import AgentDeps
+from .logging_utils import summarize_tool_result, trace_event
 from .tools.inspect_tools import list_results_impl
 from .tools.memory_tool import record_note_impl
 from .tools.module_tools import (
@@ -15,6 +17,7 @@ from .tools.module_tools import (
     analyze_rdii_impl,
     assess_risk_impl,
     check_data_impl,
+    data_filter_impl,
     generate_report_impl,
     query_stats_impl,
 )
@@ -49,6 +52,74 @@ def build_agent(deps: AgentDeps) -> Any:
 
         agent = Agent(model, deps_type=AgentDeps, system_prompt=load_system_prompt(deps.paths.root, deps.project_notes))
 
+        def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
+            call_id = uuid.uuid4().hex
+            run_id = ctx.deps.session.current_run_id
+            trace_event(
+                ctx.deps.trace,
+                {
+                    "event": "tool_call",
+                    "run_id": run_id,
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    "args": args,
+                },
+            )
+            try:
+                result = func()
+            except Exception as exc:
+                trace_event(
+                    ctx.deps.trace,
+                    {
+                        "event": "tool_error",
+                        "run_id": run_id,
+                        "call_id": call_id,
+                        "tool_name": tool_name,
+                        "error": repr(exc),
+                    },
+                )
+                raise
+            trace_event(
+                ctx.deps.trace,
+                {
+                    "event": "tool_result",
+                    "run_id": run_id,
+                    "call_id": call_id,
+                    "tool_name": tool_name,
+                    **summarize_tool_result(result),
+                },
+            )
+            return result
+
+        @agent.tool
+        def data_filter(
+            ctx: RunContext[AgentDeps],
+            missing_rate_threshold: float = 0.1,
+            expected_rows_per_day: int = 1440,
+            rain_day_filter_threshold: float = 2.0,
+            zero_like_threshold: float = 0.02,
+            high_zero_ratio_threshold: float = 0.5,
+            high_zero_ratio_normal_days_threshold: int = 5,
+            zero_day_drop_min_nonzero_keep_days: int = 3,
+            mean_lower_ratio: float = 0.5,
+            mean_upper_ratio: float = 2.0,
+            output_file: str | None = None,
+        ) -> dict:
+            """按固定筛选规则生成筛选结果.xlsx，作为旱天分析前置结果。"""
+            args = {
+                "missing_rate_threshold": missing_rate_threshold,
+                "expected_rows_per_day": expected_rows_per_day,
+                "rain_day_filter_threshold": rain_day_filter_threshold,
+                "zero_like_threshold": zero_like_threshold,
+                "high_zero_ratio_threshold": high_zero_ratio_threshold,
+                "high_zero_ratio_normal_days_threshold": high_zero_ratio_normal_days_threshold,
+                "zero_day_drop_min_nonzero_keep_days": zero_day_drop_min_nonzero_keep_days,
+                "mean_lower_ratio": mean_lower_ratio,
+                "mean_upper_ratio": mean_upper_ratio,
+                "output_file": output_file,
+            }
+            return traced_tool(ctx, "data_filter", args, lambda: data_filter_impl(ctx.deps, **args))
+
         @agent.tool
         def query_stats(
             ctx: RunContext[AgentDeps],
@@ -60,12 +131,14 @@ def build_agent(deps: AgentDeps) -> Any:
             clean: bool = True,
         ) -> dict:
             """按条件聚合统计流量、液位、流速。dry_only 默认 True。"""
-            return query_stats_impl(ctx.deps, points=points, time_range=time_range, dry_only=dry_only, metrics=metrics, aggs=aggs, clean=clean)
+            args = {"points": points, "time_range": time_range, "dry_only": dry_only, "metrics": metrics, "aggs": aggs, "clean": clean}
+            return traced_tool(ctx, "query_stats", args, lambda: query_stats_impl(ctx.deps, **args))
 
         @agent.tool
         def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None) -> dict:
             """检查数据收集率、缺失、异常概况与格式问题。"""
-            return check_data_impl(ctx.deps, points=points)
+            args = {"points": points}
+            return traced_tool(ctx, "check_data", args, lambda: check_data_impl(ctx.deps, **args))
 
         @agent.tool
         def analyze_rainfall(
@@ -75,17 +148,20 @@ def build_agent(deps: AgentDeps) -> Any:
             rainfall_gap_hours: int = 12,
         ) -> dict:
             """分析降雨日统计、降雨场次和降雨输出。output: all/daily/events/charts。"""
-            return analyze_rainfall_impl(ctx.deps, time_range=time_range, output=output, rainfall_gap_hours=rainfall_gap_hours)
+            args = {"time_range": time_range, "output": output, "rainfall_gap_hours": rainfall_gap_hours}
+            return traced_tool(ctx, "analyze_rainfall", args, lambda: analyze_rainfall_impl(ctx.deps, **args))
 
         @agent.tool
         def analyze_event_response(ctx: RunContext[AgentDeps], event_ids: list[int] | None = None, points: list[str] | None = None) -> dict:
             """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。"""
-            return analyze_event_response_impl(ctx.deps, event_ids=event_ids, points=points)
+            args = {"event_ids": event_ids, "points": points}
+            return traced_tool(ctx, "analyze_event_response", args, lambda: analyze_event_response_impl(ctx.deps, **args))
 
         @agent.tool
         def analyze_patterns(ctx: RunContext[AgentDeps], points: list[str] | None = None, output: str = "all") -> dict:
             """分析排污规律并生成旱天特征曲线底料。"""
-            return analyze_patterns_impl(ctx.deps, points=points, output=output)
+            args = {"points": points, "output": output}
+            return traced_tool(ctx, "analyze_patterns", args, lambda: analyze_patterns_impl(ctx.deps, **args))
 
         @agent.tool
         def analyze_rdii(
@@ -95,32 +171,37 @@ def build_agent(deps: AgentDeps) -> Any:
             output: str = "all",
         ) -> dict:
             """计算指定降雨事件的 RDII 指标；event_ids 未给时返回 needs_input。"""
-            return analyze_rdii_impl(ctx.deps, event_ids=event_ids, points=points, output=output)
+            args = {"event_ids": event_ids, "points": points, "output": output}
+            return traced_tool(ctx, "analyze_rdii", args, lambda: analyze_rdii_impl(ctx.deps, **args))
 
         @agent.tool
         def assess_risk(ctx: RunContext[AgentDeps], scope: str = "all", event_ids: list[int] | None = None) -> dict:
             """评估运行风险。scope: all/dry/rainy。"""
-            return assess_risk_impl(ctx.deps, scope=scope, event_ids=event_ids)
+            args = {"scope": scope, "event_ids": event_ids}
+            return traced_tool(ctx, "assess_risk", args, lambda: assess_risk_impl(ctx.deps, **args))
 
         @agent.tool
         def generate_report(ctx: RunContext[AgentDeps], sections: list[str] | None = None, event_ids: list[int] | None = None) -> dict:
             """生成排水监测分析报告。"""
-            return generate_report_impl(ctx.deps, sections=sections, event_ids=event_ids)
+            args = {"sections": sections, "event_ids": event_ids}
+            return traced_tool(ctx, "generate_report", args, lambda: generate_report_impl(ctx.deps, **args))
 
         @agent.tool
         def list_results(ctx: RunContext[AgentDeps]) -> dict:
             """列出已有结果、manifest 与新鲜度。"""
-            return list_results_impl(ctx.deps)
+            return traced_tool(ctx, "list_results", {}, lambda: list_results_impl(ctx.deps))
 
         @agent.tool
         def run_python(ctx: RunContext[AgentDeps], code: str) -> dict:
             """执行长尾现场 Python 分析，预置 analysis.io 数据访问函数。"""
-            return run_python_impl(ctx.deps, code)
+            args = {"code": code}
+            return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
 
         @agent.tool
         def record_note(ctx: RunContext[AgentDeps], note: str) -> dict:
             """写入项目记忆。"""
-            return record_note_impl(ctx.deps, note)
+            args = {"note": note}
+            return traced_tool(ctx, "record_note", args, lambda: record_note_impl(ctx.deps, **args))
 
         return agent
     except ImportError as exc:
