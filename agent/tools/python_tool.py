@@ -46,6 +46,7 @@ from analysis.io import load_filtered_flow, load_flow, load_rain, load_sites
     script_path.write_text(textwrap.dedent(prelude) + "\n" + code, encoding="utf-8")
     env = os.environ.copy()
     env["DRAINAGE_AGENT_ROOT"] = str(deps.paths.root)
+    env["PYTHONIOENCODING"] = "utf-8"
 
     try:
         completed = subprocess.run(

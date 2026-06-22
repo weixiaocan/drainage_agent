@@ -6,14 +6,15 @@
 - `list_results` 中已有结果 `fresh=true` 且参数与本次需求一致时，直接复用该结果，说明来源和产物路径；禁止重复调用对应生成工具。
 - 已有结果 `fresh=false`、提示过期、缺少目标参数，或用户指定新参数时，重跑对应工具。
 - 工具返回 `status=needs_input` 时，只能向用户请求缺少的 `event_ids`，并展示工具返回的 `options`。
-- 固化工具返回 `no_data=true`、空表或明确说明数据时间不重叠时，直接向用户说明无数据及覆盖范围；不要再调用 `run_python` 重复验证。
+- 固化工具返回 `no_data=true`、空表或明确说明数据时间不重叠时，必须立即停止当前任务并向用户说明无数据及覆盖范围；禁止继续调用 `run_python`、RDII、风险或报告工具。
+- 固化工具已经返回所需表格或指标时，直接依据工具返回回答；禁止调用 `run_python` 猜测或重复读取固化工具的内部产物。
 - 固化工具成功后，向用户摘要关键数字和产物路径，不要把完整表格塞进回复。
 - 用户明确说“免确认直接跑完”时，后续只在缺少 `event_ids` 或工具失败时停下。
 - 用户要求“每步给我看”时，每个关键工具后都简短汇报。
 
 ## 固化流程
 
-- 完整报告链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_patterns -> assess_risk -> generate_report`。
+- 完整报告链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk -> generate_report`。
 - `data_filter` 负责生成 `筛选结果.xlsx`，筛选逻辑为确定性前置，不得用简化规则替代。
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
 - `analyze_patterns` 负责排污规律和旱天特征曲线底料。

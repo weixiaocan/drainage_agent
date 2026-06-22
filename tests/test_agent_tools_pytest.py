@@ -161,6 +161,20 @@ def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkey
     assert response["data"]["no_data"] is True
     assert response["data"]["event_ids"] == [4]
     assert "无时间重叠" in response["summary"]
+    assert deps.session.unavailable_event_ids == [4]
+
+
+def test_report_refuses_event_without_monitoring_coverage(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    deps.session.selected_event_ids = [4]
+    deps.session.unavailable_event_ids = [4]
+
+    report = generate_report_impl(deps, sections=["RDII", "雨天风险"], event_ids=[4])
+
+    assert report["status"] == "error"
+    assert "无时间重叠" in report["summary"]
+    assert not (deps.paths.outputs / "分析报告.docx").exists()
 
 
 def test_patterns_and_report_success(tmp_path: Path) -> None:
@@ -210,6 +224,15 @@ def test_run_python_returns_error_without_crashing(tmp_path: Path) -> None:
     result = run_python_impl(deps, "raise RuntimeError('kernel boom')")
     assert result["status"] == "error"
     assert "kernel boom" in result["data"]["stderr"]
+
+
+def test_run_python_forces_utf8_stdout(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+
+    result = run_python_impl(deps, "print('RDII 单位：m³')")
+
+    assert result["status"] == "ok"
+    assert "RDII 单位：m³" in result["data"]["stdout"]
 
 
 def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

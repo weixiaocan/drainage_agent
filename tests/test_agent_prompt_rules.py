@@ -25,7 +25,7 @@ def test_prompt_documents_v2_workflow_order() -> None:
     prompt = read_prompt()
     expected_order = (
         "`data_filter -> check_data -> analyze_rainfall -> "
-        "analyze_event_response -> analyze_patterns -> assess_risk -> generate_report`"
+        "analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk -> generate_report`"
     )
     assert expected_order in prompt
     assert "不要编造编号" in prompt
@@ -89,3 +89,4 @@ def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None
     assert "`timestamp`" in prompt
     assert "不要尝试从 `analysis.io` 导入" in prompt
     assert "DataFrame 是否为空" in prompt
+    assert "禁止调用 `run_python` 猜测或重复读取" in prompt

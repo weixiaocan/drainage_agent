@@ -80,6 +80,7 @@ class AgentSettings:
 @dataclass
 class SessionState:
     selected_event_ids: list[int] = field(default_factory=list)
+    unavailable_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
     current_run_id: str | None = None
 

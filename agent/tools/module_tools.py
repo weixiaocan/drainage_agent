@@ -769,6 +769,9 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
         response = analyze_event_response(flow, events, event_ids or [])
         _write_sheet(deps.paths.combined_xlsx, "雨天事件统计", response)
         if response.empty:
+            deps.session.unavailable_event_ids = sorted(
+                set(deps.session.unavailable_event_ids).union(event_ids or [])
+            )
             selected = points or ["全部点位"]
             summary = (
                 f"雨天事件统计无可用数据：场次 {event_ids} 与点位 {selected} 的监测数据无时间重叠，"
@@ -798,6 +801,9 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
         table = result["rdii_total"]
         _save_rdii_curves(deps, result["rdii_curve_data"])
         if table.empty:
+            deps.session.unavailable_event_ids = sorted(
+                set(deps.session.unavailable_event_ids).union(event_ids or [])
+            )
             summary = (
                 f"RDII 分析无可用数据：场次 {event_ids} 与点位 {points or ['全部点位']} 的监测数据"
                 "无时间重叠，无法计算 RDII。"
@@ -860,12 +866,18 @@ def assess_risk_impl(deps: AgentDeps, scope: str = "all", event_ids: list[int] |
 
 def generate_report_impl(deps: AgentDeps, sections: list[str] | None = None, event_ids: list[int] | None = None) -> ToolResult:
     sections = sections or ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"]
+    selected_event_ids = event_ids or deps.session.selected_event_ids
+    unavailable = sorted(set(selected_event_ids).intersection(deps.session.unavailable_event_ids))
+    if unavailable:
+        return error(
+            f"无法生成可靠报告：场次 {unavailable} 与监测数据无时间重叠，缺少事件响应、RDII 和雨天风险依据。"
+        )
     rainy_sections = {"降雨分析", "雨天事件统计", "事件响应", "RDII", "雨天风险", "雨天溢流风险"}
     if rainy_sections.intersection(sections):
         precheck = _require_event_ids(deps, event_ids)
         if precheck:
             return precheck
-    params = {"sections": sections, "event_ids": event_ids or deps.session.selected_event_ids}
+    params = {"sections": sections, "event_ids": selected_event_ids}
 
     def work() -> tuple[str, dict[str, Any]]:
         summaries: list[str] = []
