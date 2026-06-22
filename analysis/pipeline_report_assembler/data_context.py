@@ -8,7 +8,9 @@ from typing import Dict, Iterable, Optional
 
 import pandas as pd
 
-from .local_schema import normalize_sheet_df, parse_flow_filename
+from analysis.schema import parse_flow_filename
+
+from .local_schema import normalize_sheet_df
 
 
 @dataclass

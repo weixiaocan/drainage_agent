@@ -4,17 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from analysis.schema import (
-    DISPLAY_COLUMNS,
-    FLOW_COLUMN_ALIASES,
-    RAINFALL_COLUMN_ALIASES,
-    FlowFileInfo,
-    find_column,
-    normalize_flow_df,
-    normalize_rain_df,
-    parse_flow_filename,
-    to_display_columns,
-)
+from analysis.schema import find_column
 
 SHEET_ALIASES: dict[str, str] = {
     "数据收集率统计": "data_collection",
@@ -103,24 +93,6 @@ SHEET_COLUMN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
 def canonical_sheet_name(sheet_name: str) -> str:
     """Return the logical schema name for a workbook sheet."""
     return SHEET_ALIASES.get(str(sheet_name).strip(), str(sheet_name).strip())
-
-
-def flow_to_legacy_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Convert canonical flow columns to the legacy names used by current algorithms."""
-    legacy = df.rename(
-        columns={
-            "timestamp": "数据时间",
-            "flow_lps": "f",
-            "level_m": "l",
-            "velocity_mps": "velo",
-        }
-    )
-    return legacy
-
-
-def normalize_rainfall_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize raw rainfall data to ``timestamp`` and ``rain_mm``."""
-    return normalize_rain_df(df)
 
 
 def normalize_sheet_df(sheet_name: str, df: pd.DataFrame) -> tuple[str, pd.DataFrame]:
