@@ -8,3 +8,6 @@ workspace/agent_run_*.py
 workspace/*.json
 outputs/*
 !outputs/.gitkeep
+eval/results.jsonl
+eval/results.jsonl.tmp
+eval/artifacts/
