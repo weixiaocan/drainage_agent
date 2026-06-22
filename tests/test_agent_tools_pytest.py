@@ -149,6 +149,20 @@ def test_event_response_rdii_and_risk_with_event_ids(tmp_path: Path) -> None:
     assert risk["status"] == "ok"
 
 
+def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    analyze_rainfall_impl(deps)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response", lambda *_args, **_kwargs: pd.DataFrame())
+
+    response = analyze_event_response_impl(deps, event_ids=[4], points=["W1"])
+
+    assert response["status"] == "ok"
+    assert response["data"]["no_data"] is True
+    assert response["data"]["event_ids"] == [4]
+    assert "无时间重叠" in response["summary"]
+
+
 def test_patterns_and_report_success(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)

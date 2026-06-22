@@ -80,3 +80,12 @@ def test_prompt_documents_exception_and_quality_reminders() -> None:
     assert "缺失率高" in prompt
     assert "格式错误" in prompt
     assert "工具返回 `error`" in prompt
+
+
+def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:
+    prompt = read_prompt()
+
+    assert "当前工作目录是 `WORKSPACE_DIR`" in prompt
+    assert "`timestamp`" in prompt
+    assert "不要尝试从 `analysis.io` 导入" in prompt
+    assert "DataFrame 是否为空" in prompt

@@ -768,8 +768,15 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
         events = _load_event_table(deps)
         response = analyze_event_response(flow, events, event_ids or [])
         _write_sheet(deps.paths.combined_xlsx, "雨天事件统计", response)
+        if response.empty:
+            selected = points or ["全部点位"]
+            summary = (
+                f"雨天事件统计无可用数据：场次 {event_ids} 与点位 {selected} 的监测数据无时间重叠，"
+                "无法计算事件响应指标。"
+            )
+            return summary, {"table": [], "no_data": True, "event_ids": event_ids, "points": points or []}
         summary = f"雨天事件统计完成：场次 {event_ids}，输出 {len(response)} 个点位统计。"
-        return summary, {"table": response.to_dict(orient="records")}
+        return summary, {"table": response.to_dict(orient="records"), "no_data": False}
 
     return _run(deps, "analyze_event_response", work, params=params)
 
@@ -790,6 +797,13 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
         result = analyze_rdii(flow, dry_curves, events, event_ids or [])
         table = result["rdii_total"]
         _save_rdii_curves(deps, result["rdii_curve_data"])
+        if table.empty:
+            summary = (
+                f"RDII 分析无可用数据：场次 {event_ids} 与点位 {points or ['全部点位']} 的监测数据"
+                "无时间重叠，无法计算 RDII。"
+            )
+            _write_sheet(deps.paths.combined_xlsx, "RDII总量统计", table)
+            return summary, {"table": [], "chart_paths": {}, "no_data": True, "event_ids": event_ids}
         rain = io.load_rain(root=deps.paths.root)
         chart_paths = _save_rdii_curve_pngs(
             result["rdii_curve_data"],
@@ -801,7 +815,7 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
         _write_sheet(deps.paths.combined_xlsx, "RDII总量统计", table)
         chart_count = sum(len(point_paths) for point_paths in chart_paths.values())
         summary = f"RDII 分析完成：场次 {event_ids}，输出 {len(table)} 行统计，生成 {chart_count} 张 RDII 曲线图。"
-        return summary, {"table": table.to_dict(orient="records"), "chart_paths": chart_paths}
+        return summary, {"table": table.to_dict(orient="records"), "chart_paths": chart_paths, "no_data": False}
 
     return _run(deps, "analyze_rdii", work, params=params)
 

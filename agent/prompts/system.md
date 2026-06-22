@@ -6,6 +6,7 @@
 - `list_results` 中已有结果 `fresh=true` 且参数与本次需求一致时，直接复用该结果，说明来源和产物路径；禁止重复调用对应生成工具。
 - 已有结果 `fresh=false`、提示过期、缺少目标参数，或用户指定新参数时，重跑对应工具。
 - 工具返回 `status=needs_input` 时，只能向用户请求缺少的 `event_ids`，并展示工具返回的 `options`。
+- 固化工具返回 `no_data=true`、空表或明确说明数据时间不重叠时，直接向用户说明无数据及覆盖范围；不要再调用 `run_python` 重复验证。
 - 固化工具成功后，向用户摘要关键数字和产物路径，不要把完整表格塞进回复。
 - 用户明确说“免确认直接跑完”时，后续只在缺少 `event_ids` 或工具失败时停下。
 - 用户要求“每步给我看”时，每个关键工具后都简短汇报。
@@ -47,6 +48,11 @@
 - `load_filtered_flow`
 - `load_rain`
 - `load_sites`
+
+- 当前工作目录是 `WORKSPACE_DIR`，读取数据和产物必须使用上述绝对路径变量；不要用 `outputs/...`、`data/...` 等相对路径。
+- `load_flow()` 和 `load_filtered_flow()` 返回字段固定为：`timestamp`、`device_id`、`point_id`、`flow_lps`、`level_m`、`velocity_mps`。
+- `DATA_DIR`、`OUTPUTS_DIR`、`WORKSPACE_DIR` 已直接预置，不要尝试从 `analysis.io` 导入它们。
+- 统计前必须先检查 DataFrame 是否为空；空数据直接说明无覆盖，不要执行除法、`idxmax()` 等要求非空输入的操作。
 
 代码失败后最多自我修正 2 次；仍失败则说明错误。
 

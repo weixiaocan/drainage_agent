@@ -85,4 +85,7 @@ def analyze_rdii(
             ).set_index("timestamp")
         curve_data[event_id] = event_curves
 
+    if not curve_data:
+        return {"rdii_total": pd.DataFrame(), "rdii_curve_data": {}}
+
     return {"rdii_total": pd.DataFrame(rows_by_point.values()), "rdii_curve_data": curve_data}

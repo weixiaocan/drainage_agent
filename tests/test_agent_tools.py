@@ -337,6 +337,29 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("场次2_最大液位(m)", table.columns)
         self.assertIn("场次2_平均流量(m³/d)", table.columns)
 
+    def test_event_response_is_empty_when_no_selected_event_has_coverage(self) -> None:
+        flow = pd.DataFrame(
+            {
+                "timestamp": pd.to_datetime(["2026-03-15 03:30"]),
+                "point_id": ["W1"],
+                "flow_lps": [1.0],
+                "level_m": [0.2],
+                "velocity_mps": [0.1],
+            }
+        )
+        events = pd.DataFrame(
+            {
+                "event_id": [4],
+                "start_time": pd.to_datetime(["2026-02-25 19:00"]),
+                "end_time": pd.to_datetime(["2026-02-26 08:00"]),
+            }
+        )
+
+        table = analyze_event_response(flow, events, [4])
+
+        self.assertTrue(table.empty)
+        self.assertEqual(list(table.columns), [])
+
     def test_assess_risk_uses_site_ratios_and_rain_delay(self) -> None:
         dry_stats = pd.DataFrame(
             {
@@ -445,6 +468,33 @@ class AgentToolTests(unittest.TestCase):
         self.assertIn("场次2", table.columns)
         self.assertNotIn(1, result["rdii_curve_data"])
         self.assertIn(2, result["rdii_curve_data"])
+
+    def test_analyze_rdii_is_empty_when_no_selected_event_has_coverage(self) -> None:
+        flow = pd.DataFrame(
+            {
+                "timestamp": pd.date_range("2026-03-15 03:00", periods=3, freq="min"),
+                "point_id": ["W1", "W1", "W1"],
+                "flow_lps": [3.0, 3.0, 3.0],
+                "level_m": [0.1, 0.1, 0.1],
+            }
+        )
+        dry_curves = {
+            "W1": pd.DataFrame(
+                {"minute_of_day": list(range(1440)), "flow_lps": [1.0] * 1440}
+            )
+        }
+        events = pd.DataFrame(
+            {
+                "event_id": [4],
+                "start_time": pd.to_datetime(["2026-02-25 19:00"]),
+                "end_time": pd.to_datetime(["2026-02-26 08:00"]),
+            }
+        )
+
+        result = analyze_rdii(flow, dry_curves, events, [4])
+
+        self.assertTrue(result["rdii_total"].empty)
+        self.assertEqual(result["rdii_curve_data"], {})
 
     def test_save_rdii_curve_pngs_outputs_pipeline_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

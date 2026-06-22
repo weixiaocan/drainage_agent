@@ -72,6 +72,11 @@ def summarize_tool_result(result: Any) -> dict[str, Any]:
     for key in ("missing", "hint", "options"):
         if key in result:
             summary[key] = result[key]
+    data = result.get("data")
+    if result.get("status") == "error" and isinstance(data, dict):
+        for key in ("returncode", "stderr", "script"):
+            if key in data:
+                summary[key] = data[key]
     return _trace_safe(summary)
 
 

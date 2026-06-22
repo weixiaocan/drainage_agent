@@ -17,11 +17,17 @@
   must_not: [漏任一点位, 把旱天当雨天, 只给泛泛描述]
   pass_when: 先调用 data_filter，再通过 run_python 的 load_filtered_flow 统计 W1/W6/W18，能比较三点统计量
 
-- id: E004
+- id: E004A
   prompt: 只看 W1 在 2026-02-01 到 2026-02-10 的流量均值和最大值。
   must_call: [run_python]
-  must_not: [忽略时间范围, 查全网, 直接编数]
-  pass_when: 参数含 W1 与该时间段；返回流量均值和最大值
+  must_not: [忽略时间范围, 查全网, 直接编数, 把3月数据当作2月数据]
+  pass_when: 明确说明 W1 数据不覆盖该时间段，给出实际覆盖范围，不编造均值和最大值
+
+- id: E004B
+  prompt: 只看 W1 在 2026-03-08 到 2026-03-10 的流量均值和最大值。
+  must_call: [run_python]
+  must_not: [忽略时间范围, 查全网, 直接编数, 回答无数据]
+  pass_when: 参数含 W1 与该时间段，返回有数据记录数、流量均值和最大值
 
 - id: E005
   prompt: 这段数据里有哪些降雨事件？最大的一场是哪天？
@@ -29,17 +35,29 @@
   must_not: [不调降雨工具, 把雨日和事件混为一谈]
   pass_when: 回答事件数量与最大事件日期/雨量
 
-- id: E006
+- id: E006A
   prompt: W1 在 2 月 25 日到 2 月 26 日这场雨里的响应怎么样？
   must_call: [analyze_rainfall, analyze_event_response]
-  must_not: [把日期当旱天统计, 跳过事件识别, 直接编峰值]
-  pass_when: 先识别对应降雨事件，再出 W1 该场雨的关键响应指标
+  must_not: [把日期当旱天统计, 跳过事件识别, 直接编峰值, 调用 run_python 重复验证]
+  pass_when: 先识别为事件4，再明确 W1 监测数据与该事件无时间重叠，不编造响应指标
 
-- id: E007
-  prompt: 比较 W1 和 W6 在第 4 场、第 6 场降雨中的响应差异。
+- id: E006B
+  prompt: W1 在第 6 场降雨里的响应怎么样？
   must_call: [analyze_event_response]
-  must_not: [只分析一个点或一场, 没有比较, 混淆事件编号]
-  pass_when: event_ids 含 4/6，points 含 W1/W6，给出响应差异
+  must_not: [改用其他事件, 回答无数据, 直接编峰值]
+  pass_when: event_ids 含6且 points 含W1，返回最大液位、平均流量和峰值流量等响应指标
+
+- id: E007A
+  prompt: 比较 W1 和 W6 在第 4 场降雨中的响应差异。
+  must_call: [analyze_event_response]
+  must_not: [只分析一个点, 混淆事件编号, 编造响应指标, 调用 run_python 重复验证]
+  pass_when: event_ids 含4且 points 含W1/W6，明确两点均无事件4期间的监测数据
+
+- id: E007B
+  prompt: 比较 W1 和 W6 在第 6 场降雨中的响应差异。
+  must_call: [analyze_event_response]
+  must_not: [只分析一个点, 混淆事件编号, 回答无数据, 没有比较]
+  pass_when: event_ids 含6且 points 含W1/W6，给出两点响应指标与差异
 
 - id: E008
   prompt: 帮我算一下 W1、W6 在第 6 场降雨里的 RDII，顺便说明谁更严重。
@@ -47,11 +65,17 @@
   must_not: [不调 RDII 工具, 把峰值流量当 RDII, 不比较]
   pass_when: event 含 6，points 含 W1/W6，比较严重性
 
-- id: E009
-  prompt: 给我看全部点位的 RDII 风险，重点说第 4 场和第 6 场。
+- id: E009A
+  prompt: 给我看全部点位在第 4 场降雨中的 RDII 风险。
   must_call: [analyze_rdii]
-  must_not: [只分析单点, 漏掉事件 4 或 6, 编造风险等级]
-  pass_when: event 含 4/6，覆盖全网或说明范围，定位主要 RDII 风险点
+  must_not: [只分析单点, 改用其他事件, 编造 RDII 或风险等级]
+  pass_when: event_ids 含4，明确监测数据不覆盖该事件，无法计算 RDII
+
+- id: E009B
+  prompt: 给我看全部点位在第 6 场降雨中的 RDII 风险并排序。
+  must_call: [analyze_rdii]
+  must_not: [只分析单点, 改用其他事件, 回答无数据, 编造风险等级]
+  pass_when: event_ids 含6并覆盖全网，给出 RDII 统计和风险排序依据
 
 - id: E010
   prompt: 哪些点位有满管或溢流风险？请分旱天和雨天说，雨天重点看第 6 场降雨。
@@ -89,11 +113,17 @@
   must_not: [漏掉第 6 场降雨, 漏 RDII, 未完成前置分析就生成报告, 报告路径不存在]
   pass_when: 完成完整分析链路，以事件 6 进行雨天响应、RDII 和风险分析，最终报告路径存在
 
-- id: E016
-  prompt: 把第 4 场和第 6 场降雨都纳入报告，报告里要包含风险和 RDII。
-  must_call: [analyze_rdii, assess_risk, generate_report]
-  must_not: [只生成通用报告, 漏 RDII 或风险, 事件参数错]
-  pass_when: generate_report 含 event 4/6，回答说明包含哪些模块，路径明确
+- id: E016A
+  prompt: 以第 4 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  must_call: [analyze_rainfall, analyze_event_response]
+  must_not: [改用其他事件, 编造响应或 RDII, 生成缺少数据依据的报告]
+  pass_when: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告
+
+- id: E016B
+  prompt: 以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  must_call: [analyze_event_response, analyze_rdii, assess_risk, generate_report]
+  must_not: [只生成通用报告, 漏 RDII 或风险, 事件参数错, 报告路径不存在]
+  pass_when: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
 
 - id: E017
   prompt: 你直接告诉我 W999 的数据质量怎么样。
@@ -101,11 +131,17 @@
   must_not: [编造 W999 指标, 静默改成其他点位]
   pass_when: 明确指出 W999 不存在/无数据，不编造
 
-- id: E018
+- id: E018A
   prompt: 分析一下"那个最大雨"里 W1 的响应。
   must_call: [analyze_rainfall, analyze_event_response]
-  must_not: [随便选事件, 不说明"最大雨"是哪一场]
-  pass_when: 先识别最大事件并说明是哪场，再给 W1 响应
+  must_not: [随便选事件, 不说明"最大雨"是哪一场, 编造 W1 响应, 调用 run_python 重复验证]
+  pass_when: 先识别最大雨为事件4，再明确 W1 数据不覆盖该事件，不能计算响应
+
+- id: E018B
+  prompt: 数据覆盖范围内雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
+  must_call: [analyze_rainfall, analyze_event_response]
+  must_not: [选择无监测覆盖的事件, 不说明事件编号, 回答无数据]
+  pass_when: 识别有监测覆盖的最大雨为事件6，再给出 W1 的关键响应指标
 
 - id: E019
   prompt: 我想知道哪里最危险，雨天按第 6 场降雨判断，其他口径你自己确定。

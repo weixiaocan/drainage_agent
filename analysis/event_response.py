@@ -41,6 +41,9 @@ def analyze_event_response(
             continue
         selected_ids.append(event_id)
 
+    if not selected_ids:
+        return pd.DataFrame()
+
     rows: list[dict[str, object]] = []
     for point_id, point_df in flow.groupby("point_id", sort=True):
         row: dict[str, object] = {"point_id": point_id}

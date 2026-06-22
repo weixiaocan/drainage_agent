@@ -34,3 +34,24 @@ def test_trace_logger_writes_minimal_tool_events(tmp_path) -> None:
     assert '"status": "ok"' in lines[2]
     assert '"summary": "19 points"' in lines[2]
     assert '"large"' not in lines[2]
+
+
+def test_trace_includes_run_python_stderr_on_error() -> None:
+    summary = summarize_tool_result(
+        {
+            "status": "error",
+            "summary": "run_python failed",
+            "artifacts": [],
+            "data": {
+                "returncode": 1,
+                "stderr": "Traceback: FileNotFoundError: outputs/result.xlsx",
+                "script": "workspace/agent_run.py",
+                "stdout": "not needed in trace",
+            },
+        }
+    )
+
+    assert summary["returncode"] == 1
+    assert "FileNotFoundError" in summary["stderr"]
+    assert summary["script"] == "workspace/agent_run.py"
+    assert "stdout" not in summary
