@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "agent" / "prompts" / "system.md"
+CORE_PATH = Path(__file__).resolve().parents[1] / "agent" / "core.py"
 
 
 def read_prompt() -> str:
@@ -33,9 +35,35 @@ def test_prompt_documents_routing_rules() -> None:
     prompt = read_prompt()
     assert "数据质量" in prompt
     assert "`check_data`" in prompt
-    assert "`query_stats`" in prompt
+    assert "`data_filter`" in prompt
     assert "`analyze_rainfall`" in prompt
     assert "`run_python`" in prompt
+
+
+def test_core_registers_exactly_the_documented_tools() -> None:
+    tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
+    registered = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(
+            isinstance(decorator, ast.Attribute) and decorator.attr == "tool"
+            for decorator in node.decorator_list
+        )
+    }
+    assert registered == {
+        "data_filter",
+        "check_data",
+        "analyze_rainfall",
+        "analyze_event_response",
+        "analyze_patterns",
+        "analyze_rdii",
+        "assess_risk",
+        "generate_report",
+        "list_results",
+        "run_python",
+        "record_note",
+    }
 
 
 def test_prompt_requires_needs_input_for_event_ids() -> None:

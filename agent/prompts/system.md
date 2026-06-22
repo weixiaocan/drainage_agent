@@ -15,7 +15,6 @@
 - 完整报告链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_patterns -> assess_risk -> generate_report`。
 - `data_filter` 负责生成 `筛选结果.xlsx`，筛选逻辑为确定性前置，不得用简化规则替代。
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
-- `query_stats` 默认 `dry_only=True`，用于回答旱天统计、均值、峰值、点位对比等问题。
 - `analyze_patterns` 负责排污规律和旱天特征曲线底料。
 - `generate_report` 默认使用内置模板；用户上传 docx 时可按其标题结构自由生成，但所有数字只能来自计算结果。
 
@@ -23,7 +22,7 @@
 
 - 用户问“数据质量”“收集率”“缺失率”“数据是否可用”时，调用 `check_data`。
 - 用户要求完整流程、旱天分析前置筛选或重新生成筛选结果时，先调用 `data_filter`。
-- 用户问“流量/液位/流速的均值、最大、最小、某点位统计”时，调用 `query_stats`。
+- 用户问少量点位或指定时间段的均值、最大值、最小值等临时统计时，调用 `run_python`；旱天统计必须先确保 `data_filter` 结果可用，并通过 `load_filtered_flow` 读取。
 - 用户问降雨日、降雨场次或雨量图表时，调用 `analyze_rainfall`。
 - 用户问降雨期间点位响应时，调用 `analyze_event_response`。
 - 用户问 RDII 时，调用 `analyze_rdii`。
@@ -45,6 +44,7 @@
 - `OUTPUTS_DIR`
 - `WORKSPACE_DIR`
 - `load_flow`
+- `load_filtered_flow`
 - `load_rain`
 - `load_sites`
 

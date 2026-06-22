@@ -6,8 +6,9 @@ Provide a conversational drainage-monitoring analysis agent that can inspect upl
 
 ## Core Capabilities
 
-- Data access and normalization through `analysis.io`.
-- Flow, level, and velocity aggregation through `query_stats`.
+- Data access through `analysis.io` and canonical field normalization through `analysis.schema`.
+- Deterministic dry-weather data selection through `data_filter`.
+- Ad-hoc point and time-range aggregation through `run_python`.
 - Data quality inspection through `check_data`.
 - Rainfall daily/event analysis through `analyze_rainfall`.
 - Rain-event response, RDII, pattern, and risk analysis through dedicated tools.
@@ -26,5 +27,5 @@ Provide a conversational drainage-monitoring analysis agent that can inspect upl
 - Public tools are the v2 tool list in `docs/ARCHITECTURE.md`.
 - Tool statuses are limited to `ok`, `needs_input`, and `error`.
 - CLI and Web keep their conversation loop and message history behavior.
-- `run_python` exposes `load_flow`, `load_rain`, and `load_sites`.
+- `run_python` exposes `load_flow`, `load_filtered_flow`, `load_rain`, and `load_sites`.
 - Tests cover core tool success paths, `needs_input`, freshness metadata, and report generation.

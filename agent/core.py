@@ -19,7 +19,6 @@ from .tools.module_tools import (
     check_data_impl,
     data_filter_impl,
     generate_report_impl,
-    query_stats_impl,
 )
 from .tools.python_tool import run_python_impl
 
@@ -119,20 +118,6 @@ def build_agent(deps: AgentDeps) -> Any:
                 "output_file": output_file,
             }
             return traced_tool(ctx, "data_filter", args, lambda: data_filter_impl(ctx.deps, **args))
-
-        @agent.tool
-        def query_stats(
-            ctx: RunContext[AgentDeps],
-            points: list[str] | None = None,
-            time_range: list[str] | None = None,
-            dry_only: bool = True,
-            metrics: list[str] | None = None,
-            aggs: list[str] | None = None,
-            clean: bool = True,
-        ) -> dict:
-            """按条件聚合统计流量、液位、流速。dry_only 默认 True。"""
-            args = {"points": points, "time_range": time_range, "dry_only": dry_only, "metrics": metrics, "aggs": aggs, "clean": clean}
-            return traced_tool(ctx, "query_stats", args, lambda: query_stats_impl(ctx.deps, **args))
 
         @agent.tool
         def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None) -> dict:

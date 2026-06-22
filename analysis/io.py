@@ -6,11 +6,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from .filtering import CleanReport, filter_flow
 from .schema import normalize_flow_df, normalize_rain_df
-
-
-LAST_CLEAN_REPORT = CleanReport()
 
 
 def project_root() -> Path:
@@ -68,11 +64,8 @@ def load_rain(time_range: tuple[str, str] | list[str] | None = None, root: Path 
 def load_flow(
     points: Iterable[str] | str | None = None,
     time_range: tuple[str, str] | list[str] | None = None,
-    clean: bool = True,
-    dry_only: bool = False,
     root: Path | None = None,
 ) -> pd.DataFrame:
-    global LAST_CLEAN_REPORT
     base = root or project_root()
     flow_dir = base / "data" / "flow"
     selected_points = _normalize_points(points)
@@ -83,14 +76,9 @@ def load_flow(
             continue
         frames.append(normalized)
     if not frames:
-        LAST_CLEAN_REPORT = CleanReport()
         return pd.DataFrame(columns=["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"])
     flow = pd.concat(frames, ignore_index=True)
-    flow = _apply_time_range(flow, time_range)
-    rain = load_rain(time_range=time_range, root=base)
-    filtered, report = filter_flow(flow, rain, clean=clean, dry_only=dry_only)
-    LAST_CLEAN_REPORT = report
-    return filtered.reset_index(drop=True)
+    return _apply_time_range(flow, time_range).reset_index(drop=True)
 
 
 def read_selected_days(filter_result: Path) -> dict[str, set[object]]:
@@ -137,7 +125,7 @@ def load_flow_by_filter_result(
     if not selected_days:
         return pd.DataFrame(columns=["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"])
 
-    flow = load_flow(points=points, time_range=time_range, clean=False, dry_only=False, root=root)
+    flow = load_flow(points=points, time_range=time_range, root=root)
     if flow.empty:
         return flow
     frames: list[pd.DataFrame] = []
@@ -162,6 +150,21 @@ def load_flow_by_filter_result(
     return result.reset_index(drop=True)
 
 
+def load_filtered_flow(
+    points: Iterable[str] | str | None = None,
+    time_range: tuple[str, str] | list[str] | None = None,
+    root: Path | None = None,
+) -> pd.DataFrame:
+    """读取 data_filter 标准产物中选定的有效旱天数据。"""
+    base = root or project_root()
+    return load_flow_by_filter_result(
+        base / "outputs" / "筛选结果.xlsx",
+        points=points,
+        time_range=time_range,
+        root=base,
+    )
+
+
 def load_sites(root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
     path = base / "data" / "点位信息.xlsx"
@@ -171,7 +174,3 @@ def load_sites(root: Path | None = None) -> pd.DataFrame:
         return pd.read_excel(path)
     except Exception:
         return pd.DataFrame()
-
-
-def last_clean_report() -> CleanReport:
-    return LAST_CLEAN_REPORT

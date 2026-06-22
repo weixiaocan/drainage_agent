@@ -41,7 +41,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 if str(PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_ROOT))
-from analysis.io import load_flow, load_rain, load_sites
+from analysis.io import load_filtered_flow, load_flow, load_rain, load_sites
 """
     script_path.write_text(textwrap.dedent(prelude) + "\n" + code, encoding="utf-8")
     env = os.environ.copy()

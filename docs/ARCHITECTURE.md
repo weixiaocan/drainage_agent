@@ -2,7 +2,7 @@
 
 ## Layers
 
-- `analysis/`: deterministic drainage-domain analysis. `io.py` is the only data-loading module; other modules accept data frames and parameters, then return structured results.
+- `analysis/`: deterministic drainage-domain analysis. `io.py` reads data and normalizes fields through the shared `schema.py` (including report assembly); business filtering is exclusively owned by `data_filter`.
 - `agent/`: Pydantic AI registration, dependencies, prompts, CLI, and thin tool wrappers.
 - `web/`: FastAPI upload, chat, result listing, and download endpoints.
 
@@ -16,7 +16,7 @@ All tools return `ToolResult` with `ToolStatus = ok | needs_input | error`.
 
 ## Public Tools
 
-- `query_stats`
+- `data_filter`
 - `check_data`
 - `analyze_rainfall`
 - `analyze_event_response`
@@ -35,4 +35,3 @@ Standard artifacts are written under `outputs/`. `manifest.json` records input f
 ## LLM Boundary
 
 LLM usage is limited to agent orchestration, ad-hoc code generation, classification/explanation text, and report prose. Numeric calculation, filtering, thresholds, and tabular analysis are deterministic code paths.
-

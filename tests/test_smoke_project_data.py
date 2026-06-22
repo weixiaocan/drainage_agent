@@ -3,23 +3,24 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from agent.deps import build_deps
-from agent.tools.module_tools import check_data_impl, query_stats_impl
+from analysis.io import load_flow
+from analysis.stats import check_data
 
 
 class ProjectDataSmokeTests(unittest.TestCase):
     def test_project_demo_data_is_checked(self) -> None:
-        deps = build_deps(Path(__file__).resolve().parents[1])
-        result = check_data_impl(deps)
-        self.assertEqual(result["status"], "ok")
-        self.assertGreater(len(result["data"]["table"]), 0)
+        root = Path(__file__).resolve().parents[1]
+        result = check_data(load_flow(root=root))
+        self.assertGreater(len(result), 0)
 
-    def test_query_stats_on_project_demo_data(self) -> None:
-        deps = build_deps(Path(__file__).resolve().parents[1])
-        result = query_stats_impl(deps, dry_only=False)
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("查询统计完成", result["summary"])
-        self.assertTrue(deps.paths.manifest.exists())
+    def test_project_demo_flow_uses_canonical_schema(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        flow = load_flow(root=root)
+        self.assertGreater(len(flow), 0)
+        self.assertEqual(
+            list(flow.columns),
+            ["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"],
+        )
 
 
 if __name__ == "__main__":

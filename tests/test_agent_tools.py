@@ -27,7 +27,6 @@ from agent.tools.module_tools import (
     analyze_rainfall_impl,
     check_data_impl,
     data_filter_impl,
-    query_stats_impl,
 )
 from agent.tools.python_tool import run_python_impl
 
@@ -98,26 +97,6 @@ class AgentToolTests(unittest.TestCase):
             )
             self.assertEqual(df["点位编号"].tolist(), ["W1", "W2", "W10"])
             self.assertNotIn("数据体检", load_workbook(deps.paths.combined_xlsx).sheetnames)
-
-    def test_query_stats_success(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            deps = make_deps(Path(tmp))
-            write_flow(deps)
-            result = query_stats_impl(deps, dry_only=False)
-            self.assertEqual(result["status"], "ok")
-            self.assertEqual(len(result["data"]["table"]), 1)
-            self.assertFalse(deps.paths.combined_xlsx.exists())
-
-    def test_query_stats_removes_legacy_aggregate_sheet(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            deps = make_deps(Path(tmp))
-            write_flow(deps)
-            pd.DataFrame({"点位编号": ["W1"]}).to_excel(deps.paths.combined_xlsx, sheet_name="聚合统计", index=False)
-
-            result = query_stats_impl(deps, dry_only=False)
-
-            self.assertEqual(result["status"], "ok")
-            self.assertFalse(deps.paths.combined_xlsx.exists())
 
     def test_data_filter_writes_filter_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -576,7 +555,7 @@ class AgentToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
             write_flow(deps)
-            result = run_python_impl(deps, "(WORKSPACE_DIR / 'out.txt').write_text(str(len(load_flow(clean=False))), encoding='utf-8')")
+            result = run_python_impl(deps, "(WORKSPACE_DIR / 'out.txt').write_text(str(len(load_flow())), encoding='utf-8')")
             self.assertEqual(result["status"], "ok", result)
             self.assertEqual((deps.paths.workspace / "out.txt").read_text(encoding="utf-8"), "5")
 

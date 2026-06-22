@@ -42,6 +42,10 @@ DISPLAY_COLUMNS: dict[str, dict[str, str]] = {
         "level_m": "液位(m)",
         "velocity_mps": "流速(m/s)",
     },
+    "rainfall": {
+        "timestamp": "时间",
+        "rain_mm": "降雨量(mm)",
+    },
     "rainfall_daily": {
         "date": "日期",
         "rain_mm": "日降雨量(mm)",
@@ -60,18 +64,6 @@ DISPLAY_COLUMNS: dict[str, dict[str, str]] = {
         "max_24h_rain_mm": "最大24小时降雨量(mm)",
         "avg_intensity_mmh": "平均强度(mm/h)",
         "rain_level": "降雨等级",
-    },
-    "query_stats": {
-        "point_id": "点位编号",
-        "flow_lps_mean": "流量均值(L/s)",
-        "flow_lps_max": "流量最大值(L/s)",
-        "flow_lps_min": "流量最小值(L/s)",
-        "level_m_mean": "液位均值(m)",
-        "level_m_max": "液位最大值(m)",
-        "level_m_min": "液位最小值(m)",
-        "velocity_mps_mean": "流速均值(m/s)",
-        "velocity_mps_max": "流速最大值(m/s)",
-        "velocity_mps_min": "流速最小值(m/s)",
     },
     "dry_stats": {
         "point_id": "点位编号",

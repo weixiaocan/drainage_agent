@@ -21,7 +21,7 @@ from analysis.rdii import analyze_rdii
 from analysis.reporting import build_report
 from analysis.risk import assess_risk
 from analysis.schema import from_display_columns, to_display_columns
-from analysis.stats import check_data, query_stats
+from analysis.stats import check_data
 
 
 SHEET_TABLE_TYPES = {
@@ -595,7 +595,7 @@ def data_filter_impl(
     }
 
     def work() -> tuple[str, dict[str, Any]]:
-        flow = io.load_flow(clean=False, root=deps.paths.root)
+        flow = io.load_flow(root=deps.paths.root)
         rain = io.load_rain(root=deps.paths.root)
         out_path = Path(output_file) if output_file else deps.paths.filter_result
         if not out_path.is_absolute():
@@ -672,7 +672,7 @@ def _require_event_ids(deps: AgentDeps, event_ids: list[int] | None) -> ToolResu
 def _ensure_filter_result(deps: AgentDeps) -> Path:
     if deps.paths.filter_result.exists():
         return deps.paths.filter_result
-    flow = io.load_flow(clean=False, root=deps.paths.root)
+    flow = io.load_flow(root=deps.paths.root)
     rain = io.load_rain(root=deps.paths.root)
     run_data_filter(flow=flow, rain=rain, output_xlsx=deps.paths.filter_result, config=FilterConfig())
     return deps.paths.filter_result
@@ -684,12 +684,12 @@ def _load_filtered_dry_flow(
     time_range: list[str] | None = None,
 ) -> pd.DataFrame:
     filter_result = _ensure_filter_result(deps)
-    return io.load_flow_by_filter_result(filter_result, points=points, time_range=time_range, root=deps.paths.root)
+    return io.load_filtered_flow(points=points, time_range=time_range, root=deps.paths.root)
 
 
 def check_data_impl(deps: AgentDeps, points: list[str] | None = None) -> ToolResult:
     def work() -> tuple[str, dict[str, Any]]:
-        flow = io.load_flow(points=points, clean=False, root=deps.paths.root)
+        flow = io.load_flow(points=points, root=deps.paths.root)
         stats_df = check_data(flow)
         _write_sheet(deps.paths.combined_xlsx, "数据收集率统计", stats_df)
         _remove_sheet(deps.paths.combined_xlsx, "数据体检")
@@ -698,38 +698,6 @@ def check_data_impl(deps: AgentDeps, points: list[str] | None = None) -> ToolRes
         return summary, {"table": stats_df.to_dict(orient="records")}
 
     return _run(deps, "check_data", work, params={"points": points or []})
-
-
-def query_stats_impl(
-    deps: AgentDeps,
-    points: list[str] | None = None,
-    time_range: list[str] | None = None,
-    dry_only: bool = True,
-    metrics: list[str] | None = None,
-    aggs: list[str] | None = None,
-    clean: bool = True,
-) -> ToolResult:
-    params = {
-        "points": points or [],
-        "time_range": time_range or [],
-        "dry_only": dry_only,
-        "metrics": metrics or ["流量", "液位", "流速"],
-        "aggs": aggs or ["均值", "最大", "最小"],
-        "clean": clean,
-    }
-
-    def work() -> tuple[str, dict[str, Any]]:
-        if dry_only:
-            flow = _load_filtered_dry_flow(deps, points=points, time_range=time_range)
-        else:
-            flow = io.load_flow(points=points, time_range=time_range, clean=clean, dry_only=False, root=deps.paths.root)
-        table = query_stats(flow, metrics=metrics, aggs=aggs)
-        _remove_sheet(deps.paths.combined_xlsx, "聚合统计")
-        source_note = f"基于筛选结果 {_rel(deps, deps.paths.filter_result)}。" if dry_only else io.last_clean_report().summary()
-        summary = f"查询统计完成：返回 {len(table)} 个点位。{source_note}"
-        return summary, {"table": table.to_dict(orient="records")}
-
-    return _run(deps, "query_stats", work, params=params)
 
 
 def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, output: str = "all", rainfall_gap_hours: int = 12) -> ToolResult:
@@ -796,11 +764,11 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
     params = {"event_ids": event_ids, "points": points or []}
 
     def work() -> tuple[str, dict[str, Any]]:
-        flow = io.load_flow(points=points, clean=False, dry_only=False, root=deps.paths.root)
+        flow = io.load_flow(points=points, root=deps.paths.root)
         events = _load_event_table(deps)
         response = analyze_event_response(flow, events, event_ids or [])
         _write_sheet(deps.paths.combined_xlsx, "雨天事件统计", response)
-        summary = f"雨天事件统计完成：场次 {event_ids}，输出 {len(response)} 个点位统计。{io.last_clean_report().summary()}"
+        summary = f"雨天事件统计完成：场次 {event_ids}，输出 {len(response)} 个点位统计。"
         return summary, {"table": response.to_dict(orient="records")}
 
     return _run(deps, "analyze_event_response", work, params=params)
@@ -814,7 +782,7 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
     params = {"event_ids": event_ids, "points": points or [], "output": output}
 
     def work() -> tuple[str, dict[str, Any]]:
-        flow = io.load_flow(points=points, clean=False, dry_only=False, root=deps.paths.root)
+        flow = io.load_flow(points=points, root=deps.paths.root)
         dry_flow = _load_filtered_dry_flow(deps, points=points)
         events = _load_event_table(deps)
         dry_curves = build_dry_curves(dry_flow)
@@ -854,7 +822,7 @@ def assess_risk_impl(deps: AgentDeps, scope: str = "all", event_ids: list[int] |
         events = pd.DataFrame()
         event_table = pd.DataFrame()
         if scope in {"rainy", "all"} and event_ids:
-            flow = io.load_flow(clean=False, dry_only=False, root=deps.paths.root)
+            flow = io.load_flow(root=deps.paths.root)
             events = _load_event_table(deps)
             event_table = analyze_event_response(flow, _load_event_table(deps), event_ids)
         result = assess_risk(

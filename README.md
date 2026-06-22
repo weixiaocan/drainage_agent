@@ -40,7 +40,7 @@ PROJECT_NOTES.md       项目记忆
 
 ## Tools
 
-- `query_stats`
+- `data_filter`
 - `check_data`
 - `analyze_rainfall`
 - `analyze_event_response`
@@ -79,7 +79,8 @@ PROJECT_NOTES.md       项目记忆
 - `OUTPUTS_DIR`
 - `WORKSPACE_DIR`
 - `load_flow`
+- `load_filtered_flow`
 - `load_rain`
 - `load_sites`
 
-`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `outputs/`。
+`load_flow` 只读取并规范化原始字段；`load_filtered_flow` 读取 `data_filter` 生成的有效旱天结果。`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `outputs/`。

@@ -8,6 +8,7 @@ from typing import get_args
 import pandas as pd
 import pytest
 
+from analysis import io
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.inspect_tools import list_results_impl
 from agent.tools.manifest import record_result
@@ -21,7 +22,6 @@ from agent.tools.module_tools import (
     check_data_impl,
     data_filter_impl,
     generate_report_impl,
-    query_stats_impl,
 )
 from agent.tools.python_tool import run_python_impl
 from agent.types import ToolStatus
@@ -85,17 +85,14 @@ def test_tool_status_values_are_v2_only() -> None:
     assert set(get_args(ToolStatus)) == {"ok", "needs_input", "error"}
 
 
-def test_check_data_and_query_stats_success(tmp_path: Path) -> None:
+def test_check_data_success(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
 
     check = check_data_impl(deps)
-    stats = query_stats_impl(deps, dry_only=False)
 
     assert check["status"] == "ok"
-    assert stats["status"] == "ok"
     assert deps.paths.combined_xlsx.exists()
-    assert "清洗覆盖" in stats["summary"]
 
 
 def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:
@@ -103,12 +100,17 @@ def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None
 
     deps = make_deps(tmp_path)
     write_filter_sample_data(deps)
+    raw_flow = io.load_flow(root=deps.paths.root)
 
     result = data_filter_impl(deps)
+    filtered_flow = io.load_filtered_flow(root=deps.paths.root)
 
     assert result["status"] == "ok"
+    assert len(raw_flow) == 4 * 1440
     assert deps.paths.filter_result.exists()
     assert result["data"]["selected"] == {"W1": ["2026-01-02"]}
+    assert len(filtered_flow) == 1440
+    assert set(filtered_flow["timestamp"].dt.strftime("%Y-%m-%d")) == {"2026-01-02"}
 
     wb = load_workbook(deps.paths.filter_result)
     ws = wb["筛选结果"]
@@ -164,14 +166,14 @@ def test_list_results_exposes_fresh_manifest_metadata(tmp_path: Path) -> None:
     write_sample_data(deps)
     artifact = deps.paths.outputs / "sample.xlsx"
     artifact.write_text("sample", encoding="utf-8")
-    record_result(deps, "query_stats", [artifact.relative_to(deps.paths.root).as_posix()], params={"dry_only": True})
+    record_result(deps, "data_filter", [artifact.relative_to(deps.paths.root).as_posix()], params={})
 
     result = list_results_impl(deps)
-    item = result["data"]["manifest"]["query_stats"]
+    item = result["data"]["manifest"]["data_filter"]
 
     assert result["status"] == "ok"
     assert item["fresh"] is True
-    assert item["params"] == {"dry_only": True}
+    assert item["params"] == {}
 
 
 def test_record_note_success(tmp_path: Path) -> None:
@@ -184,7 +186,7 @@ def test_record_note_success(tmp_path: Path) -> None:
 def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
-    result = run_python_impl(deps, "df = load_flow(clean=False)\nprint(len(df))\n(WORKSPACE_DIR / 'out.txt').write_text(str(len(df)), encoding='utf-8')")
+    result = run_python_impl(deps, "df = load_flow()\nprint(len(df))\n(WORKSPACE_DIR / 'out.txt').write_text(str(len(df)), encoding='utf-8')")
     assert result["status"] == "ok"
     assert (deps.paths.workspace / "out.txt").read_text(encoding="utf-8") == "60"
 
@@ -207,4 +209,3 @@ def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.Monkey
     assert result["status"] == "error"
     assert elapsed < 10
     assert result["data"]["script"]
-
