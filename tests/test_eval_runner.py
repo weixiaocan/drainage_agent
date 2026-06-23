@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from eval.eval_stage2.run_eval import completed_case_ids, fresh_root, normalize_case, preserve_artifacts, tool_seq
+from eval.eval_stage2.run_eval import (
+    compact_pending_results,
+    completed_case_ids,
+    fresh_root,
+    normalize_case,
+    preserve_artifacts,
+    tool_seq,
+)
 from eval.eval_stage2.view import load_results, render_report
 
 
@@ -97,3 +105,22 @@ def test_completed_case_ids_ignores_meta_and_partial_line(tmp_path: Path) -> Non
     )
 
     assert completed_case_ids(pending) == {"M001"}
+
+
+def test_compact_pending_results_keeps_last_complete_case(tmp_path: Path) -> None:
+    pending = tmp_path / "results.jsonl.tmp"
+    pending.write_text(
+        "\n".join([
+            '{"_meta":{"case_count":1}}',
+            '{"id":"M001","turns":[{"output":"old"}]}',
+            '{"id":"M001","turns":[{"output":"new"}]}',
+            '{"id":',
+        ]),
+        encoding="utf-8",
+    )
+
+    compact_pending_results(pending)
+    rows = [json.loads(line) for line in pending.read_text(encoding="utf-8").splitlines()]
+
+    assert len(rows) == 2
+    assert rows[1]["turns"][0]["output"] == "new"

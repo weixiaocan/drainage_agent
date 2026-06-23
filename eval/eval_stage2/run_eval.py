@@ -101,11 +101,12 @@ def normalize_case(case: dict) -> dict:
 def try_usage(result) -> dict | None:
     """尽力取 token 用量；不同 pydantic-ai 版本接口不一，取不到就返回 None。"""
     try:
-        u = result.usage()
+        usage = result.usage
+        u = usage() if callable(usage) else usage
         return {
             "requests": getattr(u, "requests", None),
-            "request_tokens": getattr(u, "request_tokens", None),
-            "response_tokens": getattr(u, "response_tokens", None),
+            "input_tokens": getattr(u, "input_tokens", None),
+            "output_tokens": getattr(u, "output_tokens", None),
             "total_tokens": getattr(u, "total_tokens", None),
         }
     except Exception:
@@ -127,6 +128,36 @@ def completed_case_ids(pending_path: Path) -> set[str]:
         if record.get("id"):
             completed.add(str(record["id"]))
     return completed
+
+
+def compact_pending_results(pending_path: Path) -> None:
+    """按 case id 去重中断恢复结果，保留最后一条完整记录和首条元数据。"""
+    meta: dict | None = None
+    order: list[str] = []
+    records: dict[str, dict] = {}
+    for line in pending_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if "_meta" in record:
+            if meta is None:
+                meta = record
+            continue
+        case_id = record.get("id")
+        if not case_id:
+            continue
+        case_id = str(case_id)
+        if case_id not in records:
+            order.append(case_id)
+        records[case_id] = record
+    lines = []
+    if meta is not None:
+        lines.append(json.dumps(meta, ensure_ascii=False))
+    lines.extend(json.dumps(records[case_id], ensure_ascii=False) for case_id in order)
+    pending_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def run_case(case: dict) -> dict:
@@ -245,6 +276,7 @@ def main():
             n_tools = sum(len(t["tool_calls"]) for t in rec["turns"])
             print(f"{rec['id']}: {len(rec['turns'])} 轮 / {n_tools} 次工具调用"
                   f"{' [报错]' if rec['error'] else ''}")
+    compact_pending_results(pending_path)
     pending_path.replace(out_path)
     print(f"\n→ {out_path}  (model={meta['model']})")
 
