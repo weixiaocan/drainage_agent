@@ -81,6 +81,24 @@ def write_filter_sample_data(deps: AgentDeps) -> None:
     pd.DataFrame({"点位编号": ["W1"], "管径": [1.0]}).to_excel(deps.paths.site_info_file, index=False)
 
 
+def write_two_point_data(deps: AgentDeps) -> None:
+    write_sample_data(deps)
+    rows = 60
+    pd.DataFrame(
+        {
+            "数据时间": pd.date_range("2026-01-01", periods=rows, freq="min"),
+            "设备编号": ["200"] * rows,
+            "流量(L/s)(均值)": [2.0 + i / 100 for i in range(rows)],
+            "液位(m)(均值)": [0.4 + i / 1000 for i in range(rows)],
+            "流速(m/s)(均值)": [0.5 + i / 1000 for i in range(rows)],
+        }
+    ).to_csv(deps.paths.flow_dir / "200_W2.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame({"点位编号": ["W1", "W2"], "管径": [1.0, 1.2]}).to_excel(
+        deps.paths.site_info_file,
+        index=False,
+    )
+
+
 def test_tool_status_values_are_v2_only() -> None:
     assert set(get_args(ToolStatus)) == {"ok", "needs_input", "error"}
 
@@ -93,6 +111,67 @@ def test_check_data_success(tmp_path: Path) -> None:
 
     assert check["status"] == "ok"
     assert deps.paths.combined_xlsx.exists()
+
+
+def test_full_network_analysis_writes_combined_sheet(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(deps, points=["W1", "W2"])
+
+    assert result["status"] == "ok"
+    assert result["data"]["result_destinations"] == [
+        {
+            "kind": "combined_xlsx",
+            "path": "outputs/综合分析结果.xlsx",
+            "sheet": "数据收集率统计",
+        }
+    ]
+    assert pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计").shape[0] == 2
+
+
+def test_partial_analysis_without_export_does_not_persist_table(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(deps, points=["W1"], export=False)
+
+    assert result["status"] == "ok"
+    assert result["data"]["result_destinations"] == [
+        {"kind": "not_persisted", "path": None, "sheet": None}
+    ]
+    assert not deps.paths.combined_xlsx.exists()
+    assert not list(deps.paths.outputs.glob("*.csv"))
+
+
+def test_partial_analysis_with_export_writes_csv_not_combined(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(deps, points=["W1"], export=True)
+
+    destination = result["data"]["result_destinations"][0]
+    assert result["status"] == "ok"
+    assert destination == {
+        "kind": "csv",
+        "path": "outputs/W1_数据收集率统计.csv",
+        "sheet": None,
+    }
+    assert (deps.paths.outputs / "W1_数据收集率统计.csv").exists()
+    assert not deps.paths.combined_xlsx.exists()
+
+
+def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    check_data_impl(deps)
+    before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
+
+    result = check_data_impl(deps, points=["W1"], export=False)
+    after = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
+
+    assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
+    pd.testing.assert_frame_equal(after, before)
 
 
 def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:

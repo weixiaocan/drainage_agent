@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+import re
 import time
 import traceback
 from pathlib import Path
@@ -105,6 +106,57 @@ def _write_sheet(path: Path, sheet_name: str, df: pd.DataFrame) -> None:
     else:
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             display_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+
+def _site_point_ids(deps: AgentDeps) -> set[str]:
+    sites = io.load_sites(root=deps.paths.root)
+    for column in ("point_id", "点位编号", "监测点编号", "点位"):
+        if column in sites.columns:
+            return set(sites[column].dropna().astype(str))
+    return set()
+
+
+def is_full_network(points: list[str] | None, deps: AgentDeps) -> bool:
+    if not points:
+        return True
+    all_points = _site_point_ids(deps)
+    if not all_points:
+        return False
+    return all_points.issubset({str(point) for point in points})
+
+
+def _safe_filename_part(value: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*]+', "_", value.strip())
+    return cleaned.strip(" ._") or "结果"
+
+
+def _point_result_prefix(points: list[str] | None) -> str:
+    values = sorted({str(point) for point in points or []})
+    return "_".join(_safe_filename_part(value) for value in values) or "部分点位"
+
+
+def _route_table_result(
+    deps: AgentDeps,
+    df: pd.DataFrame,
+    sheet_name: str,
+    points: list[str] | None,
+    export: bool,
+) -> dict[str, Any]:
+    if is_full_network(points, deps):
+        _write_sheet(deps.paths.combined_xlsx, sheet_name, df)
+        return {
+            "kind": "combined_xlsx",
+            "path": _rel(deps, deps.paths.combined_xlsx),
+            "sheet": sheet_name,
+        }
+    if export:
+        filename = f"{_point_result_prefix(points)}_{_safe_filename_part(sheet_name)}.csv"
+        output_path = deps.paths.outputs / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        display_df = to_display_columns(df, SHEET_TABLE_TYPES.get(sheet_name, ""))
+        display_df.to_csv(output_path, index=False, encoding="utf-8-sig")
+        return {"kind": "csv", "path": _rel(deps, output_path), "sheet": None}
+    return {"kind": "not_persisted", "path": None, "sheet": None}
 
 
 def _remove_sheet(path: Path, sheet_name: str) -> None:
@@ -747,17 +799,18 @@ def _load_filtered_dry_flow(
     return io.load_filtered_flow(points=points, time_range=time_range, root=deps.paths.root)
 
 
-def check_data_impl(deps: AgentDeps, points: list[str] | None = None) -> ToolResult:
+def check_data_impl(deps: AgentDeps, points: list[str] | None = None, export: bool = False) -> ToolResult:
     def work() -> tuple[str, dict[str, Any]]:
         flow = io.load_flow(points=points, root=deps.paths.root)
         stats_df = check_data(flow)
-        _write_sheet(deps.paths.combined_xlsx, "数据收集率统计", stats_df)
-        _remove_sheet(deps.paths.combined_xlsx, "数据体检")
+        destination = _route_table_result(deps, stats_df, "数据收集率统计", points, export)
+        if destination["kind"] == "combined_xlsx":
+            _remove_sheet(deps.paths.combined_xlsx, "数据体检")
         avg = float(stats_df["collection_rate"].mean()) if not stats_df.empty else 0.0
         summary = f"数据收集率统计完成：处理 {len(stats_df)} 个点位，平均收集率 {avg:.1%}。"
-        return summary, {"table": stats_df.to_dict(orient="records")}
+        return summary, {"table": stats_df.to_dict(orient="records"), "result_destinations": [destination]}
 
-    return _run(deps, "check_data", work, params={"points": points or []})
+    return _run(deps, "check_data", work, params={"points": points or [], "export": export})
 
 
 def _rainfall_window_bounds(time_range: list[str]) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -814,17 +867,16 @@ def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, 
     return _run(deps, "analyze_rainfall", work, params=params)
 
 
-def _dry_inputs(deps: AgentDeps) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
-    dry_flow = _load_filtered_dry_flow(deps)
+def _dry_inputs(deps: AgentDeps, points: list[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
+    dry_flow = _load_filtered_dry_flow(deps, points=points)
     stats_df = dry_statistics(dry_flow, io.load_sites(root=deps.paths.root))
     curves = build_dry_curves(dry_flow)
     _save_curves(deps, curves)
-    _write_sheet(deps.paths.combined_xlsx, "旱天分析", stats_df)
     return dry_flow, stats_df, curves
 
 
-def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, output: str = "all") -> ToolResult:
-    params = {"points": points or [], "output": output}
+def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, output: str = "all", export: bool = False) -> ToolResult:
+    params = {"points": points or [], "output": output, "export": export}
 
     def work() -> tuple[str, dict[str, Any]]:
         dry_flow = _load_filtered_dry_flow(deps, points=points)
@@ -834,23 +886,32 @@ def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, outp
         curves = result["curves"]
         _save_curves(deps, curves)
         curve_images = _save_pattern_curve_pngs(curves, dry_flow, deps.paths.outputs / "特征曲线图")
-        _write_sheet(deps.paths.combined_xlsx, "排污规律分析", patterns)
+        destination = _route_table_result(deps, patterns, "排污规律分析", points, export)
         llm_note = "描述由 LLM JSON 生成并经规则后处理" if llm_client is not None else "未配置 LLM，描述使用规则兜底生成"
         summary = (
             f"排污规律分析完成：分析 {len(patterns)} 个点位，生成 {len(curves)} 条旱天曲线。"
             f"{llm_note}。基于筛选结果 {_rel(deps, deps.paths.filter_result)}。"
         )
-        return summary, {"table": patterns.to_dict(orient="records"), "curve_images": curve_images}
+        return summary, {
+            "table": patterns.to_dict(orient="records"),
+            "curve_images": curve_images,
+            "result_destinations": [destination],
+        }
 
     return _run(deps, "analyze_patterns", work, params=params)
 
 
-def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = None, points: list[str] | None = None) -> ToolResult:
+def analyze_event_response_impl(
+    deps: AgentDeps,
+    event_ids: list[int] | None = None,
+    points: list[str] | None = None,
+    export: bool = False,
+) -> ToolResult:
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"event_ids": event_ids, "points": points or []}
+    params = {"event_ids": event_ids, "points": points or [], "export": export}
 
     flow, events, covered, excluded = _event_data_coverage(deps, event_ids or [], points)
     coverage_failure = _coverage_guard_result(deps, event_ids or [], covered, excluded)
@@ -859,7 +920,7 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
 
     def work() -> tuple[str, dict[str, Any]]:
         response = analyze_event_response(flow, events, event_ids or [])
-        _write_sheet(deps.paths.combined_xlsx, "雨天事件统计", response)
+        destination = _route_table_result(deps, response, "雨天事件统计", points, export)
         if response.empty:
             deps.session.unavailable_event_ids = sorted(
                 set(deps.session.unavailable_event_ids).union(event_ids or [])
@@ -869,7 +930,13 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
                 f"雨天事件统计无可用数据：场次 {event_ids} 与点位 {selected} 的监测数据无时间重叠，"
                 "无法计算事件响应指标。"
             )
-            return summary, {"table": [], "no_data": True, "event_ids": event_ids, "points": points or []}
+            return summary, {
+                "table": [],
+                "no_data": True,
+                "event_ids": event_ids,
+                "points": points or [],
+                "result_destinations": [destination],
+            }
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"雨天事件统计完成：场次 {event_ids}，输出 {len(response)} 个点位统计{excluded_note}。"
         return summary, {
@@ -877,17 +944,24 @@ def analyze_event_response_impl(deps: AgentDeps, event_ids: list[int] | None = N
             "no_data": False,
             "covered_points": covered,
             "excluded_points": excluded,
+            "result_destinations": [destination],
         }
 
     return _run(deps, "analyze_event_response", work, params=params)
 
 
-def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, points: list[str] | None = None, output: str = "all") -> ToolResult:
+def analyze_rdii_impl(
+    deps: AgentDeps,
+    event_ids: list[int] | None = None,
+    points: list[str] | None = None,
+    output: str = "all",
+    export: bool = False,
+) -> ToolResult:
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"event_ids": event_ids, "points": points or [], "output": output}
+    params = {"event_ids": event_ids, "points": points or [], "output": output, "export": export}
 
     flow, events, covered, excluded = _event_data_coverage(deps, event_ids or [], points)
     coverage_failure = _coverage_guard_result(deps, event_ids or [], covered, excluded)
@@ -909,8 +983,14 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
                 f"RDII 分析无可用数据：场次 {event_ids} 与点位 {points or ['全部点位']} 的监测数据"
                 "无时间重叠，无法计算 RDII。"
             )
-            _write_sheet(deps.paths.combined_xlsx, "RDII总量统计", table)
-            return summary, {"table": [], "chart_paths": {}, "no_data": True, "event_ids": event_ids}
+            destination = _route_table_result(deps, table, "RDII总量统计", points, export)
+            return summary, {
+                "table": [],
+                "chart_paths": {},
+                "no_data": True,
+                "event_ids": event_ids,
+                "result_destinations": [destination],
+            }
         rain = io.load_rain(root=deps.paths.root)
         chart_paths = _save_rdii_curve_pngs(
             result["rdii_curve_data"],
@@ -919,7 +999,7 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
             deps.paths.outputs,
             selected_events=event_ids,
         )
-        _write_sheet(deps.paths.combined_xlsx, "RDII总量统计", table)
+        destination = _route_table_result(deps, table, "RDII总量统计", points, export)
         chart_count = sum(len(point_paths) for point_paths in chart_paths.values())
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"RDII 分析完成：场次 {event_ids}，输出 {len(table)} 行统计，生成 {chart_count} 张 RDII 曲线图{excluded_note}。"
@@ -929,32 +1009,39 @@ def analyze_rdii_impl(deps: AgentDeps, event_ids: list[int] | None = None, point
             "no_data": False,
             "covered_points": covered,
             "excluded_points": excluded,
+            "result_destinations": [destination],
         }
 
     return _run(deps, "analyze_rdii", work, params=params)
 
 
-def assess_risk_impl(deps: AgentDeps, scope: str = "all", event_ids: list[int] | None = None) -> ToolResult:
+def assess_risk_impl(
+    deps: AgentDeps,
+    scope: str = "all",
+    event_ids: list[int] | None = None,
+    points: list[str] | None = None,
+    export: bool = False,
+) -> ToolResult:
     scope = {"旱天": "dry", "雨天": "rainy", "全部": "all"}.get(scope, scope)
     if scope in {"rainy", "all"}:
         precheck = _require_event_ids(deps, event_ids)
         if precheck:
             return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"scope": scope, "event_ids": event_ids or []}
+    params = {"scope": scope, "event_ids": event_ids or [], "points": points or [], "export": export}
 
     flow = pd.DataFrame()
     events = pd.DataFrame()
     covered: list[str] = []
     excluded: list[dict[str, str]] = []
     if scope in {"rainy", "all"} and event_ids:
-        flow, events, covered, excluded = _event_data_coverage(deps, event_ids)
+        flow, events, covered, excluded = _event_data_coverage(deps, event_ids, points)
         coverage_failure = _coverage_guard_result(deps, event_ids, covered, excluded)
         if coverage_failure:
             return coverage_failure
 
     def work() -> tuple[str, dict[str, Any]]:
-        dry_flow, dry_stats, _ = _dry_inputs(deps)
+        dry_flow, dry_stats, _ = _dry_inputs(deps, points=points)
         sites = io.load_sites(root=deps.paths.root)
         event_table = pd.DataFrame()
         if scope in {"rainy", "all"} and event_ids:
@@ -968,15 +1055,17 @@ def assess_risk_impl(deps: AgentDeps, scope: str = "all", event_ids: list[int] |
             events=events,
             event_ids=event_ids,
         )
+        destinations = [_route_table_result(deps, dry_stats, "旱天分析", points, export)]
         if not result["dry_risk"].empty:
-            _write_sheet(deps.paths.combined_xlsx, "旱天风险", result["dry_risk"])
+            destinations.append(_route_table_result(deps, result["dry_risk"], "旱天风险", points, export))
         if not result["rainy_risk"].empty:
-            _write_sheet(deps.paths.combined_xlsx, "雨天溢流风险", result["rainy_risk"])
+            destinations.append(_route_table_result(deps, result["rainy_risk"], "雨天溢流风险", points, export))
         excluded_note = f"；雨天分析剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"风险评估完成：旱天风险 {len(result['dry_risk'])} 行，雨天风险 {len(result['rainy_risk'])} 行{excluded_note}。"
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
         data["covered_points"] = covered
         data["excluded_points"] = excluded
+        data["result_destinations"] = destinations
         return summary, data
 
     return _run(deps, "assess_risk", work, params=params)

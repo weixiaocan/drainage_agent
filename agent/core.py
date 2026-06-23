@@ -120,9 +120,9 @@ def build_agent(deps: AgentDeps) -> Any:
             return traced_tool(ctx, "data_filter", args, lambda: data_filter_impl(ctx.deps, **args))
 
         @agent.tool
-        def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None) -> dict:
+        def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None, export: bool = False) -> dict:
             """检查数据收集率、缺失、异常概况与格式问题。"""
-            args = {"points": points}
+            args = {"points": points, "export": export}
             return traced_tool(ctx, "check_data", args, lambda: check_data_impl(ctx.deps, **args))
 
         @agent.tool
@@ -137,15 +137,25 @@ def build_agent(deps: AgentDeps) -> Any:
             return traced_tool(ctx, "analyze_rainfall", args, lambda: analyze_rainfall_impl(ctx.deps, **args))
 
         @agent.tool
-        def analyze_event_response(ctx: RunContext[AgentDeps], event_ids: list[int] | None = None, points: list[str] | None = None) -> dict:
+        def analyze_event_response(
+            ctx: RunContext[AgentDeps],
+            event_ids: list[int] | None = None,
+            points: list[str] | None = None,
+            export: bool = False,
+        ) -> dict:
             """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。"""
-            args = {"event_ids": event_ids, "points": points}
+            args = {"event_ids": event_ids, "points": points, "export": export}
             return traced_tool(ctx, "analyze_event_response", args, lambda: analyze_event_response_impl(ctx.deps, **args))
 
         @agent.tool
-        def analyze_patterns(ctx: RunContext[AgentDeps], points: list[str] | None = None, output: str = "all") -> dict:
+        def analyze_patterns(
+            ctx: RunContext[AgentDeps],
+            points: list[str] | None = None,
+            output: str = "all",
+            export: bool = False,
+        ) -> dict:
             """分析排污规律并生成旱天特征曲线底料。"""
-            args = {"points": points, "output": output}
+            args = {"points": points, "output": output, "export": export}
             return traced_tool(ctx, "analyze_patterns", args, lambda: analyze_patterns_impl(ctx.deps, **args))
 
         @agent.tool
@@ -154,15 +164,22 @@ def build_agent(deps: AgentDeps) -> Any:
             event_ids: list[int] | None = None,
             points: list[str] | None = None,
             output: str = "all",
+            export: bool = False,
         ) -> dict:
             """计算指定降雨事件的 RDII 指标；event_ids 未给时返回 needs_input。"""
-            args = {"event_ids": event_ids, "points": points, "output": output}
+            args = {"event_ids": event_ids, "points": points, "output": output, "export": export}
             return traced_tool(ctx, "analyze_rdii", args, lambda: analyze_rdii_impl(ctx.deps, **args))
 
         @agent.tool
-        def assess_risk(ctx: RunContext[AgentDeps], scope: str = "all", event_ids: list[int] | None = None) -> dict:
+        def assess_risk(
+            ctx: RunContext[AgentDeps],
+            scope: str = "all",
+            event_ids: list[int] | None = None,
+            points: list[str] | None = None,
+            export: bool = False,
+        ) -> dict:
             """评估运行风险。scope: all/dry/rainy。"""
-            args = {"scope": scope, "event_ids": event_ids}
+            args = {"scope": scope, "event_ids": event_ids, "points": points, "export": export}
             return traced_tool(ctx, "assess_risk", args, lambda: assess_risk_impl(ctx.deps, **args))
 
         @agent.tool
