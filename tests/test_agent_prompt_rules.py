@@ -59,6 +59,9 @@ def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:
     assert "明确剔除无数据覆盖的点位并说明理由" in prompt
     assert "用户只给出月日而未给年份时，禁止自行补年份" in prompt
     assert "先不传 `time_range` 调用 `analyze_rainfall`" in prompt
+    assert "降雨事件存在不等于有流量监测数据覆盖" in prompt
+    assert "未经验证不得宣称“有覆盖”" in prompt
+    assert "只能说明“可进一步检查”" in prompt
 
 
 def test_core_registers_exactly_the_documented_tools() -> None:

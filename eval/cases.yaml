@@ -116,8 +116,8 @@
 - id: E016A
   prompt: 以第 4 场降雨为重点，生成包含响应、RDII 和风险的报告。
   must_call: [analyze_rainfall, analyze_event_response]
-  must_not: [改用其他事件, 编造响应或 RDII, 生成缺少数据依据的报告]
-  pass_when: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告
+  must_not: [改用其他事件, 编造响应或 RDII, 生成缺少数据依据的报告, 未经覆盖验证宣称事件5或其他事件有流量监测数据]
+  pass_when: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告；不得把仅有降雨数据的事件5说成有流量监测覆盖
 
 - id: E016B
   prompt: 以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
