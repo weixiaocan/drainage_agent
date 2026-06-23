@@ -112,6 +112,23 @@ def try_usage(result) -> dict | None:
         return None
 
 
+def completed_case_ids(pending_path: Path) -> set[str]:
+    """读取中断执行留下的临时 JSONL，返回已经完整落盘的 case id。"""
+    completed: set[str] = set()
+    if not pending_path.exists():
+        return completed
+    for line in pending_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("id"):
+            completed.add(str(record["id"]))
+    return completed
+
+
 def run_case(case: dict) -> dict:
     """跑一条（已归一化的）用例：在同一个隔离 root、同一条 message_history 上逐轮推进。"""
     rec = {
@@ -177,6 +194,7 @@ def main():
     ap.add_argument("cases_file", nargs="?", default=str(STAGE_DIR / "cases_multiturn.yaml"),
                     help="用例文件，默认 eval/eval_stage2/cases_multiturn.yaml")
     ap.add_argument("-o", "--out", default=None, help="输出 jsonl，默认 eval/eval_stage2/results.jsonl")
+    ap.add_argument("--resume", action="store_true", help="从已有 .tmp 结果断点续跑，跳过已完整写入的 case")
     args = ap.parse_args()
 
     load_dotenv(PROJECT / ".env")
@@ -210,11 +228,17 @@ def main():
     except Exception:
         pass
 
-    with pending_path.open("w", encoding="utf-8") as out:
-        # 第一行写元数据，便于日后复现与对比
-        out.write(json.dumps({"_meta": meta}, ensure_ascii=False) + "\n")
-        out.flush()
+    completed = completed_case_ids(pending_path) if args.resume else set()
+    mode = "a" if args.resume and pending_path.exists() else "w"
+    with pending_path.open(mode, encoding="utf-8") as out:
+        if mode == "w":
+            # 第一行写元数据，便于日后复现与对比
+            out.write(json.dumps({"_meta": meta}, ensure_ascii=False) + "\n")
+            out.flush()
         for case in cases:
+            if case["id"] in completed:
+                print(f"{case['id']}: 已完成，跳过")
+                continue
             rec = run_case(case)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
