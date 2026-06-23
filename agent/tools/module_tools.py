@@ -868,6 +868,76 @@ def _coverage_guard_result(
     )
 
 
+def _window_bounds(start: str | None, end: str | None) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    start_ts = pd.to_datetime(start) if start else None
+    end_ts = pd.to_datetime(end) if end else None
+    if end_ts is not None and isinstance(end, str) and len(end.strip()) <= 10:
+        end_ts = end_ts + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+    if start_ts is not None and end_ts is not None and start_ts > end_ts:
+        raise ValueError("start must be earlier than or equal to end")
+    return start_ts, end_ts
+
+
+def _window_data_coverage(
+    deps: AgentDeps,
+    points: list[str] | None,
+    start: str | None,
+    end: str | None,
+) -> tuple[pd.DataFrame, list[str], list[dict[str, str]], dict[str, str | None]]:
+    flow = _load_filtered_dry_flow(deps, points=points)
+    start_ts, end_ts = _window_bounds(start, end)
+    requested_points = [str(point) for point in points] if points else sorted(flow["point_id"].astype(str).unique())
+    covered: list[str] = []
+    excluded: list[dict[str, str]] = []
+    frames: list[pd.DataFrame] = []
+    for point_id in requested_points:
+        point_flow = flow[flow["point_id"].astype(str) == point_id]
+        if start_ts is not None:
+            point_flow = point_flow[point_flow["timestamp"] >= start_ts]
+        if end_ts is not None:
+            point_flow = point_flow[point_flow["timestamp"] <= end_ts]
+        if point_flow.empty:
+            excluded.append({"point_id": point_id, "reason": "该时段/该点位无数据，无法分析"})
+            continue
+        covered.append(point_id)
+        frames.append(point_flow)
+
+    window_flow = pd.concat(frames, ignore_index=True) if frames else flow.iloc[0:0].copy()
+    actual_start = window_flow["timestamp"].min() if not window_flow.empty else None
+    actual_end = window_flow["timestamp"].max() if not window_flow.empty else None
+    coverage = {
+        "requested_start": str(start) if start is not None else None,
+        "requested_end": str(end) if end is not None else None,
+        "actual_start": actual_start.isoformat(sep=" ") if actual_start is not None else None,
+        "actual_end": actual_end.isoformat(sep=" ") if actual_end is not None else None,
+    }
+    return window_flow.reset_index(drop=True), covered, excluded, coverage
+
+
+def _window_coverage_guard_result(
+    covered: list[str],
+    excluded: list[dict[str, str]],
+    start: str | None,
+    end: str | None,
+) -> ToolResult | None:
+    if covered:
+        return None
+    point_labels = [item["point_id"] for item in excluded] or ["全部点位"]
+    return needs_input(
+        "data_coverage",
+        "请选择有数据覆盖的时间窗或点位。",
+        summary=f"时间窗 [{start or '不限'}, {end or '不限'}] 内点位 {point_labels} 无数据覆盖，无法分析。",
+        options=excluded,
+    )
+
+
+def _window_coverage_note(coverage: dict[str, str | None], excluded: list[dict[str, str]]) -> str:
+    note = f"；实际分析范围 [{coverage['actual_start']}, {coverage['actual_end']}]"
+    if excluded:
+        note += f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}"
+    return note
+
+
 def _ensure_filter_result(deps: AgentDeps) -> Path:
     if deps.paths.filter_result.exists():
         return deps.paths.filter_result
@@ -962,11 +1032,31 @@ def _dry_inputs(deps: AgentDeps, points: list[str] | None = None) -> tuple[pd.Da
     return dry_flow, stats_df, curves
 
 
-def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, output: str = "all", export: bool = False) -> ToolResult:
-    params = {"points": points or [], "output": output, "export": export}
+def analyze_patterns_impl(
+    deps: AgentDeps,
+    points: list[str] | None = None,
+    output: str = "all",
+    export: bool = False,
+    start: str | None = None,
+    end: str | None = None,
+) -> ToolResult:
+    params = {"points": points or [], "start": start, "end": end, "output": output, "export": export}
+    windowed = start is not None or end is not None
+    coverage: dict[str, str | None] | None = None
+    covered: list[str] = []
+    excluded: list[dict[str, str]] = []
+    window_flow = pd.DataFrame()
+    if windowed:
+        try:
+            window_flow, covered, excluded, coverage = _window_data_coverage(deps, points, start, end)
+        except ValueError as exc:
+            return error(str(exc))
+        coverage_failure = _window_coverage_guard_result(covered, excluded, start, end)
+        if coverage_failure:
+            return coverage_failure
 
     def work() -> tuple[str, dict[str, Any]]:
-        dry_flow = _load_filtered_dry_flow(deps, points=points)
+        dry_flow = window_flow if windowed else _load_filtered_dry_flow(deps, points=points)
         llm_client = _build_tool_llm_client(deps)
         result = analyze_patterns(dry_flow, llm_client=llm_client)
         patterns = result["patterns"]
@@ -984,11 +1074,18 @@ def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, outp
             f"排污规律分析完成：分析 {len(patterns)} 个点位，生成 {len(curves)} 条旱天曲线。"
             f"{llm_note}。基于筛选结果 {_rel(deps, deps.paths.filter_result)}。"
         )
-        return summary, {
+        if coverage is not None:
+            summary += _window_coverage_note(coverage, excluded)
+        data = {
             "table": patterns.to_dict(orient="records"),
             "curve_images": curve_images,
             "result_destinations": [destination],
         }
+        if windowed:
+            data["window_coverage"] = coverage
+            data["covered_points"] = covered
+            data["excluded_points"] = excluded
+        return summary, data
 
     return _run(deps, "analyze_patterns", work, params=params)
 
@@ -1118,6 +1215,8 @@ def assess_risk_impl(
     event_ids: list[int] | None = None,
     points: list[str] | None = None,
     export: bool = False,
+    start: str | None = None,
+    end: str | None = None,
 ) -> ToolResult:
     scope = {"旱天": "dry", "雨天": "rainy", "全部": "all"}.get(scope, scope)
     if scope in {"rainy", "all"}:
@@ -1125,7 +1224,30 @@ def assess_risk_impl(
         if precheck:
             return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"scope": scope, "event_ids": event_ids or [], "points": points or [], "export": export}
+    params = {
+        "scope": scope,
+        "event_ids": event_ids or [],
+        "points": points or [],
+        "start": start,
+        "end": end,
+        "export": export,
+    }
+
+    windowed = scope in {"dry", "all"} and (start is not None or end is not None)
+    dry_window_flow = pd.DataFrame()
+    dry_covered: list[str] = []
+    dry_excluded: list[dict[str, str]] = []
+    window_coverage: dict[str, str | None] | None = None
+    if windowed:
+        try:
+            dry_window_flow, dry_covered, dry_excluded, window_coverage = _window_data_coverage(
+                deps, points, start, end
+            )
+        except ValueError as exc:
+            return error(str(exc))
+        coverage_failure = _window_coverage_guard_result(dry_covered, dry_excluded, start, end)
+        if coverage_failure:
+            return coverage_failure
 
     flow = pd.DataFrame()
     events = pd.DataFrame()
@@ -1138,7 +1260,11 @@ def assess_risk_impl(
             return coverage_failure
 
     def work() -> tuple[str, dict[str, Any]]:
-        dry_flow, dry_stats, _ = _dry_inputs(deps, points=points)
+        if windowed:
+            dry_flow = dry_window_flow
+            dry_stats = dry_statistics(dry_flow, io.load_sites(root=deps.paths.root))
+        else:
+            dry_flow, dry_stats, _ = _dry_inputs(deps, points=points)
         sites = io.load_sites(root=deps.paths.root)
         event_table = pd.DataFrame()
         if scope in {"rainy", "all"} and event_ids:
@@ -1159,9 +1285,15 @@ def assess_risk_impl(
             destinations.append(_route_table_result(deps, result["rainy_risk"], "雨天溢流风险", points, export))
         excluded_note = f"；雨天分析剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"风险评估完成：旱天风险 {len(result['dry_risk'])} 行，雨天风险 {len(result['rainy_risk'])} 行{excluded_note}。"
+        if window_coverage is not None:
+            summary += _window_coverage_note(window_coverage, dry_excluded)
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
         data["covered_points"] = covered
         data["excluded_points"] = excluded
+        if windowed:
+            data["window_coverage"] = window_coverage
+            data["window_covered_points"] = dry_covered
+            data["window_excluded_points"] = dry_excluded
         data["result_destinations"] = destinations
         return summary, data
 

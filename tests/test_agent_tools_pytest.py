@@ -270,6 +270,179 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
     assert (deps.paths.outputs / "W1_排污规律曲线.png").exists()
 
 
+def test_patterns_time_window_slices_before_analysis(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = sample_two_point_pattern_flow()
+    captured: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
+        captured["flow"] = window_flow.copy()
+        return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+
+    result = analyze_patterns_impl(
+        deps,
+        points=["W1"],
+        start="2026-01-02 00:10",
+        end="2026-01-02 00:19",
+    )
+
+    assert result["status"] == "ok"
+    assert len(captured["flow"]) == 10
+    assert captured["flow"]["timestamp"].min() == pd.Timestamp("2026-01-02 00:10")
+    assert captured["flow"]["timestamp"].max() == pd.Timestamp("2026-01-02 00:19")
+
+
+def test_patterns_none_window_preserves_full_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = sample_two_point_pattern_flow()
+    captured: list[pd.DataFrame] = []
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    def capture_analysis(input_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
+        captured.append(input_flow.copy())
+        return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+
+    before = analyze_patterns_impl(deps, points=["W1"])
+    after = analyze_patterns_impl(deps, points=["W1"], start=None, end=None)
+
+    assert before["status"] == after["status"] == "ok"
+    assert before["data"] == after["data"]
+    assert "window_coverage" not in after["data"]
+    pd.testing.assert_frame_equal(captured[0], captured[1])
+    pd.testing.assert_frame_equal(captured[0], flow)
+
+
+def test_patterns_time_window_rejects_no_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    result = analyze_patterns_impl(
+        deps,
+        points=["W1"],
+        start="2026-02-01",
+        end="2026-02-02",
+    )
+
+    assert result["status"] == "needs_input"
+    assert result["missing"] == "data_coverage"
+    assert "无数据覆盖" in result["summary"]
+
+
+def test_patterns_time_window_uses_partial_point_coverage_and_reports_range(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = sample_two_point_pattern_flow()
+    flow.loc[flow["point_id"] == "W2", "timestamp"] += pd.Timedelta(days=10)
+    captured: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
+        captured["flow"] = window_flow.copy()
+        return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+
+    result = analyze_patterns_impl(
+        deps,
+        points=["W1", "W2"],
+        start="2026-01-02",
+        end="2026-01-02 00:09",
+    )
+
+    assert result["status"] == "ok"
+    assert captured["flow"]["point_id"].unique().tolist() == ["W1"]
+    assert len(captured["flow"]) == 10
+    assert result["data"]["excluded_points"][0]["point_id"] == "W2"
+    assert result["data"]["window_coverage"]["actual_start"] == "2026-01-02 00:00:00"
+    assert result["data"]["window_coverage"]["actual_end"] == "2026-01-02 00:09:00"
+    assert "实际分析范围" in result["summary"]
+
+
+def test_patterns_cross_month_date_window_keeps_both_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                ["2026-02-27 23:59", "2026-02-28 00:00", "2026-03-01 23:59", "2026-03-02 00:00"]
+            ),
+            "device_id": ["W1"] * 4,
+            "point_id": ["W1"] * 4,
+            "flow_lps": [1.0, 2.0, 3.0, 4.0],
+            "level_m": [0.1] * 4,
+            "velocity_mps": [0.2] * 4,
+        }
+    )
+    captured: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
+        captured["flow"] = window_flow.copy()
+        return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+
+    result = analyze_patterns_impl(deps, points=["W1"], start="2026-02-28", end="2026-03-01")
+
+    assert result["status"] == "ok"
+    assert captured["flow"]["timestamp"].tolist() == [
+        pd.Timestamp("2026-02-28 00:00"),
+        pd.Timestamp("2026-03-01 23:59"),
+    ]
+
+
+def test_dry_risk_time_window_uses_only_window_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    flow = sample_two_point_pattern_flow()
+    captured: dict[str, pd.DataFrame] = {}
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    def capture_stats(window_flow: pd.DataFrame, _sites: pd.DataFrame) -> pd.DataFrame:
+        captured["flow"] = window_flow.copy()
+        return pd.DataFrame([{"point_id": "W1"}])
+
+    monkeypatch.setattr("agent.tools.module_tools.dry_statistics", capture_stats)
+    monkeypatch.setattr(
+        "agent.tools.module_tools.assess_risk",
+        lambda *_args, **_kwargs: {"dry_risk": pd.DataFrame(), "rainy_risk": pd.DataFrame()},
+    )
+
+    result = assess_risk_impl(
+        deps,
+        scope="dry",
+        points=["W1"],
+        start="2026-01-01 00:30",
+        end="2026-01-01 00:39",
+    )
+
+    assert result["status"] == "ok"
+    assert len(captured["flow"]) == 10
+    assert captured["flow"]["timestamp"].min() == pd.Timestamp("2026-01-01 00:30")
+    assert captured["flow"]["timestamp"].max() == pd.Timestamp("2026-01-01 00:39")
+
+
 def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:
     from openpyxl import load_workbook
 

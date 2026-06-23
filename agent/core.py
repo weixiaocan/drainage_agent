@@ -153,9 +153,11 @@ def build_agent(deps: AgentDeps) -> Any:
             points: list[str] | None = None,
             output: str = "all",
             export: bool = False,
+            start: str | None = None,
+            end: str | None = None,
         ) -> dict:
             """分析排污规律并生成旱天特征曲线底料。"""
-            args = {"points": points, "output": output, "export": export}
+            args = {"points": points, "start": start, "end": end, "output": output, "export": export}
             return traced_tool(ctx, "analyze_patterns", args, lambda: analyze_patterns_impl(ctx.deps, **args))
 
         @agent.tool
@@ -177,9 +179,18 @@ def build_agent(deps: AgentDeps) -> Any:
             event_ids: list[int] | None = None,
             points: list[str] | None = None,
             export: bool = False,
+            start: str | None = None,
+            end: str | None = None,
         ) -> dict:
             """评估运行风险。scope: all/dry/rainy。"""
-            args = {"scope": scope, "event_ids": event_ids, "points": points, "export": export}
+            args = {
+                "scope": scope,
+                "event_ids": event_ids,
+                "points": points,
+                "start": start,
+                "end": end,
+                "export": export,
+            }
             return traced_tool(ctx, "assess_risk", args, lambda: assess_risk_impl(ctx.deps, **args))
 
         @agent.tool
