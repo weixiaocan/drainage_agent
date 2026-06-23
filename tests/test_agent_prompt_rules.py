@@ -40,6 +40,25 @@ def test_prompt_documents_routing_rules() -> None:
     assert "`run_python`" in prompt
 
 
+def test_prompt_requires_data_coverage_check_before_windowed_analysis() -> None:
+    prompt = read_prompt()
+
+    assert "数据覆盖前置检查" in prompt
+    assert "必须先用 `check_data` 确认相关点位在该时段有数据覆盖" in prompt
+    assert all(
+        tool in prompt
+        for tool in (
+            "`analyze_event_response`",
+            "`analyze_rdii`",
+            "`assess_risk`",
+            "`analyze_patterns`",
+        )
+    )
+    assert "该时段/该点位无数据，无法分析" in prompt
+    assert "不要调用分析工具，也不要猜测或编造“可能的原因”" in prompt
+    assert "明确剔除无数据覆盖的点位并说明理由" in prompt
+
+
 def test_core_registers_exactly_the_documented_tools() -> None:
     tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
     registered = {
