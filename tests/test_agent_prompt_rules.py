@@ -40,11 +40,11 @@ def test_prompt_documents_routing_rules() -> None:
     assert "`run_python`" in prompt
 
 
-def test_prompt_requires_data_coverage_check_before_windowed_analysis() -> None:
+def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:
     prompt = read_prompt()
 
     assert "数据覆盖前置检查" in prompt
-    assert "必须先用 `check_data` 确认相关点位在该时段有数据覆盖" in prompt
+    assert "必须先用 `check_data` 确认相关点位在该时段有数据覆盖" not in prompt
     assert all(
         tool in prompt
         for tool in (

@@ -54,7 +54,7 @@ def write_sample_data(deps: AgentDeps) -> None:
     pd.DataFrame(
         {
             "timestamp": pd.date_range("2026-01-01", periods=6, freq="h"),
-            "rain": [0, 1, 2, 0, 0, 0],
+            "rain": [1, 2, 0, 0, 0, 0],
         }
     ).to_csv(deps.paths.rainfall_file, index=False)
     pd.DataFrame({"点位编号": ["W1"], "管径": [1.0]}).to_excel(deps.paths.site_info_file, index=False)
@@ -155,13 +155,117 @@ def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkey
     analyze_rainfall_impl(deps)
     monkeypatch.setattr("agent.tools.module_tools.analyze_event_response", lambda *_args, **_kwargs: pd.DataFrame())
 
-    response = analyze_event_response_impl(deps, event_ids=[4], points=["W1"])
+    response = analyze_event_response_impl(deps, event_ids=[1], points=["W9"])
 
-    assert response["status"] == "ok"
-    assert response["data"]["no_data"] is True
-    assert response["data"]["event_ids"] == [4]
-    assert "无时间重叠" in response["summary"]
-    assert deps.session.unavailable_event_ids == [4]
+    assert response["status"] == "needs_input"
+    assert response["missing"] == "data_coverage"
+    assert "该时段/该点位无数据，无法分析" in response["summary"]
+    assert deps.session.unavailable_event_ids == [1]
+
+
+def test_event_response_guard_uses_real_timestamps_for_partial_coverage(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    pd.DataFrame(
+        {
+            "数据时间": pd.date_range("2026-02-01", periods=60, freq="min"),
+            "设备编号": ["200"] * 60,
+            "流量(L/s)(均值)": [2.0] * 60,
+            "液位(m)(均值)": [0.4] * 60,
+            "流速(m/s)(均值)": [0.5] * 60,
+        }
+    ).to_csv(deps.paths.flow_dir / "200_W2.csv", index=False, encoding="utf-8-sig")
+    analyze_rainfall_impl(deps)
+
+    result = analyze_event_response_impl(deps, event_ids=[1], points=["W1", "W2"])
+
+    assert result["status"] == "ok"
+    assert result["data"]["covered_points"] == ["W1"]
+    assert result["data"]["excluded_points"] == [
+        {"point_id": "W2", "reason": "该时段/该点位无数据，无法分析"}
+    ]
+    assert [row["point_id"] for row in result["data"]["table"]] == ["W1"]
+
+
+@pytest.mark.parametrize("tool_name", ["event_response", "rdii", "risk"])
+def test_event_tools_guard_before_analysis_when_no_point_has_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    analyze_rainfall_impl(deps)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._event_data_coverage",
+        lambda *_args, **_kwargs: (
+            pd.DataFrame(),
+            pd.DataFrame(),
+            [],
+            [{"point_id": "W1", "reason": "该时段/该点位无数据，无法分析"}],
+        ),
+    )
+
+    if tool_name == "event_response":
+        result = analyze_event_response_impl(deps, event_ids=[1], points=["W1"])
+    elif tool_name == "rdii":
+        result = analyze_rdii_impl(deps, event_ids=[1], points=["W1"])
+    else:
+        result = assess_risk_impl(deps, scope="rainy", event_ids=[1])
+
+    assert result["status"] == "needs_input"
+    assert result["missing"] == "data_coverage"
+    assert "该时段/该点位无数据，无法分析" in result["summary"]
+
+
+@pytest.mark.parametrize("tool_name", ["event_response", "rdii", "risk"])
+def test_event_tools_exclude_uncovered_points_and_continue(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    analyze_rainfall_impl(deps)
+    covered_flow = io.load_flow(points=["W1"], root=deps.paths.root)
+    events = pd.DataFrame(
+        {
+            "event_id": [1],
+            "start_time": ["2026-01-01 00:00"],
+            "end_time": ["2026-01-01 01:00"],
+            "rain_level": ["小雨"],
+        }
+    )
+    excluded = [{"point_id": "W2", "reason": "该时段/该点位无数据，无法分析"}]
+    monkeypatch.setattr(
+        "agent.tools.module_tools._event_data_coverage",
+        lambda *_args, **_kwargs: (covered_flow, events, ["W1"], excluded),
+    )
+
+    if tool_name == "event_response":
+        result = analyze_event_response_impl(deps, event_ids=[1], points=["W1", "W2"])
+    elif tool_name == "rdii":
+        monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: covered_flow)
+        monkeypatch.setattr("agent.tools.module_tools.build_dry_curves", lambda *_args, **_kwargs: {})
+        monkeypatch.setattr(
+            "agent.tools.module_tools.analyze_rdii",
+            lambda *_args, **_kwargs: {
+                "rdii_total": pd.DataFrame([{"event_id": 1, "point_id": "W1", "rdii_total_m3": 1.0}]),
+                "rdii_curve_data": {},
+            },
+        )
+        result = analyze_rdii_impl(deps, event_ids=[1], points=["W1", "W2"])
+    else:
+        monkeypatch.setattr(
+            "agent.tools.module_tools._dry_inputs",
+            lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), {}),
+        )
+        result = assess_risk_impl(deps, scope="rainy", event_ids=[1])
+
+    assert result["status"] == "ok"
+    assert result["data"]["covered_points"] == ["W1"]
+    assert result["data"]["excluded_points"] == excluded
+    assert "剔除无覆盖点位 ['W2']" in result["summary"]
 
 
 def test_report_refuses_event_without_monitoring_coverage(tmp_path: Path) -> None:
