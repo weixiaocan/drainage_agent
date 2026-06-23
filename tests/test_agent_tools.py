@@ -73,6 +73,29 @@ def write_filter_flow(deps: AgentDeps) -> None:
     ).to_csv(deps.paths.rainfall_file, index=False)
 
 
+def write_rdii_sample(deps: AgentDeps) -> None:
+    timestamps = pd.date_range("2026-01-01", periods=4 * 1440, freq="min")
+    pd.DataFrame(
+        {
+            "timestamp": timestamps,
+            "flow": [1.0] * (2 * 1440) + [3.0] * 1440 + [1.0] * 1440,
+            "level": [0.2] * (4 * 1440),
+            "velocity": [0.3] * (4 * 1440),
+        }
+    ).to_csv(deps.paths.flow_dir / "100_W1.csv", index=False)
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-01-01", periods=4 * 1440, freq="min"),
+            "rain": [0.0] * (2 * 1440) + [0.0, 3.0] + [0.0] * (2 * 1440 - 2),
+        }
+    ).to_csv(deps.paths.rainfall_file, index=False)
+    pd.DataFrame({"点位编号": ["W1", "W2"], "管径": [1.0, 1.2]}).to_excel(
+        deps.paths.site_info_file,
+        index=False,
+    )
+    analyze_rainfall_impl(deps, output="events")
+
+
 class AgentToolTests(unittest.TestCase):
     def test_check_data_reads_flow_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -611,22 +634,7 @@ class AgentToolTests(unittest.TestCase):
     def test_analyze_rdii_impl_writes_curve_pngs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
-            timestamps = pd.date_range("2026-01-01", periods=4 * 1440, freq="min")
-            pd.DataFrame(
-                {
-                    "timestamp": timestamps,
-                    "flow": [1.0] * (2 * 1440) + [3.0] * 1440 + [1.0] * 1440,
-                    "level": [0.2] * (4 * 1440),
-                    "velocity": [0.3] * (4 * 1440),
-                }
-            ).to_csv(deps.paths.flow_dir / "100_W1.csv", index=False)
-            pd.DataFrame(
-                {
-                    "timestamp": pd.date_range("2026-01-01", periods=4 * 1440, freq="min"),
-                    "rain": [0.0] * (2 * 1440) + [0.0, 3.0] + [0.0] * (2 * 1440 - 2),
-                }
-            ).to_csv(deps.paths.rainfall_file, index=False)
-            analyze_rainfall_impl(deps)
+            write_rdii_sample(deps)
 
             result = analyze_rdii_impl(deps, event_ids=[1])
 
@@ -634,6 +642,34 @@ class AgentToolTests(unittest.TestCase):
             self.assertEqual(result["status"], "ok", result)
             self.assertTrue(expected.exists())
             self.assertIn(str(expected), result["data"]["chart_paths"][1].values())
+
+    def test_partial_rdii_without_export_writes_no_csv_or_png(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            write_rdii_sample(deps)
+
+            result = analyze_rdii_impl(deps, event_ids=[1], points=["W1"], export=False)
+
+            self.assertEqual(result["status"], "ok", result)
+            self.assertEqual(result["data"]["result_destinations"][0]["kind"], "not_persisted")
+            self.assertFalse(list(deps.paths.outputs.glob("*.csv")))
+            self.assertFalse(list(deps.paths.outputs.rglob("*.png")))
+            workbook = load_workbook(deps.paths.combined_xlsx)
+            self.assertNotIn("RDII总量统计", workbook.sheetnames)
+
+    def test_partial_rdii_with_export_writes_named_csv_and_png(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            write_rdii_sample(deps)
+
+            result = analyze_rdii_impl(deps, event_ids=[1], points=["W1"], export=True)
+
+            self.assertEqual(result["status"], "ok", result)
+            self.assertTrue((deps.paths.outputs / "W1_RDII总量统计.csv").exists())
+            self.assertTrue((deps.paths.outputs / "W1_RDII曲线.png").exists())
+            self.assertFalse((deps.paths.outputs / "rdii_curve" / "event1_1_3" / "W1_event1.png").exists())
+            workbook = load_workbook(deps.paths.combined_xlsx)
+            self.assertNotIn("RDII总量统计", workbook.sheetnames)
 
     def test_run_python_success_and_workspace_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

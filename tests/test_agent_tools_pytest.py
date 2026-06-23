@@ -99,6 +99,26 @@ def write_two_point_data(deps: AgentDeps) -> None:
     )
 
 
+def sample_two_point_pattern_flow() -> pd.DataFrame:
+    frames = []
+    for point_id, offset in (("W1", 0.0), ("W2", 1.0)):
+        for day in ("2026-01-01", "2026-01-02"):
+            timestamps = pd.date_range(day, periods=120, freq="min")
+            frames.append(
+                pd.DataFrame(
+                    {
+                        "timestamp": timestamps,
+                        "device_id": point_id,
+                        "point_id": point_id,
+                        "flow_lps": [offset + 1.0 + i / 100 for i in range(120)],
+                        "level_m": [offset / 10 + 0.2 + i / 1000 for i in range(120)],
+                        "velocity_mps": [0.3] * 120,
+                    }
+                )
+            )
+    return pd.concat(frames, ignore_index=True)
+
+
 def test_tool_status_values_are_v2_only() -> None:
     assert set(get_args(ToolStatus)) == {"ok", "needs_input", "error"}
 
@@ -172,6 +192,82 @@ def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path:
 
     assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
     pd.testing.assert_frame_equal(after, before)
+
+
+def test_full_network_patterns_write_combined_and_full_network_pngs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+
+    result = analyze_patterns_impl(deps)
+
+    assert result["status"] == "ok"
+    assert result["data"]["result_destinations"][0]["kind"] == "combined_xlsx"
+    assert "排污规律分析" in pd.ExcelFile(deps.paths.combined_xlsx).sheet_names
+    assert (deps.paths.outputs / "特征曲线图" / "W1_流量特征曲线.png").exists()
+    assert (deps.paths.outputs / "特征曲线图" / "W2_流量特征曲线.png").exists()
+
+
+def test_partial_patterns_without_export_write_no_table_or_png(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+
+    result = analyze_patterns_impl(deps, points=["W1"], export=False)
+
+    assert result["status"] == "ok"
+    assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
+    assert not deps.paths.combined_xlsx.exists()
+    assert not list(deps.paths.outputs.glob("*.csv"))
+    assert not list(deps.paths.outputs.rglob("*.png"))
+
+
+def test_partial_patterns_with_export_write_named_csv_and_png_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+
+    result = analyze_patterns_impl(deps, points=["W1"], export=True)
+
+    assert result["status"] == "ok"
+    assert (deps.paths.outputs / "W1_排污规律分析.csv").exists()
+    assert (deps.paths.outputs / "W1_排污规律曲线.png").exists()
+    assert not deps.paths.combined_xlsx.exists()
+    assert not (deps.paths.outputs / "特征曲线图" / "W1_流量特征曲线.png").exists()
+
+
+def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    analyze_patterns_impl(deps)
+    sheet_before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="排污规律分析")
+    fixed_png = deps.paths.outputs / "特征曲线图" / "W1_流量特征曲线.png"
+    png_before = fixed_png.read_bytes()
+
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+    analyze_patterns_impl(deps, points=["W1"], export=True)
+    sheet_after = pd.read_excel(deps.paths.combined_xlsx, sheet_name="排污规律分析")
+
+    pd.testing.assert_frame_equal(sheet_after, sheet_before)
+    assert fixed_png.read_bytes() == png_before
+    assert (deps.paths.outputs / "W1_排污规律曲线.png").exists()
 
 
 def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:

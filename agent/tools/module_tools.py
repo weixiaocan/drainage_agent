@@ -561,6 +561,93 @@ def _save_pattern_curve_pngs(curves: dict[str, pd.DataFrame], dry_flow: pd.DataF
     return saved
 
 
+def _save_partial_pattern_curve_png(
+    curves: dict[str, pd.DataFrame],
+    points: list[str] | None,
+    output_dir: Path,
+) -> dict[str, list[str]]:
+    selected = [point for point in sorted(curves) if not points or point in {str(value) for value in points}]
+    if not selected:
+        return {}
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return {}
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.rcParams["font.sans-serif"] = ["SimSun", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8), dpi=120, sharex=True)
+    plotted = False
+    for point_id in selected:
+        curve = curves[point_id].sort_values("minute_of_day")
+        minutes = pd.to_numeric(curve["minute_of_day"], errors="coerce")
+        if "flow_lps" in curve.columns:
+            axes[0].plot(minutes, pd.to_numeric(curve["flow_lps"], errors="coerce"), label=point_id)
+            plotted = True
+        if "level_m" in curve.columns:
+            axes[1].plot(minutes, pd.to_numeric(curve["level_m"], errors="coerce"), label=point_id)
+            plotted = True
+    if not plotted:
+        plt.close(fig)
+        return {}
+    axes[0].set_ylabel("流量/(L/s)")
+    axes[1].set_ylabel("液位/(m)")
+    axes[1].set_xlabel("分钟")
+    for axis in axes:
+        axis.legend(loc="upper right")
+        axis.grid(False)
+    fig.tight_layout()
+    path = output_dir / f"{_point_result_prefix(points)}_排污规律曲线.png"
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return {"selected": [str(path)]}
+
+
+def _save_partial_rdii_curve_png(
+    curve_data: dict[int, dict[str, pd.DataFrame]],
+    points: list[str] | None,
+    output_dir: Path,
+) -> dict[int, dict[str, str]]:
+    selected_points = {str(point) for point in points or []}
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception:
+        return {}
+
+    fig = plt.figure(figsize=(10, 5), dpi=120)
+    ax = fig.add_subplot(1, 1, 1)
+    plotted = False
+    for event_id in sorted(curve_data):
+        for point_id, frame in sorted(curve_data[event_id].items()):
+            if selected_points and str(point_id) not in selected_points:
+                continue
+            if frame.empty or "rdii_lps" not in frame.columns:
+                continue
+            values = pd.to_numeric(frame["rdii_lps"], errors="coerce")
+            ax.plot(pd.to_datetime(frame.index, errors="coerce"), values, label=f"{point_id}-事件{event_id}")
+            plotted = True
+    if not plotted:
+        plt.close(fig)
+        return {}
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ax.set_xlabel("时间")
+    ax.set_ylabel("RDII/(L/s)")
+    ax.legend(loc="upper right")
+    ax.grid(False)
+    fig.tight_layout()
+    path = output_dir / f"{_point_result_prefix(points)}_RDII曲线.png"
+    fig.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return {0: {"selected": str(path)}}
+
+
 def _run(
     deps: AgentDeps,
     tool_name: str,
@@ -885,7 +972,12 @@ def analyze_patterns_impl(deps: AgentDeps, points: list[str] | None = None, outp
         patterns = result["patterns"]
         curves = result["curves"]
         _save_curves(deps, curves)
-        curve_images = _save_pattern_curve_pngs(curves, dry_flow, deps.paths.outputs / "特征曲线图")
+        if is_full_network(points, deps):
+            curve_images = _save_pattern_curve_pngs(curves, dry_flow, deps.paths.outputs / "特征曲线图")
+        elif export:
+            curve_images = _save_partial_pattern_curve_png(curves, points, deps.paths.outputs)
+        else:
+            curve_images = {}
         destination = _route_table_result(deps, patterns, "排污规律分析", points, export)
         llm_note = "描述由 LLM JSON 生成并经规则后处理" if llm_client is not None else "未配置 LLM，描述使用规则兜底生成"
         summary = (
@@ -992,13 +1084,18 @@ def analyze_rdii_impl(
                 "result_destinations": [destination],
             }
         rain = io.load_rain(root=deps.paths.root)
-        chart_paths = _save_rdii_curve_pngs(
-            result["rdii_curve_data"],
-            rain,
-            events,
-            deps.paths.outputs,
-            selected_events=event_ids,
-        )
+        if is_full_network(points, deps):
+            chart_paths = _save_rdii_curve_pngs(
+                result["rdii_curve_data"],
+                rain,
+                events,
+                deps.paths.outputs,
+                selected_events=event_ids,
+            )
+        elif export:
+            chart_paths = _save_partial_rdii_curve_png(result["rdii_curve_data"], points, deps.paths.outputs)
+        else:
+            chart_paths = {}
         destination = _route_table_result(deps, table, "RDII总量统计", points, export)
         chart_count = sum(len(point_paths) for point_paths in chart_paths.values())
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
