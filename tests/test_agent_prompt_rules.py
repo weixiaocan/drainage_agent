@@ -57,6 +57,8 @@ def test_prompt_requires_data_coverage_check_before_windowed_analysis() -> None:
     assert "该时段/该点位无数据，无法分析" in prompt
     assert "不要调用分析工具，也不要猜测或编造“可能的原因”" in prompt
     assert "明确剔除无数据覆盖的点位并说明理由" in prompt
+    assert "用户只给出月日而未给年份时，禁止自行补年份" in prompt
+    assert "先不传 `time_range` 调用 `analyze_rainfall`" in prompt
 
 
 def test_core_registers_exactly_the_documented_tools() -> None:

@@ -289,6 +289,40 @@ class AgentToolTests(unittest.TestCase):
         self.assertTrue(pd.isna(row["max_24h_rain_mm"]))
         self.assertAlmostEqual(row["avg_intensity_mmh"], 1.5)
 
+    def test_rainfall_window_keeps_overlapping_full_event_and_original_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deps = make_deps(Path(tmp))
+            pd.DataFrame(
+                {
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2026-02-05 19:00",
+                            "2026-02-15 15:00",
+                            "2026-02-23 09:00",
+                            "2026-02-25 19:00",
+                            "2026-02-25 22:00",
+                            "2026-02-26 02:00",
+                            "2026-02-26 08:00",
+                        ]
+                    ),
+                    "rain": [1.9, 3.2, 1.1, 2.1, 2.5, 3.0, 3.0],
+                }
+            ).to_csv(deps.paths.rainfall_file, index=False)
+
+            result = analyze_rainfall_impl(
+                deps,
+                time_range=["2026-02-25", "2026-02-26"],
+                output="events",
+            )
+
+            events = result["data"]["events"]
+            self.assertTrue(result["data"]["has_rainfall_coverage"])
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["event_id"], 4)
+            self.assertEqual(events[0]["start_time"], "2026-02-25 19:00")
+            self.assertEqual(events[0]["end_time"], "2026-02-26 08:00")
+            self.assertAlmostEqual(events[0]["total_rain_mm"], 10.6)
+
     def test_event_response_outputs_pipeline_wide_stats(self) -> None:
         flow = pd.DataFrame(
             {

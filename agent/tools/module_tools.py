@@ -700,12 +700,40 @@ def check_data_impl(deps: AgentDeps, points: list[str] | None = None) -> ToolRes
     return _run(deps, "check_data", work, params={"points": points or []})
 
 
+def _rainfall_window_bounds(time_range: list[str]) -> tuple[pd.Timestamp, pd.Timestamp]:
+    start_text, end_text = time_range
+    start = pd.to_datetime(start_text)
+    end = pd.to_datetime(end_text)
+    if isinstance(end_text, str) and len(end_text.strip()) <= 10:
+        end = end + pd.Timedelta(days=1) - pd.Timedelta(nanoseconds=1)
+    return start, end
+
+
+def _filter_rainfall_result_to_window(
+    rain: pd.DataFrame,
+    result: dict[str, pd.DataFrame],
+    time_range: list[str],
+) -> dict[str, pd.DataFrame]:
+    start, end = _rainfall_window_bounds(time_range)
+    window_rain = rain[(rain["timestamp"] >= start) & (rain["timestamp"] <= end)].copy()
+    window_daily = analyze_rainfall(window_rain)["daily"]
+
+    events = result["events"].copy()
+    if not events.empty:
+        event_starts = pd.to_datetime(events["start_time"], errors="coerce")
+        event_ends = pd.to_datetime(events["end_time"], errors="coerce")
+        events = events[(event_ends >= start) & (event_starts <= end)].copy()
+    return {"daily": window_daily, "events": events.reset_index(drop=True)}
+
+
 def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, output: str = "all", rainfall_gap_hours: int = 12) -> ToolResult:
     params = {"time_range": time_range or [], "output": output, "rainfall_gap_hours": rainfall_gap_hours}
 
     def work() -> tuple[str, dict[str, Any]]:
-        rain = io.load_rain(time_range=time_range, root=deps.paths.root)
+        rain = io.load_rain(root=deps.paths.root)
         result = analyze_rainfall(rain, gap_hours=rainfall_gap_hours)
+        if time_range:
+            result = _filter_rainfall_result_to_window(rain, result, time_range)
         chart_paths: dict[str, str] = {}
         if output in {"all", "daily"}:
             _write_sheet(deps.paths.combined_xlsx, "降雨概况", result["daily"])
@@ -719,6 +747,7 @@ def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, 
         total = float(result["daily"]["rain_mm"].sum()) if not result["daily"].empty else 0.0
         summary = f"降雨分析完成：雨日 {rainy_days} 天，总雨量 {total:.1f} mm，场次 {len(result['events'])} 场。"
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
+        data["has_rainfall_coverage"] = bool(rainy_days or not result["events"].empty)
         data["chart_paths"] = chart_paths
         return summary, data
 
