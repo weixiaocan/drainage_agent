@@ -1,0 +1,207 @@
+# 多轮 eval 用例。与单轮的老 26 条分工:老的测功能正确性,这批专测"跨轮状态"。
+#
+# 结构:
+#   turns: 一个对话序列,runner 携带 message_history 逐轮喂给 agent。
+#   每个 turn:
+#     prompt  本轮用户输入
+#     expect  本轮在"已有上下文"下应有的行为(判定标准)
+#     key     true = 会暴露失败的关键轮,硬判定点;无 key = 过渡轮,记录、可判、非必判
+#   逐轮都有 expect,所以支持逐轮判;时间紧时只判 key 轮。
+#
+# 档位:功能衔接 / 跨模块组合 / 时间窗 / 对抗模糊 / 长程一致性 / 上下文压缩(占位)
+
+# ── 档1 功能衔接:指代、上下文携带、增量请求 ──────────────────────────
+
+- id: M001
+  category: 功能衔接-指代消解
+  turns:
+    - prompt: 看 W1、W6 的旱天排污规律。
+      expect: 调用 analyze_patterns,points=[W1,W6],旱天;单点/部分不落综合底稿
+      key: true
+    - prompt: 那 W4 呢？
+      expect: 把"那…呢"指代为上一轮的排污规律分析,对 W4 做同样分析,不反问"做什么分析"
+      key: true
+    - prompt: W1 和 W4 比，哪个更异常？
+      expect: 基于已分析的 W1/W4 结果比较,不重跑全网,给出依据
+      key: true
+
+- id: M002
+  category: 功能衔接-上下文携带+导出
+  turns:
+    - prompt: 分析 W6 在第 6 场降雨里的事件响应。
+      expect: 先确认第6场覆盖,再 analyze_event_response,points=[W6],event=6
+      key: true
+    - prompt: 把刚才那个导出。
+      expect: 把"刚才那个"指回上一轮 W6 事件响应结果,export=True 生成带点位命名的 csv,不反问"导出什么"
+      key: true
+
+- id: M003A
+  category: 功能衔接-增量请求-A有效事件
+  turns:
+    - prompt: 看一下全网旱天风险。
+      expect: assess_risk,全网,旱天;全网结果进综合底稿
+      key: true
+    - prompt: 再加上第 6 场降雨的雨天风险。
+      expect: assess_risk,全网,scope=rainy,event_ids=[6];在已有旱天风险基础上追加雨天溢流风险
+      key: true
+    - prompt: W4 和 W6 是不是雨天风险最高的？
+      expect: 基于已分析结果回答,聚焦 W4/W6,有依据,不重算
+      key: true
+
+- id: M003B
+  category: 功能衔接-增量请求-B缺少事件
+  turns:
+    - prompt: 看一下全网旱天风险。
+      expect: assess_risk,全网,旱天;全网结果进综合底稿
+      key: true
+    - prompt: 再加上雨天的。
+      expect: 不猜测 event_ids;提示用户选择降雨场次并展示可选场次
+      key: true
+    - prompt: 那就看第 6 场。
+      expect: 承接上一轮缺失参数,assess_risk,全网,scope=rainy,event_ids=[6];保留已有旱天结果
+      key: true
+    - prompt: W4 和 W6 是不是雨天风险最高的？
+      expect: 基于第6场雨天风险结果回答,聚焦 W4/W6,有依据,不重算
+      key: true
+
+# ── 档2 跨模块组合:串联多个分析 ──────────────────────────────────
+
+- id: M004
+  category: 跨模块组合-降雨→事件→RDII
+  turns:
+    - prompt: 这段数据有哪些降雨事件，最大那场是哪天？
+      expect: analyze_rainfall,给出事件列表与最大事件日期
+      key: true
+    - prompt: 针对最大那场，看 W1、W6 的响应。
+      expect: 把"最大那场"指回上一轮识别的事件,analyze_event_response,points=[W1,W6],该事件
+      key: true
+    - prompt: 这两个点这场的 RDII 谁更严重？
+      expect: 同事件同点位 analyze_rdii,比较 W1/W6 严重性,不另选事件
+      key: true
+
+- id: M005
+  category: 跨模块组合-体检前置→分析
+  turns:
+    - prompt: 先检查一下数据质量。
+      expect: check_data,给出覆盖率/缺失情况
+      key: true
+    - prompt: 没大问题的话，给我全网旱天排污规律。
+      expect: 基于上一轮数据检查结论判断可用性,再 analyze_patterns 全网旱天
+      key: true
+
+# ── 档3 时间窗:能力落定后再跑验证(现在写好,等 capability 合入再 run) ──
+
+- id: M006A
+  category: 时间窗-子窗口分析-A有效窗口
+  turns:
+    - prompt: 只看 3 月 7 日到 15 日的全网排污规律。
+      expect: analyze_patterns,全网,start/end 限定 3 月 7 日到 15 日;报告实际覆盖范围
+      key: true
+    - prompt: 那 3 月上旬呢？
+      expect: 指代排污规律,时间窗收窄到 3 月上旬重新分析;说明实际覆盖从 3 月 7 日开始
+      key: true
+
+- id: M006B
+  category: 时间窗-子窗口分析-B无覆盖窗口
+  turns:
+    - prompt: 只看 2 月这段的全网排污规律。
+      expect: 识别 2 月无流量数据覆盖,明确不分析,不编造结果
+      key: true
+    - prompt: 那 2 月上旬呢？
+      expect: 指代排污规律并继续识别无覆盖,明确不分析,不因窗口收窄而编造结果
+      key: true
+
+- id: M007
+  category: 时间窗-跨不覆盖窗口应拒绝
+  turns:
+    - prompt: 分析 1 月份 W1 的排污规律。
+      expect: 若 1 月无数据覆盖,明确告知该时段无数据、不分析、不编造原因;部分覆盖则分析覆盖部分并注明
+      key: true
+
+# ── 档4 对抗/模糊:说不清、矛盾、超范围 ────────────────────────────
+
+- id: M008
+  category: 对抗模糊-需求不清
+  turns:
+    - prompt: 帮我看看这数据有没有什么问题。
+      expect: 不崩;合理地先 check_data 或简短澄清要看哪方面,不要乱调一堆分析工具
+      key: true
+
+- id: M009A
+  category: 对抗模糊-点位与时间-A均有效
+  turns:
+    - prompt: 分析 W1 在 2026 年 3 月 7 日到 15 日的排污规律。
+      expect: analyze_patterns,points=[W1],start/end 限定有效窗口;正常返回分析结果
+      key: true
+
+- id: M009B
+  category: 对抗模糊-点位与时间-B均无效
+  turns:
+    - prompt: 分析 W999 在 2030 年的排污规律。
+      expect: 明确指出 W999 不存在、2030 年超出数据范围;不编造结果、不静默改成别的点位
+      key: true
+
+- id: M010A
+  category: 对抗模糊-多点比较-A全部有效
+  turns:
+    - prompt: 比较 W1、W4、W6 的旱天统计。
+      expect: 使用 W1、W4、W6 的旱天数据完成比较,明确给出依据
+      key: true
+
+- id: M010B
+  category: 对抗模糊-多点比较-B混入无效点位
+  turns:
+    - prompt: 比较 W1、W6、W999 的旱天统计。
+      expect: 指出 W999 无效并剔除,用 W1、W6 继续比较,不因个别无效点整体失败
+      key: true
+
+# ── 档5 长程一致性:早期约束会不会被遗忘/漂移 ──────────────────────
+
+- id: M011
+  category: 长程一致性-约束"全程只看旱天"
+  turns:
+    - prompt: 接下来都只看旱天。先给我 W1、W6 的排污规律。
+      expect: 确立"旱天"约束;analyze_patterns 旱天 points=[W1,W6]
+      key: true            # 约束确立点
+    - prompt: W18 的呢？
+      expect: 指代排污规律,W18,仍旱天
+    - prompt: 全网的风险评估给我看看。
+      expect: assess_risk;仍默认旱天(约束保持),不偷偷切到雨天
+      key: true            # 约束保持检查点1
+    - prompt: 有哪些降雨事件？
+      expect: analyze_rainfall(降雨本身与旱天约束不冲突,正常返回)
+    - prompt: W1 和 W6 哪个更异常？
+      expect: 基于旱天排污规律比较
+    - prompt: W6 的排污规律具体是什么类型？
+      expect: 仍旱天口径
+    - prompt: 再看下全网排污规律。
+      expect: analyze_patterns 全网;仍旱天(约束在 6 轮后仍保持),不漂回雨天/全时段
+      key: true            # 约束保持检查点2(长程)
+
+- id: M012
+  category: 长程一致性-约束"只关注 W1/W6/W18"
+  turns:
+    - prompt: 这次只关注 W1、W6、W18 这三个点。先看它们的旱天排污规律。
+      expect: 确立点位约束=[W1,W6,W18];analyze_patterns 这三点
+      key: true            # 约束确立点
+    - prompt: 它们的风险怎么样？
+      expect: assess_risk 限定这三点,不扩成全网
+      key: true            # 约束保持检查点1
+    - prompt: 第 6 场降雨这几个点的响应？
+      expect: analyze_event_response,event=6,仍限定这三点
+    - prompt: RDII 呢？
+      expect: analyze_rdii,event=6,仍这三点
+    - prompt: 哪些降雨事件比较大？
+      expect: analyze_rainfall(全域降雨,与点位约束无关,正常返回)
+    - prompt: 再给我看下排污规律统计。
+      expect: analyze_patterns;仍限定 W1/W6/W18(约束在 5 轮后仍保持),不偷偷扩回全网
+      key: true            # 约束保持检查点2(长程)
+
+# ── 档6 上下文压缩:占位,等压缩机制做完再填实 ──────────────────────
+# 现在没有被测对象(压缩机制还没做),先不写实。
+# 等压缩机制合入后,这里加 20+ 轮、或每轮塞大产物的用例,
+# 判定点 = 压缩发生后早期关键约束(如"只看旱天""限定点位")是否仍在、未被压没。
+#
+# - id: M013
+#   category: 上下文压缩-长程约束在压缩后是否存活
+#   turns: [...]
