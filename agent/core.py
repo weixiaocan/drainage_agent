@@ -137,9 +137,15 @@ def build_agent(deps: AgentDeps) -> Any:
             time_range: list[str] | None = None,
             output: str = "all",
             rainfall_gap_hours: int = 12,
+            export: bool = False,
         ) -> dict:
             """分析降雨日统计、降雨场次和降雨输出。output: all/daily/events/charts。"""
-            args = {"time_range": time_range, "output": output, "rainfall_gap_hours": rainfall_gap_hours}
+            args = {
+                "time_range": time_range,
+                "output": output,
+                "rainfall_gap_hours": rainfall_gap_hours,
+                "export": export,
+            }
             return traced_tool(ctx, "analyze_rainfall", args, lambda: analyze_rainfall_impl(ctx.deps, **args))
 
         @agent.tool

@@ -341,6 +341,7 @@ class AgentToolTests(unittest.TestCase):
                 deps,
                 time_range=["2026-02-25", "2026-02-26"],
                 output="events",
+                export=True,
             )
 
             events = result["data"]["events"]
@@ -350,6 +351,10 @@ class AgentToolTests(unittest.TestCase):
             self.assertEqual(events[0]["start_time"], "2026-02-25 19:00")
             self.assertEqual(events[0]["end_time"], "2026-02-26 08:00")
             self.assertAlmostEqual(events[0]["total_rain_mm"], 10.6)
+            self.assertFalse(deps.paths.combined_xlsx.exists())
+            self.assertTrue(
+                (deps.paths.outputs / "全网_2026-02-25_2026-02-26_降雨场次分析.csv").exists()
+            )
 
     def test_event_response_outputs_pipeline_wide_stats(self) -> None:
         flow = pd.DataFrame(
@@ -670,7 +675,7 @@ class AgentToolTests(unittest.TestCase):
             result = analyze_rdii_impl(deps, event_ids=[1], points=["W1"], export=True)
 
             self.assertEqual(result["status"], "ok", result)
-            self.assertTrue((deps.paths.outputs / "W1_RDII总量统计.csv").exists())
+            self.assertTrue((deps.paths.outputs / "W1_全时段_RDII总量统计.csv").exists())
             self.assertTrue((deps.paths.outputs / "W1_RDII曲线.png").exists())
             self.assertFalse((deps.paths.outputs / "rdii_curve" / "event1_1_3" / "W1_event1.png").exists())
             workbook = load_workbook(deps.paths.combined_xlsx)

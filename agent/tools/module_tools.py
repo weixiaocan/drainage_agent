@@ -127,6 +127,19 @@ def is_full_network(points: list[str] | None, deps: AgentDeps) -> bool:
     return all_points.issubset({str(point) for point in points})
 
 
+def is_full_time_range(start: str | None = None, end: str | None = None) -> bool:
+    return start is None and end is None
+
+
+def is_complete_scope(
+    points: list[str] | None,
+    deps: AgentDeps,
+    start: str | None = None,
+    end: str | None = None,
+) -> bool:
+    return is_full_network(points, deps) and is_full_time_range(start, end)
+
+
 def _safe_filename_part(value: str) -> str:
     cleaned = re.sub(r'[<>:"/\\|?*]+', "_", value.strip())
     return cleaned.strip(" ._") or "结果"
@@ -137,15 +150,41 @@ def _point_result_prefix(points: list[str] | None) -> str:
     return "_".join(_safe_filename_part(value) for value in values) or "部分点位"
 
 
+def _time_result_prefix(start: str | None, end: str | None) -> str:
+    if is_full_time_range(start, end):
+        return "全时段"
+
+    def format_bound(value: str | None, fallback: str) -> str:
+        if value is None:
+            return fallback
+        parsed = pd.to_datetime(value, errors="coerce")
+        if not pd.isna(parsed):
+            return parsed.strftime("%Y-%m-%d")
+        return _safe_filename_part(value)
+
+    return f"{format_bound(start, '起始')}_{format_bound(end, '结束')}"
+
+
+def _range_result_prefix(
+    points: list[str] | None,
+    deps: AgentDeps,
+    start: str | None,
+    end: str | None,
+) -> str:
+    point_prefix = "全网" if is_full_network(points, deps) else _point_result_prefix(points)
+    return f"{point_prefix}_{_time_result_prefix(start, end)}"
+
+
 def _route_table_result(
     deps: AgentDeps,
     df: pd.DataFrame,
     sheet_name: str,
     points: list[str] | None,
     export: bool,
-    allow_combined: bool = True,
+    start: str | None = None,
+    end: str | None = None,
 ) -> dict[str, Any]:
-    if allow_combined and is_full_network(points, deps):
+    if is_complete_scope(points, deps, start, end):
         _write_sheet(deps.paths.combined_xlsx, sheet_name, df)
         return {
             "kind": "combined_xlsx",
@@ -153,7 +192,7 @@ def _route_table_result(
             "sheet": sheet_name,
         }
     if export:
-        filename = f"{_point_result_prefix(points)}_{_safe_filename_part(sheet_name)}.csv"
+        filename = f"{_range_result_prefix(points, deps, start, end)}_{_safe_filename_part(sheet_name)}.csv"
         output_path = deps.paths.outputs / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
         display_df = to_display_columns(df, SHEET_TABLE_TYPES.get(sheet_name, ""))
@@ -1064,7 +1103,7 @@ def check_data_impl(
             stats_df["theoretical_count"] = expected
             stats_df["collection_rate"] = (stats_df["record_count"] / expected).clip(upper=1.0)
         destination = _route_table_result(
-            deps, stats_df, "数据收集率统计", points, export, allow_combined=not windowed
+            deps, stats_df, "数据收集率统计", points, export, start=start, end=end
         )
         if destination["kind"] == "combined_xlsx":
             _remove_sheet(deps.paths.combined_xlsx, "数据体检")
@@ -1109,30 +1148,64 @@ def _filter_rainfall_result_to_window(
     return {"daily": window_daily, "events": events.reset_index(drop=True)}
 
 
-def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, output: str = "all", rainfall_gap_hours: int = 12) -> ToolResult:
-    params = {"time_range": time_range or [], "output": output, "rainfall_gap_hours": rainfall_gap_hours}
+def analyze_rainfall_impl(
+    deps: AgentDeps,
+    time_range: list[str] | None = None,
+    output: str = "all",
+    rainfall_gap_hours: int = 12,
+    export: bool = False,
+) -> ToolResult:
+    params = {
+        "time_range": time_range or [],
+        "output": output,
+        "rainfall_gap_hours": rainfall_gap_hours,
+        "export": export,
+    }
 
     def work() -> tuple[str, dict[str, Any]]:
         rain = io.load_rain(root=deps.paths.root)
         result = analyze_rainfall(rain, gap_hours=rainfall_gap_hours)
         if time_range:
             result = _filter_rainfall_result_to_window(rain, result, time_range)
+        range_start = time_range[0] if time_range else None
+        range_end = time_range[1] if time_range else None
         chart_paths: dict[str, str] = {}
-        if output in {"all", "daily"} and not time_range:
-            _write_sheet(deps.paths.combined_xlsx, "降雨概况", result["daily"])
-            _remove_sheet(deps.paths.combined_xlsx, "日降雨量统计")
-            _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
+        destinations: list[dict[str, Any]] = []
         if output in {"all", "daily"}:
+            destination = _route_table_result(
+                deps,
+                result["daily"],
+                "降雨概况",
+                None,
+                export,
+                start=range_start,
+                end=range_end,
+            )
+            destinations.append(destination)
+            if destination["kind"] == "combined_xlsx":
+                _remove_sheet(deps.paths.combined_xlsx, "日降雨量统计")
+                _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
             chart_paths = _save_rainfall_png_charts(result["daily"], deps.paths.outputs / "降雨分析图")
-        if output in {"all", "events"} and not time_range:
-            _write_sheet(deps.paths.combined_xlsx, "降雨场次分析", result["events"])
-            _remove_sheet(deps.paths.combined_xlsx, "场次降雨统计")
+        if output in {"all", "events"}:
+            destination = _route_table_result(
+                deps,
+                result["events"],
+                "降雨场次分析",
+                None,
+                export,
+                start=range_start,
+                end=range_end,
+            )
+            destinations.append(destination)
+            if destination["kind"] == "combined_xlsx":
+                _remove_sheet(deps.paths.combined_xlsx, "场次降雨统计")
         rainy_days = int(result["daily"]["is_rainy"].sum()) if not result["daily"].empty else 0
         total = float(result["daily"]["rain_mm"].sum()) if not result["daily"].empty else 0.0
         summary = f"降雨分析完成：雨日 {rainy_days} 天，总雨量 {total:.1f} mm，场次 {len(result['events'])} 场。"
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
         data["has_rainfall_coverage"] = bool(rainy_days or not result["events"].empty)
         data["chart_paths"] = chart_paths
+        data["result_destinations"] = destinations
         return summary, data
 
     return _run(deps, "analyze_rainfall", work, params=params)
@@ -1183,7 +1256,7 @@ def analyze_patterns_impl(
         else:
             curve_images = {}
         destination = _route_table_result(
-            deps, patterns, "排污规律分析", points, export, allow_combined=not windowed
+            deps, patterns, "排污规律分析", points, export, start=start, end=end
         )
         llm_note = "描述由 LLM JSON 生成并经规则后处理" if llm_client is not None else "未配置 LLM，描述使用规则兜底生成"
         summary = (
@@ -1394,16 +1467,15 @@ def assess_risk_impl(
             events=events,
             event_ids=event_ids,
         )
-        allow_combined = not (start is not None or end is not None)
         destinations = [
             _route_table_result(
-                deps, dry_stats, "旱天分析", points, export, allow_combined=allow_combined
+                deps, dry_stats, "旱天分析", points, export, start=start, end=end
             )
         ]
         if not result["dry_risk"].empty:
             destinations.append(
                 _route_table_result(
-                    deps, result["dry_risk"], "旱天风险", points, export, allow_combined=allow_combined
+                    deps, result["dry_risk"], "旱天风险", points, export, start=start, end=end
                 )
             )
         if not result["rainy_risk"].empty:
@@ -1414,7 +1486,8 @@ def assess_risk_impl(
                     "雨天溢流风险",
                     points,
                     export,
-                    allow_combined=allow_combined,
+                    start=start,
+                    end=end,
                 )
             )
         excluded_note = f"；雨天分析剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""

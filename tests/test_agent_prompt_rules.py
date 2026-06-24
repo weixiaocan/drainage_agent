@@ -40,7 +40,8 @@ def test_prompt_documents_routing_rules() -> None:
     assert "`run_python`" in prompt
     assert "点位级分析默认 `export=false`" in prompt
     assert "用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`" in prompt
-    assert "全网分析自动写入 `综合分析结果.xlsx`" in prompt
+    assert "只有全网且全时段的完整范围分析自动写入 `综合分析结果.xlsx`" in prompt
+    assert "部分点位或指定时间窗均不写综合表" in prompt
 
 
 def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:

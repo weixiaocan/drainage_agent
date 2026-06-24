@@ -176,10 +176,10 @@ def test_partial_analysis_with_export_writes_csv_not_combined(tmp_path: Path) ->
     assert result["status"] == "ok"
     assert destination == {
         "kind": "csv",
-        "path": "outputs/W1_数据收集率统计.csv",
+        "path": "outputs/W1_全时段_数据收集率统计.csv",
         "sheet": None,
     }
-    assert (deps.paths.outputs / "W1_数据收集率统计.csv").exists()
+    assert (deps.paths.outputs / "W1_全时段_数据收集率统计.csv").exists()
     assert not deps.paths.combined_xlsx.exists()
 
 
@@ -190,6 +190,59 @@ def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path:
     before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
 
     result = check_data_impl(deps, points=["W1"], export=False)
+    after = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
+
+    assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
+    pd.testing.assert_frame_equal(after, before)
+
+
+def test_full_network_partial_time_does_not_write_combined_and_exports_range_csv(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    start = "2026-01-01 00:10:00"
+    end = "2026-01-01 00:19:00"
+
+    without_export = check_data_impl(deps, start=start, end=end)
+    with_export = check_data_impl(deps, start=start, end=end, export=True)
+
+    assert without_export["data"]["result_destinations"][0]["kind"] == "not_persisted"
+    assert with_export["data"]["result_destinations"][0] == {
+        "kind": "csv",
+        "path": "outputs/全网_2026-01-01_2026-01-01_数据收集率统计.csv",
+        "sheet": None,
+    }
+    assert (deps.paths.outputs / "全网_2026-01-01_2026-01-01_数据收集率统计.csv").exists()
+    assert not deps.paths.combined_xlsx.exists()
+
+
+def test_partial_points_partial_time_does_not_write_combined(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(
+        deps,
+        points=["W1"],
+        start="2026-01-01 00:10:00",
+        end="2026-01-01 00:19:00",
+        export=True,
+    )
+
+    assert result["data"]["result_destinations"][0]["kind"] == "csv"
+    assert (deps.paths.outputs / "W1_2026-01-01_2026-01-01_数据收集率统计.csv").exists()
+    assert not deps.paths.combined_xlsx.exists()
+
+
+def test_full_network_partial_time_does_not_replace_full_time_sheet(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+    check_data_impl(deps)
+    before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
+
+    result = check_data_impl(
+        deps,
+        start="2026-01-01 00:10:00",
+        end="2026-01-01 00:19:00",
+    )
     after = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
 
     assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
@@ -244,7 +297,7 @@ def test_partial_patterns_with_export_write_named_csv_and_png_only(
     result = analyze_patterns_impl(deps, points=["W1"], export=True)
 
     assert result["status"] == "ok"
-    assert (deps.paths.outputs / "W1_排污规律分析.csv").exists()
+    assert (deps.paths.outputs / "W1_全时段_排污规律分析.csv").exists()
     assert (deps.paths.outputs / "W1_排污规律曲线.png").exists()
     assert not deps.paths.combined_xlsx.exists()
     assert not (deps.paths.outputs / "特征曲线图" / "W1_流量特征曲线.png").exists()
@@ -322,7 +375,6 @@ def test_patterns_none_window_preserves_full_input(
     assert before["data"] == after["data"]
     assert "window_coverage" not in after["data"]
     assert len(captured) == 1
-    pd.testing.assert_frame_equal(captured[0], flow)
     pd.testing.assert_frame_equal(captured[0], flow)
 
 
@@ -444,6 +496,7 @@ def test_dry_risk_time_window_uses_only_window_rows(
     assert len(captured["flow"]) == 10
     assert captured["flow"]["timestamp"].min() == pd.Timestamp("2026-01-01 00:30")
     assert captured["flow"]["timestamp"].max() == pd.Timestamp("2026-01-01 00:39")
+    assert not deps.paths.combined_xlsx.exists()
 
 
 def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None:
@@ -779,6 +832,7 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     assert captured["risk_scope"] == ("all", [1], None, "2026-03-07", "2026-03-10")
     assert captured["build"]["start"] == "2026-03-07"
     assert captured["build"]["end"] == "2026-03-10"
+    assert not deps.paths.combined_xlsx.exists()
 
 
 def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
