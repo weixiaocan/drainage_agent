@@ -142,17 +142,31 @@ def run_report_assembler(
 
 
 SECTION_ALIASES = {
-    "monitoring_overview": {"监测概况", "数据体检", "数据质量"},
+    "monitoring_overview": {"监测概况", "数据概况", "概述与数据质量", "数据体检", "数据质量"},
     "rainfall_analysis": {"降雨分析", "降雨统计", "雨天事件统计", "事件响应", "RDII"},
-    "dry_pattern_analysis": {"旱天排污规律统计分析", "排污规律", "排污规律分析", "旱天分析"},
-    "operation_risk_analysis": {"污水系统运行风险分析", "污水系统运行风险", "风险评估", "旱天风险", "雨天风险", "溢流风险"},
+    "dry_pattern_analysis": {
+        "旱天排污规律统计分析", "旱天排污规律", "旱天排污规律分析", "点位特征对比分析",
+        "排污规律", "排污规律分析", "旱天分析",
+    },
+    "operation_risk_analysis": {
+        "污水系统运行风险分析", "污水系统运行风险", "风险评估", "旱天风险",
+        "旱天运行风险评估", "结论与建议", "雨天风险", "溢流风险",
+    },
 }
 
 
 def _selected_section_keys(sections: list[str] | None) -> list[str]:
     if not sections:
         return list(SECTION_ALIASES)
-    selected = [key for key, aliases in SECTION_ALIASES.items() if any(section in aliases for section in sections)]
+    selected = [
+        key
+        for key, aliases in SECTION_ALIASES.items()
+        if any(
+            section == alias or section.startswith(f"{alias}（") or section.startswith(f"{alias}(")
+            for section in sections
+            for alias in aliases
+        )
+    ]
     return selected or list(SECTION_ALIASES)
 
 
@@ -161,7 +175,7 @@ def _selected_risk_modes(sections: list[str] | None) -> tuple[bool, bool]:
         return True, True
     requested = set(sections)
     full = bool(requested.intersection({"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估"}))
-    include_dry = full or "旱天风险" in requested
+    include_dry = full or bool(requested.intersection({"旱天风险", "旱天运行风险评估", "结论与建议"}))
     include_rainy = full or bool(requested.intersection({"雨天风险", "雨天溢流风险", "溢流风险"}))
     return include_dry, include_rainy
 
@@ -218,9 +232,15 @@ def _build_config(config: Optional[Dict[str, Any]]) -> ReportConfig:
 def _scope_period_text(start: str, end: str) -> str:
     start_ts = pd.to_datetime(start, errors="coerce") if start else None
     end_ts = pd.to_datetime(end, errors="coerce") if end else None
-    start_text = start_ts.strftime("%Y/%m/%d") if start_ts is not None and not pd.isna(start_ts) else "不限"
-    end_text = end_ts.strftime("%Y/%m/%d") if end_ts is not None and not pd.isna(end_ts) else "不限"
-    return f"{start_text}日-{end_text}日"
+    start_text = start_ts.strftime("%Y/%m/%d") if start_ts is not None and not pd.isna(start_ts) else None
+    end_text = end_ts.strftime("%Y/%m/%d") if end_ts is not None and not pd.isna(end_ts) else None
+    if start_text and not end_text:
+        return f"{start_text}日之后"
+    if end_text and not start_text:
+        return f"{end_text}日之前"
+    if start_text and end_text:
+        return f"{start_text}日-{end_text}日"
+    return "全时段"
 
 
 def _default_baseinfo_path(template_file: Path) -> Path:

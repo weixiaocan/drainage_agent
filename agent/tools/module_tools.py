@@ -50,10 +50,51 @@ def _rel(deps: AgentDeps, path: Path) -> str:
         return str(path)
 
 
-def _artifacts(deps: AgentDeps) -> list[str]:
-    if not deps.paths.outputs.exists():
-        return []
-    return [_rel(deps, p) for p in deps.paths.outputs.rglob("*") if p.is_file()]
+def _result_artifacts(deps: AgentDeps, data: dict[str, Any]) -> list[str]:
+    """Return only files owned by this tool result, never historical output files."""
+    candidates: list[Any] = []
+    for destination in data.get("result_destinations", []):
+        if isinstance(destination, dict) and destination.get("path"):
+            candidates.append(destination["path"])
+    for key in ("chart_paths", "curve_images", "output_file"):
+        if key in data:
+            candidates.append(data[key])
+
+    paths: list[str] = []
+
+    def collect(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, (list, tuple, set)):
+            for child in value:
+                collect(child)
+        elif isinstance(value, (str, Path)):
+            path = Path(value)
+            if not path.is_absolute():
+                path = deps.paths.root / path
+            if path.is_file():
+                relative = _rel(deps, path)
+                if relative not in paths:
+                    paths.append(relative)
+
+    collect(candidates)
+    return paths
+
+
+def _destination_note(destinations: list[dict[str, Any]]) -> str:
+    notes: list[str] = []
+    for destination in destinations:
+        kind = destination.get("kind")
+        path = destination.get("path")
+        if kind == "combined_xlsx" and path:
+            sheet = destination.get("sheet")
+            notes.append(f"已写入 {path}" + (f"（{sheet}）" if sheet else ""))
+        elif kind == "csv" and path:
+            notes.append(f"已导出 CSV：{path}")
+        elif kind == "not_persisted":
+            notes.append("本次结果未落盘")
+    return "；".join(notes)
 
 
 class ToolLLMClient:
@@ -180,6 +221,10 @@ def _time_result_prefix(start: str | None, end: str | None) -> str:
             return parsed.strftime("%Y-%m-%d")
         return _safe_filename_part(value)
 
+    if start is not None and end is None:
+        return f"{format_bound(start, '起始')}_之后"
+    if start is None and end is not None:
+        return f"{format_bound(end, '结束')}_之前"
     return f"{format_bound(start, '起始')}_{format_bound(end, '结束')}"
 
 
@@ -633,49 +678,23 @@ def _save_pattern_curve_pngs(
 
 def _save_partial_pattern_curve_png(
     curves: dict[str, pd.DataFrame],
+    dry_flow: pd.DataFrame,
     points: list[str] | None,
     output_dir: Path,
     scope_prefix: str,
 ) -> dict[str, list[str]]:
-    selected = [point for point in sorted(curves) if not points or point in {str(value) for value in points}]
-    if not selected:
-        return {}
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except Exception:
-        return {}
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    plt.rcParams["font.sans-serif"] = ["SimSun", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
-    plt.rcParams["axes.unicode_minus"] = False
-    fig, axes = plt.subplots(2, 1, figsize=(10, 8), dpi=120, sharex=True)
-    plotted = False
-    for point_id in selected:
-        curve = curves[point_id].sort_values("minute_of_day")
-        minutes = pd.to_numeric(curve["minute_of_day"], errors="coerce")
-        if "flow_lps" in curve.columns:
-            axes[0].plot(minutes, pd.to_numeric(curve["flow_lps"], errors="coerce"), label=point_id)
-            plotted = True
-        if "level_m" in curve.columns:
-            axes[1].plot(minutes, pd.to_numeric(curve["level_m"], errors="coerce"), label=point_id)
-            plotted = True
-    if not plotted:
-        plt.close(fig)
-        return {}
-    axes[0].set_ylabel("流量/(L/s)")
-    axes[1].set_ylabel("液位/(m)")
-    axes[1].set_xlabel("分钟")
-    for axis in axes:
-        axis.legend(loc="upper right")
-        axis.grid(False)
-    fig.tight_layout()
-    path = output_dir / f"{scope_prefix}_排污规律曲线.png"
-    fig.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return {"selected": [str(path)]}
+    selected_points = {str(value) for value in points or []}
+    selected_curves = {
+        point_id: curve
+        for point_id, curve in curves.items()
+        if not selected_points or point_id in selected_points
+    }
+    return _save_pattern_curve_pngs(
+        selected_curves,
+        dry_flow,
+        output_dir / "特征曲线图",
+        scope_prefix,
+    )
 
 
 def _save_partial_rdii_curve_png(
@@ -731,11 +750,14 @@ def _run(
     cache_key = _analysis_cache_key(deps, tool_name, params or {})
     if use_cache and cache_key in deps.session.analysis_cache:
         cached = deepcopy(deps.session.analysis_cache[cache_key])
-        return ok(cached["summary"], artifacts=_artifacts(deps), **cached["data"])
+        return ok(cached["summary"], artifacts=_result_artifacts(deps, cached["data"]), **cached["data"])
     try:
         deps.paths.outputs.mkdir(parents=True, exist_ok=True)
         summary, data = fn()
-        artifacts = _artifacts(deps)
+        destination_note = _destination_note(data.get("result_destinations", []))
+        if destination_note:
+            summary = f"{summary} 落盘去向：{destination_note}。"
+        artifacts = _result_artifacts(deps, data)
         record_result(deps, tool_name, artifacts, params=params)
         if use_cache:
             deps.session.analysis_cache[cache_key] = {"summary": summary, "data": deepcopy(data)}
@@ -976,6 +998,23 @@ def _require_event_ids(deps: AgentDeps, event_ids: list[int] | None) -> ToolResu
         summary="需要先选择降雨场次编号，才能分析雨天响应、RDII 或雨天风险。",
         options=_event_options(events),
     )
+
+
+def _source_event_ids(deps: AgentDeps, event_ids: list[int]) -> list[int]:
+    """Translate window-local public IDs to stable source IDs for calculations."""
+    mapping = deps.session.window_event_id_map
+    return [mapping.get(int(event_id), int(event_id)) for event_id in event_ids]
+
+
+def _public_event_frame(deps: AgentDeps, frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    if result.empty or "event_id" not in result.columns or not deps.session.window_event_id_map:
+        return result
+    source_to_local = {source: local for local, source in deps.session.window_event_id_map.items()}
+    result["event_id"] = result["event_id"].map(
+        lambda value: source_to_local.get(int(value), int(value)) if pd.notna(value) else value
+    )
+    return result
 
 
 def _event_data_coverage(
@@ -1220,6 +1259,12 @@ def analyze_rainfall_impl(
         result = analyze_rainfall(rain, gap_hours=rainfall_gap_hours)
         if time_range:
             result = _filter_rainfall_result_to_window(rain, result, time_range)
+            deps.session.window_event_id_map = {
+                int(local): int(source)
+                for local, source in zip(result["events"]["event_id"], result["events"]["source_event_id"])
+            }
+        else:
+            deps.session.window_event_id_map = {}
         range_start = time_range[0] if time_range else None
         range_end = time_range[1] if time_range else None
         chart_paths: dict[str, str] = {}
@@ -1324,7 +1369,7 @@ def analyze_patterns_impl(
             )
         elif export:
             curve_images = _save_partial_pattern_curve_png(
-                curves, points, deps.paths.outputs, scope_prefix
+                curves, dry_flow, points, deps.paths.outputs, scope_prefix
             )
         else:
             curve_images = {}
@@ -1362,16 +1407,18 @@ def analyze_event_response_impl(
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"event_ids": event_ids, "points": points or [], "export": export}
+    source_event_ids = _source_event_ids(deps, event_ids or [])
+    params = {"event_ids": source_event_ids, "points": points or [], "export": export}
 
-    flow, events, covered, excluded = _event_data_coverage(deps, event_ids or [], points)
-    coverage_failure = _coverage_guard_result(deps, event_ids or [], covered, excluded)
+    flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
+    coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
     if coverage_failure:
         return coverage_failure
 
     def work() -> tuple[str, dict[str, Any]]:
-        response = analyze_event_response(flow, events, event_ids or [])
-        destination = _route_table_result(deps, response, "雨天事件统计", points, export)
+        response = analyze_event_response(flow, events, source_event_ids)
+        public_response = _public_event_frame(deps, response)
+        destination = _route_table_result(deps, public_response, "雨天事件统计", points, export)
         if response.empty:
             deps.session.unavailable_event_ids = sorted(
                 set(deps.session.unavailable_event_ids).union(event_ids or [])
@@ -1391,7 +1438,7 @@ def analyze_event_response_impl(
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"雨天事件统计完成：场次 {event_ids}，输出 {len(response)} 个点位统计{excluded_note}。"
         return summary, {
-            "table": response.to_dict(orient="records"),
+            "table": public_response.to_dict(orient="records"),
             "no_data": False,
             "covered_points": covered,
             "excluded_points": excluded,
@@ -1412,10 +1459,11 @@ def analyze_rdii_impl(
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    params = {"event_ids": event_ids, "points": points or [], "output": output, "export": export}
+    source_event_ids = _source_event_ids(deps, event_ids or [])
+    params = {"event_ids": source_event_ids, "points": points or [], "output": output, "export": export}
 
-    flow, events, covered, excluded = _event_data_coverage(deps, event_ids or [], points)
-    coverage_failure = _coverage_guard_result(deps, event_ids or [], covered, excluded)
+    flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
+    coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
     if coverage_failure:
         return coverage_failure
 
@@ -1423,8 +1471,9 @@ def analyze_rdii_impl(
         dry_flow = _load_filtered_dry_flow(deps, points=covered)
         dry_curves = build_dry_curves(dry_flow)
         _save_curves(deps, dry_curves)
-        result = analyze_rdii(flow, dry_curves, events, event_ids or [])
+        result = analyze_rdii(flow, dry_curves, events, source_event_ids)
         table = result["rdii_total"]
+        public_table = _public_event_frame(deps, table)
         _save_rdii_curves(deps, result["rdii_curve_data"])
         if table.empty:
             deps.session.unavailable_event_ids = sorted(
@@ -1434,7 +1483,7 @@ def analyze_rdii_impl(
                 f"RDII 分析无可用数据：场次 {event_ids} 与点位 {points or ['全部点位']} 的监测数据"
                 "无时间重叠，无法计算 RDII。"
             )
-            destination = _route_table_result(deps, table, "RDII总量统计", points, export)
+            destination = _route_table_result(deps, public_table, "RDII总量统计", points, export)
             return summary, {
                 "table": [],
                 "chart_paths": {},
@@ -1449,20 +1498,20 @@ def analyze_rdii_impl(
                 rain,
                 events,
                 deps.paths.outputs,
-                selected_events=event_ids,
+                selected_events=source_event_ids,
             )
         elif export:
             chart_paths = _save_partial_rdii_curve_png(
-                result["rdii_curve_data"], points, deps.paths.outputs, event_ids
+                result["rdii_curve_data"], points, deps.paths.outputs, source_event_ids
             )
         else:
             chart_paths = {}
-        destination = _route_table_result(deps, table, "RDII总量统计", points, export)
+        destination = _route_table_result(deps, public_table, "RDII总量统计", points, export)
         chart_count = sum(len(point_paths) for point_paths in chart_paths.values())
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"RDII 分析完成：场次 {event_ids}，输出 {len(table)} 行统计，生成 {chart_count} 张 RDII 曲线图{excluded_note}。"
         return summary, {
-            "table": table.to_dict(orient="records"),
+            "table": public_table.to_dict(orient="records"),
             "chart_paths": chart_paths,
             "no_data": False,
             "covered_points": covered,
@@ -1488,9 +1537,10 @@ def assess_risk_impl(
         if precheck:
             return precheck
     event_ids = event_ids or deps.session.selected_event_ids
+    source_event_ids = _source_event_ids(deps, event_ids or [])
     params = {
         "scope": scope,
-        "event_ids": event_ids or [],
+        "event_ids": source_event_ids,
         "points": points or [],
         "start": start,
         "end": end,
@@ -1517,9 +1567,9 @@ def assess_risk_impl(
     events = pd.DataFrame()
     covered: list[str] = []
     excluded: list[dict[str, str]] = []
-    if scope in {"rainy", "all"} and event_ids:
-        flow, events, covered, excluded = _event_data_coverage(deps, event_ids, points)
-        coverage_failure = _coverage_guard_result(deps, event_ids, covered, excluded)
+    if scope in {"rainy", "all"} and source_event_ids:
+        flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
+        coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
         if coverage_failure:
             return coverage_failure
 
@@ -1531,8 +1581,8 @@ def assess_risk_impl(
             dry_flow, dry_stats, _ = _dry_inputs(deps, points=points)
         sites = io.load_sites(root=deps.paths.root)
         event_table = pd.DataFrame()
-        if scope in {"rainy", "all"} and event_ids:
-            event_table = analyze_event_response(flow, events, event_ids)
+        if scope in {"rainy", "all"} and source_event_ids:
+            event_table = analyze_event_response(flow, events, source_event_ids)
         result = assess_risk(
             dry_stats,
             event_table,
@@ -1540,8 +1590,9 @@ def assess_risk_impl(
             sites=sites,
             flow=flow,
             events=events,
-            event_ids=event_ids,
+            event_ids=source_event_ids,
         )
+        result["rainy_risk"] = _public_event_frame(deps, result["rainy_risk"])
         destinations = [
             _route_table_result(
                 deps, dry_stats, "旱天分析", points, export, start=start, end=end
@@ -1584,13 +1635,29 @@ def assess_risk_impl(
 
 
 DEFAULT_REPORT_SECTIONS = ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"]
-REPORT_MONITORING_SECTIONS = {"监测概况", "数据体检", "数据质量"}
+REPORT_MONITORING_SECTIONS = {"监测概况", "数据概况", "概述与数据质量", "数据体检", "数据质量"}
 REPORT_RAINFALL_SECTIONS = {"降雨分析", "降雨统计", "雨天事件统计", "事件响应", "RDII"}
-REPORT_PATTERN_SECTIONS = {"旱天排污规律统计分析", "排污规律", "排污规律分析", "旱天分析"}
+REPORT_PATTERN_SECTIONS = {
+    "旱天排污规律统计分析",
+    "旱天排污规律",
+    "旱天排污规律分析",
+    "点位特征对比分析",
+    "排污规律",
+    "排污规律分析",
+    "旱天分析",
+}
 REPORT_FULL_RISK_SECTIONS = {"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估"}
-REPORT_DRY_RISK_SECTIONS = {"旱天风险"}
+REPORT_DRY_RISK_SECTIONS = {"旱天风险", "旱天运行风险评估", "结论与建议"}
 REPORT_RAINY_RISK_SECTIONS = {"雨天风险", "雨天溢流风险", "溢流风险"}
 REPORT_RISK_SECTIONS = REPORT_FULL_RISK_SECTIONS | REPORT_DRY_RISK_SECTIONS | REPORT_RAINY_RISK_SECTIONS
+
+
+def _section_requested(sections: list[str], aliases: set[str]) -> bool:
+    return any(
+        section == alias or section.startswith(f"{alias}（") or section.startswith(f"{alias}(")
+        for section in sections
+        for alias in aliases
+    )
 
 
 def generate_report_impl(
@@ -1610,12 +1677,12 @@ def generate_report_impl(
             f"无法生成可靠报告：场次 {unavailable} 与监测数据无时间重叠，缺少事件响应、RDII 和雨天风险依据。"
         )
 
-    wants_monitoring = bool(REPORT_MONITORING_SECTIONS.intersection(sections))
-    wants_rainfall = bool(REPORT_RAINFALL_SECTIONS.intersection(sections))
-    wants_patterns = bool(REPORT_PATTERN_SECTIONS.intersection(sections))
-    wants_full_risk = bool(REPORT_FULL_RISK_SECTIONS.intersection(sections))
-    wants_dry_risk = wants_full_risk or bool(REPORT_DRY_RISK_SECTIONS.intersection(sections))
-    wants_rainy_risk = wants_full_risk or bool(REPORT_RAINY_RISK_SECTIONS.intersection(sections))
+    wants_monitoring = _section_requested(sections, REPORT_MONITORING_SECTIONS)
+    wants_rainfall = _section_requested(sections, REPORT_RAINFALL_SECTIONS)
+    wants_patterns = _section_requested(sections, REPORT_PATTERN_SECTIONS)
+    wants_full_risk = _section_requested(sections, REPORT_FULL_RISK_SECTIONS)
+    wants_dry_risk = wants_full_risk or _section_requested(sections, REPORT_DRY_RISK_SECTIONS)
+    wants_rainy_risk = wants_full_risk or _section_requested(sections, REPORT_RAINY_RISK_SECTIONS)
     wants_risk = wants_dry_risk or wants_rainy_risk
     if not any((wants_monitoring, wants_rainfall, wants_patterns, wants_risk)):
         return error(f"无法识别报告章节: {sections}")
@@ -1687,14 +1754,18 @@ def generate_report_impl(
                 options=_event_options(window_events),
             )
         risk_event_ids = list(selected_event_ids)
+        public_event_ids = list(selected_event_ids)
+        source_to_local: dict[int, int] = {}
         if time_range and "source_event_id" in window_events.columns:
             local_to_source = {
                 int(local): int(source)
                 for local, source in zip(window_events["event_id"], window_events["source_event_id"])
             }
+            source_to_local = {source: local for local, source in local_to_source.items()}
             selected_set = set(selected_event_ids)
             if selected_set and not selected_set.issubset(available_ids) and selected_set.issubset(local_to_source):
                 risk_event_ids = [local_to_source[event_id] for event_id in selected_event_ids]
+            public_event_ids = [source_to_local.get(event_id, event_id) for event_id in risk_event_ids]
         outside = sorted(set(risk_event_ids) - available_ids)
         if wants_rainy_risk and time_range and outside:
             return error(f"降雨场次 {outside} 不在报告时间窗 [{start or '不限'}, {end or '不限'}] 内。")
@@ -1729,7 +1800,12 @@ def generate_report_impl(
             tables["dry_analysis"] = dry_analysis if dry_analysis is not None else pd.DataFrame()
             tables["dry_risk"] = dry_risk if dry_risk is not None else pd.DataFrame()
         if wants_rainy_risk:
-            tables["rainy_overflow_risk"] = rainy_risk if rainy_risk is not None else pd.DataFrame()
+            public_rainy_risk = rainy_risk.copy() if rainy_risk is not None else pd.DataFrame()
+            if source_to_local and "event_id" in public_rainy_risk.columns:
+                public_rainy_risk["event_id"] = public_rainy_risk["event_id"].map(
+                    lambda value: source_to_local.get(int(value), int(value)) if pd.notna(value) else value
+                )
+            tables["rainy_overflow_risk"] = public_rainy_risk
         if wants_rainy_risk and tables["rainy_overflow_risk"].empty:
             return error("雨天风险计算结果为空，拒绝生成带空雨天风险章节的报告。")
 
@@ -1738,7 +1814,7 @@ def generate_report_impl(
         "start": start,
         "end": end,
         "sections": sections,
-        "event_ids": selected_event_ids,
+        "event_ids": public_event_ids if wants_risk else selected_event_ids,
     }
 
     def work() -> tuple[str, dict[str, Any]]:
@@ -1764,6 +1840,8 @@ def generate_report_impl(
             f"报告生成完成：{_rel(deps, output_file)}，范围点位 {points or ['全网']}，"
             f"时间窗 [{start or '全时段'}, {end or '全时段'}]。"
         )
+        if wants_rainy_risk:
+            summary += f" 窗口内降雨场次编号 {public_event_ids}。"
         return summary, result
 
     return _run(deps, "generate_report", work, params=params, use_cache=False)

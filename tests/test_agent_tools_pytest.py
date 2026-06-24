@@ -27,7 +27,9 @@ from agent.tools.module_tools import (
     data_filter_impl,
     generate_report_impl,
     is_full_network,
+    _time_result_prefix,
 )
+from analysis.pipeline_report_assembler.assembler import _scope_period_text
 from analysis.pipeline_report_assembler.template_scanner import scan_template
 from agent.tools.python_tool import run_python_impl
 from agent.types import ToolStatus, ok
@@ -154,6 +156,7 @@ def test_full_network_analysis_writes_combined_sheet(tmp_path: Path) -> None:
         }
     ]
     assert pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计").shape[0] == 2
+    assert "已写入 outputs/综合分析结果.xlsx（数据收集率统计）" in result["summary"]
 
 
 def test_partial_analysis_without_export_does_not_persist_table(tmp_path: Path) -> None:
@@ -185,6 +188,9 @@ def test_partial_analysis_with_export_writes_csv_not_combined(tmp_path: Path) ->
     }
     assert (deps.paths.outputs / "W1_全时段_数据收集率统计.csv").exists()
     assert not deps.paths.combined_xlsx.exists()
+    assert "已导出 CSV" in result["summary"]
+    assert "综合分析结果.xlsx" not in result["summary"]
+    assert result["artifacts"] == ["outputs/W1_全时段_数据收集率统计.csv"]
 
 
 def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path: Path) -> None:
@@ -302,7 +308,11 @@ def test_partial_patterns_with_export_write_named_csv_and_png_only(
 
     assert result["status"] == "ok"
     assert (deps.paths.outputs / "W1_全时段_排污规律分析.csv").exists()
-    assert (deps.paths.outputs / "W1_全时段_排污规律曲线.png").exists()
+    point_images = [Path(path) for path in result["data"]["curve_images"]["W1"]]
+    assert len(point_images) == 2
+    assert {path.name for path in point_images} == {"W1_流量特征曲线.png", "W1_液位特征曲线.png"}
+    assert all(path.exists() for path in point_images)
+    assert len({path.read_bytes() for path in point_images}) == 2
     assert not deps.paths.combined_xlsx.exists()
     assert not (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png").exists()
 
@@ -326,7 +336,8 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
 
     pd.testing.assert_frame_equal(sheet_after, sheet_before)
     assert fixed_png.read_bytes() == png_before
-    assert (deps.paths.outputs / "W1_全时段_排污规律曲线.png").exists()
+    assert (deps.paths.outputs / "特征曲线图" / "W1_全时段" / "W1_流量特征曲线.png").exists()
+    assert (deps.paths.outputs / "特征曲线图" / "W1_全时段" / "W1_液位特征曲线.png").exists()
 
 
 def test_rainfall_time_window_pngs_are_range_named(tmp_path: Path) -> None:
@@ -383,10 +394,12 @@ def test_partial_pattern_export_window_png_includes_point_and_time_range(
         end="2026-01-01 00:59:00",
     )
 
-    path = deps.paths.outputs / "W1_2026-01-01_00-00-00_2026-01-01_00-59-00_排污规律曲线.png"
     assert result["status"] == "ok"
-    assert path.exists()
-    assert str(path) in result["data"]["curve_images"]["selected"]
+    point_images = [Path(path) for path in result["data"]["curve_images"]["W1"]]
+    assert len(point_images) == 2
+    assert all(path.exists() for path in point_images)
+    assert all(path.parent.name == "W1_2026-01-01_00-00-00_2026-01-01_00-59-00" for path in point_images)
+    assert not (deps.paths.outputs / "W1_2026-01-01_00-00-00_2026-01-01_00-59-00_排污规律曲线.png").exists()
 
 
 def test_patterns_time_window_slices_before_analysis(
@@ -934,6 +947,25 @@ def test_report_with_selected_sections_only_computes_selected_data(
     assert set(captured["build"]["analysis_tables"]) == {"data_collection"}
 
 
+def test_custom_dry_only_section_names_still_generate_docx(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    sections = ["数据概况", "旱天排污规律", "旱天运行风险评估", "结论与建议"]
+    result = generate_report_impl(deps, sections=sections)
+
+    assert result["status"] == "ok"
+    assert counts == {"check": 1, "patterns": 1, "risk": 1, "build": 1}
+    assert captured["risk_scope"][0] == "dry"
+    output = Path(result["data"]["output_file"])
+    assert output.suffix == ".docx" and output.exists()
+    assert not list(deps.paths.outputs.glob("*.md"))
+
+
 def test_repeated_same_scope_report_reuses_analysis(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1131,6 +1163,93 @@ def test_window_rainfall_events_are_locally_renumbered(tmp_path: Path) -> None:
     assert [event["event_id"] for event in events] == [1, 2]
 
 
+def test_window_local_event_id_is_translated_for_downstream_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    deps.session.window_event_id_map = {1: 6}
+    captured: dict[str, list[int]] = {}
+
+    def fake_coverage(_deps, event_ids, points):
+        captured["coverage"] = event_ids
+        return pd.DataFrame(), pd.DataFrame(), ["W1"], []
+
+    def fake_response(_flow, _events, event_ids):
+        captured["analysis"] = event_ids
+        return pd.DataFrame([{"event_id": 6, "point_id": "W1", "peak_flow_lps": 1.0}])
+
+    monkeypatch.setattr("agent.tools.module_tools._event_data_coverage", fake_coverage)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response", fake_response)
+
+    result = analyze_event_response_impl(deps, event_ids=[1], points=["W1"])
+
+    assert result["status"] == "ok"
+    assert captured == {"coverage": [6], "analysis": [6]}
+    assert result["data"]["table"][0]["event_id"] == 1
+    assert "场次 [1]" in result["summary"]
+
+
+def test_window_report_keeps_source_event_internal_and_renders_local_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    def fake_rain(_deps, time_range=None, output="all", rainfall_gap_hours=12):
+        return ok(
+            "rain",
+            daily=[{"date": "2026-03-10", "daily_rain_mm": 5.0, "is_rainy": True}],
+            events=[{
+                "event_id": 1,
+                "source_event_id": 6,
+                "start_time": "2026-03-10 01:00",
+                "end_time": "2026-03-10 03:00",
+                "total_rain_mm": 5.0,
+            }],
+        )
+
+    def fake_risk(_deps, scope="all", event_ids=None, points=None, export=False, start=None, end=None):
+        captured["risk_event_ids"] = event_ids
+        return ok(
+            "risk",
+            dry_analysis=[],
+            dry_risk=[],
+            rainy_risk=[{"event_id": 6, "point_id": "W1", "overflow_value": 0.3}],
+        )
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
+    monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._resolved_report_time_range",
+        lambda *_args: ["2026-03-10", "2026-03-12"],
+    )
+
+    result = generate_report_impl(
+        deps,
+        start="2026-03-10",
+        end="2026-03-12",
+        sections=["降雨分析", "雨天风险"],
+        event_ids=[6],
+    )
+
+    assert result["status"] == "ok"
+    assert captured["risk_event_ids"] == [6]
+    rainy_table = captured["build"]["analysis_tables"]["rainy_overflow_risk"]
+    assert rainy_table["event_id"].tolist() == [1]
+    assert "窗口内降雨场次编号 [1]" in result["summary"]
+    assert "窗口内降雨场次编号 [6]" not in result["summary"]
+
+
+def test_open_time_ranges_use_natural_language_and_filename_tokens() -> None:
+    assert _scope_period_text("2026-03-10", "") == "2026/03/10日之后"
+    assert _scope_period_text("", "2026-03-10") == "2026/03/10日之前"
+    assert "不限日" not in _scope_period_text("2026-03-10", "")
+    assert _time_result_prefix("2026-03-10", None) == "2026-03-10_之后"
+    assert _time_result_prefix(None, "2026-03-10") == "2026-03-10_之前"
+
+
 def test_full_network_aliases_and_complete_list_use_short_full_network_filename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1169,6 +1288,18 @@ def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
     result = run_python_impl(deps, "df = load_flow()\nprint(len(df))\n(WORKSPACE_DIR / 'out.txt').write_text(str(len(df)), encoding='utf-8')")
     assert result["status"] == "ok"
     assert (deps.paths.workspace / "out.txt").read_text(encoding="utf-8") == "60"
+
+
+def test_run_python_rejects_markdown_report_fallback(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    result = run_python_impl(
+        deps,
+        "(OUTPUTS_DIR / '旱天分析报告.md').write_text('报告', encoding='utf-8')",
+    )
+
+    assert result["status"] == "error"
+    assert "generate_report" in result["summary"]
+    assert not (deps.paths.outputs / "旱天分析报告.md").exists()
 
 
 def test_run_python_returns_error_without_crashing(tmp_path: Path) -> None:

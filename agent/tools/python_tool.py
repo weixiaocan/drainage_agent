@@ -25,6 +25,8 @@ def _workspace_files(deps: AgentDeps) -> list[str]:
 
 
 def run_python_impl(deps: AgentDeps, code: str) -> ToolResult:
+    if ".md" in code.lower() and "报告" in code:
+        return error("报告必须通过 generate_report 生成 DOCX；run_python 禁止生成 Markdown 报告。")
     deps.paths.workspace.mkdir(parents=True, exist_ok=True)
     script_path = deps.paths.workspace / f"agent_run_{uuid.uuid4().hex}.py"
     package_root = Path(__file__).resolve().parents[2]

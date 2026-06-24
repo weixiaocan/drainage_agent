@@ -183,30 +183,24 @@ def _fill_curve_table(table: Table, image_paths: dict[str, list[str]], point_id:
         return 0
     row = table.rows[0]
     _remove_table_borders(table)
-    flow_path, level_path, combined_path = _curve_image_candidates(image_paths, point_id)
+    flow_path, level_path = _curve_image_candidates(image_paths, point_id)
     inserted = 0
-    inserted += _insert_curve_image(row.cells[0], flow_path, combined_path, f"{point_id}流量特征曲线", "（a）流量特征曲线图", warnings)
-    inserted += _insert_curve_image(row.cells[1], level_path, combined_path, f"{point_id}液位特征曲线", "（b）液位特征曲线图", warnings)
+    inserted += _insert_curve_image(row.cells[0], flow_path, f"{point_id}流量特征曲线", "（a）流量特征曲线图", warnings)
+    inserted += _insert_curve_image(row.cells[1], level_path, f"{point_id}液位特征曲线", "（b）液位特征曲线图", warnings)
     return inserted
 
 
-def _curve_image_candidates(image_paths: dict[str, list[str]], point_id: str) -> tuple[Path, Path, Path]:
+def _curve_image_candidates(image_paths: dict[str, list[str]], point_id: str) -> tuple[Path, Path]:
     point_paths = [Path(value) for value in image_paths.get(point_id, [])]
-    selected_paths = [Path(value) for value in image_paths.get("selected", [])]
     flow_path = next((path for path in point_paths if "流量" in path.name), Path("__missing_flow_image__.png"))
     level_path = next((path for path in point_paths if "液位" in path.name), Path("__missing_level_image__.png"))
-    combined_path = selected_paths[0] if selected_paths else next(
-        (path for path in point_paths if "特征曲线" in path.name and "流量" not in path.name and "液位" not in path.name),
-        Path("__missing_combined_image__.png"),
-    )
-    return flow_path, level_path, combined_path
+    return flow_path, level_path
 
 
-def _insert_curve_image(cell, primary: Path, fallback: Path, label: str, subcaption: str, warnings: list[str]) -> int:
-    path = primary if primary.exists() else fallback
+def _insert_curve_image(cell, path: Path, label: str, subcaption: str, warnings: list[str]) -> int:
     if not path.exists():
         set_cell_text(cell, f"缺少{label}图片\n{subcaption}")
-        warnings.append(f"缺少图片: {primary.name}")
+        warnings.append(f"缺少图片: {path.name}")
         return 0
     try:
         clear_cell(cell)
