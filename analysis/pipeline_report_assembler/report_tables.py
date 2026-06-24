@@ -59,6 +59,13 @@ def render_report_table(
             value = row.get(col.field, "")
             set_cell_text(word_row.cells[col_idx], col.formatter(value))
 
+    actual_data_rows = len(table.rows) - spec.header_rows
+    if actual_data_rows != len(df):
+        raise ValueError(f"{spec.role} 表格行数错误: 应为 {len(df)}，实际 {actual_data_rows}")
+    for row in table.rows[spec.header_rows:]:
+        if not any(cell.text.strip() for cell in row.cells):
+            raise ValueError(f"{spec.role} 表格仍包含空白预留行")
+
     return warnings
 
 

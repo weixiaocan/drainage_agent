@@ -11,8 +11,8 @@ import pandas as pd
 from .data_context import ReportDataContext, clean_point_id
 
 
-MONITORING_PERIOD_PLACEHOLDER = "____/__/__日-____/__/__日"
-OPERATION_PERIOD_PLACEHOLDER = "____年__月__日至__月__日"
+MONITORING_PERIOD_PLACEHOLDER = "本次分析数据覆盖时段"
+OPERATION_PERIOD_PLACEHOLDER = "本次分析数据覆盖时段"
 
 
 @dataclass

@@ -124,7 +124,22 @@ def is_full_network(points: list[str] | None, deps: AgentDeps) -> bool:
     all_points = _site_point_ids(deps)
     if not all_points:
         return False
-    return all_points.issubset({str(point) for point in points})
+    values = {str(point).strip() for point in points if str(point).strip()}
+    full_scope_aliases = {"全网", "全部点", "全部点位", "所有点", "所有点位"}
+    if values.intersection(full_scope_aliases):
+        return True
+    for value in values:
+        match = re.fullmatch(r"(\d+)\s*个?\s*点(?:位)?", value)
+        if match and int(match.group(1)) == len(all_points):
+            return True
+    return all_points.issubset(values)
+
+
+def _normalize_point_scope(points: list[str] | None, deps: AgentDeps) -> list[str] | None:
+    """Use one canonical representation for full-network scope."""
+    if is_full_network(points, deps):
+        return None
+    return list(dict.fromkeys(str(point).strip() for point in points or [] if str(point).strip()))
 
 
 def is_full_time_range(start: str | None = None, end: str | None = None) -> bool:
@@ -159,6 +174,9 @@ def _time_result_prefix(start: str | None, end: str | None) -> str:
             return fallback
         parsed = pd.to_datetime(value, errors="coerce")
         if not pd.isna(parsed):
+            text = str(value).strip()
+            if len(text) > 10:
+                return parsed.strftime("%Y-%m-%d_%H-%M-%S")
             return parsed.strftime("%Y-%m-%d")
         return _safe_filename_part(value)
 
@@ -276,11 +294,15 @@ def _add_rainfall_excel_charts(path: Path, daily: pd.DataFrame) -> None:
     workbook.save(path)
 
 
-def _save_rainfall_png_charts(daily: pd.DataFrame, output_dir: Path) -> dict[str, str]:
+def _save_rainfall_png_charts(
+    daily: pd.DataFrame,
+    output_dir: Path,
+    scope_prefix: str,
+) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {
-        "daily_bar": output_dir / "日降雨量时间序列图.png",
-        "rainy_ratio": output_dir / "降雨日占比饼图.png",
+        "daily_bar": output_dir / f"{scope_prefix}_日降雨量时间序列图.png",
+        "rainy_ratio": output_dir / f"{scope_prefix}_降雨日占比饼图.png",
     }
     if daily.empty:
         return {key: str(value) for key, value in paths.items()}
@@ -548,7 +570,13 @@ def _plot_pipeline_pattern_curve(
     return True
 
 
-def _save_pattern_curve_pngs(curves: dict[str, pd.DataFrame], dry_flow: pd.DataFrame, output_dir: Path) -> dict[str, list[str]]:
+def _save_pattern_curve_pngs(
+    curves: dict[str, pd.DataFrame],
+    dry_flow: pd.DataFrame,
+    output_dir: Path,
+    scope_prefix: str,
+) -> dict[str, list[str]]:
+    output_dir = output_dir / scope_prefix
     output_dir.mkdir(parents=True, exist_ok=True)
     saved: dict[str, list[str]] = {}
     if not curves:
@@ -607,6 +635,7 @@ def _save_partial_pattern_curve_png(
     curves: dict[str, pd.DataFrame],
     points: list[str] | None,
     output_dir: Path,
+    scope_prefix: str,
 ) -> dict[str, list[str]]:
     selected = [point for point in sorted(curves) if not points or point in {str(value) for value in points}]
     if not selected:
@@ -643,7 +672,7 @@ def _save_partial_pattern_curve_png(
         axis.legend(loc="upper right")
         axis.grid(False)
     fig.tight_layout()
-    path = output_dir / f"{_point_result_prefix(points)}_排污规律曲线.png"
+    path = output_dir / f"{scope_prefix}_排污规律曲线.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return {"selected": [str(path)]}
@@ -653,6 +682,7 @@ def _save_partial_rdii_curve_png(
     curve_data: dict[int, dict[str, pd.DataFrame]],
     points: list[str] | None,
     output_dir: Path,
+    event_ids: list[int] | None,
 ) -> dict[int, dict[str, str]]:
     selected_points = {str(point) for point in points or []}
     try:
@@ -684,7 +714,8 @@ def _save_partial_rdii_curve_png(
     ax.legend(loc="upper right")
     ax.grid(False)
     fig.tight_layout()
-    path = output_dir / f"{_point_result_prefix(points)}_RDII曲线.png"
+    event_prefix = "_".join(f"event{event_id}" for event_id in sorted(event_ids or [])) or "event未指定"
+    path = output_dir / f"{_point_result_prefix(points)}_{event_prefix}_RDII曲线.png"
     fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return {0: {"selected": str(path)}}
@@ -765,9 +796,16 @@ def _store_report_data_components(
         time_range = params.get("time_range") or []
         start = time_range[0] if len(time_range) == 2 else None
         end = time_range[1] if len(time_range) == 2 else None
-        components = [("rainfall_daily", "daily", None), ("rainfall_events", "events", None)]
+        components = [
+            ("rainfall_daily", "daily", None),
+            ("rainfall_events", "events", None),
+            ("rainfall_chart_paths", "chart_paths", None),
+        ]
     elif tool_name == "analyze_patterns":
-        components = [("pattern_analysis", "table", None)]
+        components = [
+            ("pattern_analysis", "table", None),
+            ("pattern_chart_paths", "curve_images", None),
+        ]
     elif tool_name == "assess_risk":
         scope = params.get("scope", "all")
         if scope in {"dry", "all"} and data.get("dry_analysis") is not None:
@@ -795,6 +833,19 @@ def _cached_report_frame(
     key = _report_data_key(deps, component, points, start, end, event_ids)
     records = deps.session.report_data_cache.get(key)
     return pd.DataFrame(deepcopy(records)) if records is not None else None
+
+
+def _cached_report_value(
+    deps: AgentDeps,
+    component: str,
+    points: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    event_ids: list[int] | None = None,
+) -> Any | None:
+    key = _report_data_key(deps, component, points, start, end, event_ids)
+    value = deps.session.report_data_cache.get(key)
+    return deepcopy(value) if value is not None else None
 
 
 def _manifest_stale(deps: AgentDeps, tool_name: str) -> bool:
@@ -1145,6 +1196,8 @@ def _filter_rainfall_result_to_window(
         event_starts = pd.to_datetime(events["start_time"], errors="coerce")
         event_ends = pd.to_datetime(events["end_time"], errors="coerce")
         events = events[(event_ends >= start) & (event_starts <= end)].copy()
+        events.insert(0, "source_event_id", events["event_id"].astype(int))
+        events["event_id"] = range(1, len(events) + 1)
     return {"daily": window_daily, "events": events.reset_index(drop=True)}
 
 
@@ -1185,7 +1238,11 @@ def analyze_rainfall_impl(
             if destination["kind"] == "combined_xlsx":
                 _remove_sheet(deps.paths.combined_xlsx, "日降雨量统计")
                 _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
-            chart_paths = _save_rainfall_png_charts(result["daily"], deps.paths.outputs / "降雨分析图")
+            chart_paths = _save_rainfall_png_charts(
+                result["daily"],
+                deps.paths.outputs / "降雨分析图",
+                _range_result_prefix(None, deps, range_start, range_end),
+            )
         if output in {"all", "events"}:
             destination = _route_table_result(
                 deps,
@@ -1226,8 +1283,16 @@ def analyze_patterns_impl(
     export: bool = False,
     start: str | None = None,
     end: str | None = None,
+    report_charts: bool = False,
 ) -> ToolResult:
-    params = {"points": points or [], "start": start, "end": end, "output": output, "export": export}
+    params = {
+        "points": points or [],
+        "start": start,
+        "end": end,
+        "output": output,
+        "export": export,
+        "report_charts": report_charts,
+    }
     windowed = start is not None or end is not None
     coverage: dict[str, str | None] | None = None
     covered: list[str] = []
@@ -1249,10 +1314,18 @@ def analyze_patterns_impl(
         patterns = result["patterns"]
         curves = result["curves"]
         _save_curves(deps, curves)
-        if is_full_network(points, deps):
-            curve_images = _save_pattern_curve_pngs(curves, dry_flow, deps.paths.outputs / "特征曲线图")
+        scope_prefix = _range_result_prefix(points, deps, start, end)
+        if is_full_network(points, deps) or report_charts:
+            curve_images = _save_pattern_curve_pngs(
+                curves,
+                dry_flow,
+                deps.paths.outputs / "特征曲线图",
+                scope_prefix,
+            )
         elif export:
-            curve_images = _save_partial_pattern_curve_png(curves, points, deps.paths.outputs)
+            curve_images = _save_partial_pattern_curve_png(
+                curves, points, deps.paths.outputs, scope_prefix
+            )
         else:
             curve_images = {}
         destination = _route_table_result(
@@ -1379,7 +1452,9 @@ def analyze_rdii_impl(
                 selected_events=event_ids,
             )
         elif export:
-            chart_paths = _save_partial_rdii_curve_png(result["rdii_curve_data"], points, deps.paths.outputs)
+            chart_paths = _save_partial_rdii_curve_png(
+                result["rdii_curve_data"], points, deps.paths.outputs, event_ids
+            )
         else:
             chart_paths = {}
         destination = _route_table_result(deps, table, "RDII总量统计", points, export)
@@ -1512,7 +1587,10 @@ DEFAULT_REPORT_SECTIONS = ["监测概况", "降雨分析", "旱天排污规律�
 REPORT_MONITORING_SECTIONS = {"监测概况", "数据体检", "数据质量"}
 REPORT_RAINFALL_SECTIONS = {"降雨分析", "降雨统计", "雨天事件统计", "事件响应", "RDII"}
 REPORT_PATTERN_SECTIONS = {"旱天排污规律统计分析", "排污规律", "排污规律分析", "旱天分析"}
-REPORT_RISK_SECTIONS = {"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估", "旱天风险", "雨天风险", "雨天溢流风险", "溢流风险"}
+REPORT_FULL_RISK_SECTIONS = {"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估"}
+REPORT_DRY_RISK_SECTIONS = {"旱天风险"}
+REPORT_RAINY_RISK_SECTIONS = {"雨天风险", "雨天溢流风险", "溢流风险"}
+REPORT_RISK_SECTIONS = REPORT_FULL_RISK_SECTIONS | REPORT_DRY_RISK_SECTIONS | REPORT_RAINY_RISK_SECTIONS
 
 
 def generate_report_impl(
@@ -1523,6 +1601,7 @@ def generate_report_impl(
     sections: list[str] | None = None,
     event_ids: list[int] | None = None,
 ) -> ToolResult:
+    points = _normalize_point_scope(points, deps)
     sections = sections or list(DEFAULT_REPORT_SECTIONS)
     selected_event_ids = list(event_ids or deps.session.selected_event_ids)
     unavailable = sorted(set(selected_event_ids).intersection(deps.session.unavailable_event_ids))
@@ -1534,10 +1613,15 @@ def generate_report_impl(
     wants_monitoring = bool(REPORT_MONITORING_SECTIONS.intersection(sections))
     wants_rainfall = bool(REPORT_RAINFALL_SECTIONS.intersection(sections))
     wants_patterns = bool(REPORT_PATTERN_SECTIONS.intersection(sections))
-    wants_risk = bool(REPORT_RISK_SECTIONS.intersection(sections))
+    wants_full_risk = bool(REPORT_FULL_RISK_SECTIONS.intersection(sections))
+    wants_dry_risk = wants_full_risk or bool(REPORT_DRY_RISK_SECTIONS.intersection(sections))
+    wants_rainy_risk = wants_full_risk or bool(REPORT_RAINY_RISK_SECTIONS.intersection(sections))
+    wants_risk = wants_dry_risk or wants_rainy_risk
     if not any((wants_monitoring, wants_rainfall, wants_patterns, wants_risk)):
         return error(f"无法识别报告章节: {sections}")
     tables: dict[str, pd.DataFrame] = {}
+    rainfall_chart_paths: dict[str, str] = {}
+    pattern_chart_paths: dict[str, list[str]] = {}
     summaries: list[str] = []
     time_range = _resolved_report_time_range(deps, start, end) if start is not None or end is not None else None
 
@@ -1552,61 +1636,83 @@ def generate_report_impl(
         tables["data_collection"] = cached
 
     rain: ToolResult | None = None
-    if wants_rainfall or wants_risk:
+    if wants_rainfall or wants_rainy_risk:
         rain_start = time_range[0] if time_range else None
         rain_end = time_range[1] if time_range else None
         cached_daily = _cached_report_frame(deps, "rainfall_daily", start=rain_start, end=rain_end)
         cached_events = _cached_report_frame(deps, "rainfall_events", start=rain_start, end=rain_end)
+        rainfall_chart_paths = _cached_report_value(
+            deps, "rainfall_chart_paths", start=rain_start, end=rain_end
+        ) or {}
         if cached_daily is None or cached_events is None:
             rain = analyze_rainfall_impl(deps, time_range=time_range)
             if rain["status"] != "ok":
                 return rain
             cached_daily = _result_frame(rain, "daily")
             cached_events = _result_frame(rain, "events")
+            rainfall_chart_paths = deepcopy(rain.get("data", {}).get("chart_paths", {}))
             summaries.append(rain["summary"])
         tables["rainfall_daily"] = cached_daily
         tables["rainfall_events"] = cached_events
 
     if wants_patterns:
         cached = _cached_report_frame(deps, "pattern_analysis", points, start, end)
-        if cached is None:
-            patterns = analyze_patterns_impl(deps, points=points, start=start, end=end)
+        pattern_chart_paths = _cached_report_value(
+            deps, "pattern_chart_paths", points, start, end
+        ) or {}
+        if cached is None or not pattern_chart_paths:
+            patterns = analyze_patterns_impl(
+                deps, points=points, start=start, end=end, report_charts=True
+            )
             if patterns["status"] != "ok":
                 return patterns
             cached = _result_frame(patterns, "table")
+            pattern_chart_paths = deepcopy(patterns.get("data", {}).get("curve_images", {}))
             summaries.append(patterns["summary"])
         tables["pattern_analysis"] = cached
 
     if wants_risk:
         window_events = tables.get("rainfall_events", pd.DataFrame())
+        event_id_column = "source_event_id" if time_range and "source_event_id" in window_events.columns else "event_id"
         available_ids = (
-            set(pd.to_numeric(window_events.get("event_id"), errors="coerce").dropna().astype(int).tolist())
-            if not window_events.empty and "event_id" in window_events.columns
+            set(pd.to_numeric(window_events.get(event_id_column), errors="coerce").dropna().astype(int).tolist())
+            if not window_events.empty and event_id_column in window_events.columns
             else set()
         )
-        if not selected_event_ids:
+        if wants_rainy_risk and not selected_event_ids:
             return needs_input(
                 "event_ids",
                 "请选择报告雨天风险所使用的降雨场次编号。",
                 summary="默认全套报告包含雨天风险，需要先选择降雨场次。",
                 options=_event_options(window_events),
             )
-        outside = sorted(set(selected_event_ids) - available_ids)
-        if time_range and outside:
+        risk_event_ids = list(selected_event_ids)
+        if time_range and "source_event_id" in window_events.columns:
+            local_to_source = {
+                int(local): int(source)
+                for local, source in zip(window_events["event_id"], window_events["source_event_id"])
+            }
+            selected_set = set(selected_event_ids)
+            if selected_set and not selected_set.issubset(available_ids) and selected_set.issubset(local_to_source):
+                risk_event_ids = [local_to_source[event_id] for event_id in selected_event_ids]
+        outside = sorted(set(risk_event_ids) - available_ids)
+        if wants_rainy_risk and time_range and outside:
             return error(f"降雨场次 {outside} 不在报告时间窗 [{start or '不限'}, {end or '不限'}] 内。")
-        dry_analysis = _cached_report_frame(deps, "dry_analysis", points, start, end)
-        dry_risk = _cached_report_frame(deps, "dry_risk", points, start, end)
-        rainy_risk = _cached_report_frame(
-            deps, "rainy_overflow_risk", points, start, end, selected_event_ids
+        dry_analysis = _cached_report_frame(deps, "dry_analysis", points, start, end) if wants_dry_risk else pd.DataFrame()
+        dry_risk = _cached_report_frame(deps, "dry_risk", points, start, end) if wants_dry_risk else pd.DataFrame()
+        rainy_risk = (
+            _cached_report_frame(deps, "rainy_overflow_risk", points, start, end, risk_event_ids)
+            if wants_rainy_risk
+            else pd.DataFrame()
         )
-        missing_dry = dry_analysis is None or dry_risk is None
-        missing_rainy = rainy_risk is None
+        missing_dry = wants_dry_risk and (dry_analysis is None or dry_risk is None)
+        missing_rainy = wants_rainy_risk and rainy_risk is None
         if missing_dry or missing_rainy:
             scope = "all" if missing_dry and missing_rainy else "dry" if missing_dry else "rainy"
             risk = assess_risk_impl(
                 deps,
                 scope=scope,
-                event_ids=selected_event_ids if scope in {"all", "rainy"} else None,
+                event_ids=risk_event_ids if scope in {"all", "rainy"} else None,
                 points=points,
                 start=start,
                 end=end,
@@ -1619,10 +1725,12 @@ def generate_report_impl(
             if missing_rainy:
                 rainy_risk = _result_frame(risk, "rainy_risk")
             summaries.append(risk["summary"])
-        tables["dry_analysis"] = dry_analysis if dry_analysis is not None else pd.DataFrame()
-        tables["dry_risk"] = dry_risk if dry_risk is not None else pd.DataFrame()
-        tables["rainy_overflow_risk"] = rainy_risk if rainy_risk is not None else pd.DataFrame()
-        if tables["rainy_overflow_risk"].empty:
+        if wants_dry_risk:
+            tables["dry_analysis"] = dry_analysis if dry_analysis is not None else pd.DataFrame()
+            tables["dry_risk"] = dry_risk if dry_risk is not None else pd.DataFrame()
+        if wants_rainy_risk:
+            tables["rainy_overflow_risk"] = rainy_risk if rainy_risk is not None else pd.DataFrame()
+        if wants_rainy_risk and tables["rainy_overflow_risk"].empty:
             return error("雨天风险计算结果为空，拒绝生成带空雨天风险章节的报告。")
 
     params = {
@@ -1634,7 +1742,7 @@ def generate_report_impl(
     }
 
     def work() -> tuple[str, dict[str, Any]]:
-        output_file = deps.paths.outputs / _report_filename(points, start, end)
+        output_file = deps.paths.outputs / _report_filename(points, deps, start, end)
         result = build_report(
             output_file,
             "排水监测数据分析报告",
@@ -1648,6 +1756,9 @@ def generate_report_impl(
             point_ids=points,
             start=start,
             end=end,
+            rainfall_chart_paths=rainfall_chart_paths,
+            pattern_chart_paths=pattern_chart_paths,
+            artifact_scope=_range_result_prefix(points, deps, start, end),
         )
         summary = (
             f"报告生成完成：{_rel(deps, output_file)}，范围点位 {points or ['全网']}，"
@@ -1670,12 +1781,21 @@ def _resolved_report_time_range(deps: AgentDeps, start: str | None, end: str | N
     return [resolved_start, resolved_end]
 
 
-def _report_filename(points: list[str] | None, start: str | None, end: str | None) -> str:
-    if not points and start is None and end is None:
-        return "分析报告.docx"
-    parts: list[str] = []
-    if points:
-        parts.append(_point_result_prefix(points))
-    if start or end:
-        parts.append(f"{_safe_filename_part(start or '起始')}_{_safe_filename_part(end or '结束')}")
-    return "_".join(parts + ["分析报告.docx"])
+def _report_filename(
+    points: list[str] | None,
+    deps: AgentDeps,
+    start: str | None,
+    end: str | None,
+) -> str:
+    points = _normalize_point_scope(points, deps)
+    if points is None:
+        point_part = "全网"
+    elif len(points) == 1:
+        point_part = _safe_filename_part(points[0])[:24]
+    else:
+        first = _safe_filename_part(sorted(points, key=str)[0])[:12]
+        point_part = f"{len(points)}点_{first}等"
+    filename = f"{point_part}_{_time_result_prefix(start, end)}_分析报告.docx"
+    if len(filename) > 80:
+        filename = f"{point_part[:20]}_{_time_result_prefix(start, end)[:36]}_分析报告.docx"
+    return filename

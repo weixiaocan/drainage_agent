@@ -248,9 +248,9 @@ class AgentToolTests(unittest.TestCase):
                     )
             dry_flow = pd.DataFrame(rows)
 
-            saved = _save_pattern_curve_pngs(curves, dry_flow, output_dir)
+            saved = _save_pattern_curve_pngs(curves, dry_flow, output_dir, "全网_全时段")
 
-            flow_path = output_dir / "W1_流量特征曲线.png"
+            flow_path = output_dir / "全网_全时段" / "W1_流量特征曲线.png"
             self.assertIn(str(flow_path), saved["W1"])
             self.assertTrue(flow_path.exists())
             import matplotlib.image as mpimg
@@ -277,8 +277,8 @@ class AgentToolTests(unittest.TestCase):
             self.assertIn("降雨场次分析", workbook.sheetnames)
             self.assertNotIn("日降雨量统计", workbook.sheetnames)
             self.assertNotIn("场次降雨统计", workbook.sheetnames)
-            self.assertTrue((deps.paths.outputs / "降雨分析图" / "日降雨量时间序列图.png").exists())
-            self.assertTrue((deps.paths.outputs / "降雨分析图" / "降雨日占比饼图.png").exists())
+            self.assertTrue((deps.paths.outputs / "降雨分析图" / "全网_全时段_日降雨量时间序列图.png").exists())
+            self.assertTrue((deps.paths.outputs / "降雨分析图" / "全网_全时段_降雨日占比饼图.png").exists())
 
     def test_rainfall_events_match_pipeline_hourly_windows(self) -> None:
         rain = pd.DataFrame(
@@ -317,7 +317,7 @@ class AgentToolTests(unittest.TestCase):
         self.assertTrue(pd.isna(row["max_24h_rain_mm"]))
         self.assertAlmostEqual(row["avg_intensity_mmh"], 1.5)
 
-    def test_rainfall_window_keeps_overlapping_full_event_and_original_id(self) -> None:
+    def test_rainfall_window_keeps_overlapping_full_event_and_uses_local_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
             pd.DataFrame(
@@ -347,7 +347,8 @@ class AgentToolTests(unittest.TestCase):
             events = result["data"]["events"]
             self.assertTrue(result["data"]["has_rainfall_coverage"])
             self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["event_id"], 4)
+            self.assertEqual(events[0]["source_event_id"], 4)
+            self.assertEqual(events[0]["event_id"], 1)
             self.assertEqual(events[0]["start_time"], "2026-02-25 19:00")
             self.assertEqual(events[0]["end_time"], "2026-02-26 08:00")
             self.assertAlmostEqual(events[0]["total_rain_mm"], 10.6)
@@ -676,7 +677,7 @@ class AgentToolTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ok", result)
             self.assertTrue((deps.paths.outputs / "W1_全时段_RDII总量统计.csv").exists())
-            self.assertTrue((deps.paths.outputs / "W1_RDII曲线.png").exists())
+            self.assertTrue((deps.paths.outputs / "W1_event1_RDII曲线.png").exists())
             self.assertFalse((deps.paths.outputs / "rdii_curve" / "event1_1_3" / "W1_event1.png").exists())
             workbook = load_workbook(deps.paths.combined_xlsx)
             self.assertNotIn("RDII总量统计", workbook.sheetnames)
@@ -712,23 +713,16 @@ class AgentToolTests(unittest.TestCase):
             doc.save(template)
 
             output = outputs / "分析报告.docx"
-            result = build_report(
-                output,
-                "排水监测数据分析报告",
-                template_file=template,
-                analysis_tables=_workbook_tables(combined),
-                outputs_dir=outputs,
-                sections=["降雨分析", "污水系统运行风险分析"],
-            )
-
-            rendered = Document(output)
-            paragraph_text = "\n".join(paragraph.text for paragraph in rendered.paragraphs)
-            self.assertNotIn("自动分析摘要", paragraph_text)
-            self.assertIn("降雨分析共统计", paragraph_text)
-            self.assertIn("污水系统运行风险分析", paragraph_text)
-            self.assertEqual(result["templated_sections"], ["降雨分析"])
-            self.assertEqual(result["generated_sections"], ["污水系统运行风险分析"])
-            self.assertGreaterEqual(result["stats"]["inserted_tables"], 3)
+            with self.assertRaisesRegex(ValueError, "报告缺少表题"):
+                build_report(
+                    output,
+                    "排水监测数据分析报告",
+                    template_file=template,
+                    analysis_tables=_workbook_tables(combined),
+                    outputs_dir=outputs,
+                    sections=["降雨分析", "污水系统运行风险分析"],
+                )
+            self.assertFalse(output.exists())
 
     def test_build_report_fills_existing_collection_rate_template_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -870,23 +864,17 @@ class AgentToolTests(unittest.TestCase):
             doc.save(template)
 
             output = outputs / "分析报告.docx"
-            result = build_report(
-                output,
-                "排水监测数据分析报告",
-                template_file=template,
-                analysis_tables=_workbook_tables(combined),
-                outputs_dir=outputs,
-                sections=["旱天排污规律统计分析"],
-            )
-
-            rendered = Document(output)
-            text = "\n".join(paragraph.text for paragraph in rendered.paragraphs)
-            self.assertNotIn("模板示例点位内容", text)
-            self.assertIn("本轮监测的2个点位", text)
-            self.assertIn("W1点位符合生活用水规律", text)
-            self.assertIn("W2点位曲线无明显波峰或波谷", text)
-            self.assertGreaterEqual(result["stats"]["text_replaced"], 5)
-            self.assertEqual(result["stats"]["inserted_images"], 1)
+            with self.assertRaisesRegex(ValueError, "图片插入不完整"):
+                build_report(
+                    output,
+                    "排水监测数据分析报告",
+                    template_file=template,
+                    analysis_tables=_workbook_tables(combined),
+                    outputs_dir=outputs,
+                    sections=["旱天排污规律统计分析"],
+                    pattern_chart_paths={"W1": [str(image_dir / "W1_流量特征曲线.png")]},
+                )
+            self.assertFalse(output.exists())
 
     def test_build_report_writes_grouped_risk_section(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -913,22 +901,15 @@ class AgentToolTests(unittest.TestCase):
             doc.save(template)
 
             output = outputs / "分析报告.docx"
-            result = build_report(
-                output,
-                "排水监测数据分析报告",
-                template_file=template,
-                analysis_tables=_workbook_tables(combined),
-                sections=["污水系统运行风险分析"],
-            )
-
-            rendered = Document(output)
-            text = "\n".join(paragraph.text for paragraph in rendered.paragraphs)
-            self.assertIn("旱天最大充满度情况如下", text)
-            self.assertIn("溢流风险值情况如下", text)
-            self.assertIn("淤积风险情况如下", text)
-            self.assertIn("本章小结", text)
-            self.assertIn("W3", text)
-            self.assertGreaterEqual(result["stats"]["text_replaced"], 10)
+            with self.assertRaisesRegex(ValueError, "报告缺少表题"):
+                build_report(
+                    output,
+                    "排水监测数据分析报告",
+                    template_file=template,
+                    analysis_tables=_workbook_tables(combined),
+                    sections=["污水系统运行风险分析"],
+                )
+            self.assertFalse(output.exists())
 
     def test_build_report_inserts_rainfall_images_before_captions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -949,13 +930,18 @@ class AgentToolTests(unittest.TestCase):
             png_bytes = base64.b64decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
             )
-            (chart_dir / "日降雨量时间序列图.png").write_bytes(png_bytes)
-            (chart_dir / "降雨日占比饼图.png").write_bytes(png_bytes)
+            daily_chart = chart_dir / "全网_2026-01-01_2026-01-02_日降雨量时间序列图.png"
+            ratio_chart = chart_dir / "全网_2026-01-01_2026-01-02_降雨日占比饼图.png"
+            (chart_dir / "日降雨量时间序列图.png").write_bytes(b"stale")
+            daily_chart.write_bytes(png_bytes)
+            ratio_chart.write_bytes(png_bytes)
 
             template = templates / "template.docx"
             doc = Document()
             doc.add_heading("降雨分析", level=1)
+            doc.add_paragraph("")
             doc.add_paragraph("图 15 日降雨量时间序列图")
+            doc.add_paragraph("")
             doc.add_paragraph("图 16 降雨日与非降雨日占比图")
             doc.save(template)
 
@@ -967,6 +953,7 @@ class AgentToolTests(unittest.TestCase):
                 analysis_tables=_workbook_tables(combined),
                 outputs_dir=outputs,
                 sections=["降雨分析"],
+                rainfall_chart_paths={"daily_bar": str(daily_chart), "rainy_ratio": str(ratio_chart)},
             )
 
             rendered = Document(output)

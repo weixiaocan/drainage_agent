@@ -26,7 +26,7 @@ def validate_report(
     selected_sections: list[str] | None = None,
 ) -> ValidationResult:
     result = ValidationResult()
-    text = "\n".join(p.text for p in doc.paragraphs)
+    text = _document_text(doc)
 
     legacy_points = sorted(set(re.findall(r"(?<!\d)1-[\d-]+#", text)))
     if legacy_points:
@@ -40,10 +40,30 @@ def validate_report(
     if facts.device_count != 13 and "13台流量监测设备" in text:
         result.critical.append("报告仍包含模板旧设备数量: 13台流量监测设备")
 
+    residue_fragments = ["44个流量监测点位", "32个点位", "0.W", "最大充满度W", "____/__/__"]
+    found_residue = [item for item in residue_fragments if item in text]
+    if found_residue:
+        result.critical.append(f"报告仍包含模板占位内容: {', '.join(found_residue)}")
+
+    allowed_points = {str(point).upper() for point in facts.point_ids}
+    mentioned_points = set(re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", text, flags=re.IGNORECASE))
+    unexpected_points = sorted(point for point in mentioned_points if point.upper() not in allowed_points)
+    if unexpected_points:
+        result.critical.append(f"报告包含本次数据中不存在的点位: {', '.join(unexpected_points[:20])}")
+
     if facts.point_count and f"共布设{facts.point_count}个流量监测点位" not in text:
         result.warnings.append("未找到与事实一致的点位总数描述")
 
     selected = set(selected_sections or ["monitoring_overview", "rainfall_analysis", "dry_pattern_analysis", "operation_risk_analysis"])
+    headings = {
+        "monitoring_overview": "监测概况",
+        "rainfall_analysis": "降雨分析",
+        "dry_pattern_analysis": "旱天排污规律统计分析",
+        "operation_risk_analysis": "污水系统运行风险",
+    }
+    for key, heading in headings.items():
+        if key not in selected and heading in text:
+            result.critical.append(f"报告仍包含未选择章节: {heading}")
     if "operation_risk_analysis" in selected and "表 12 旱天运行状态统计表" not in text:
         result.critical.append("报告缺少表题: 表 12 旱天运行状态统计表")
     if "operation_risk_analysis" in selected and "雨天运行风险分析" in text and "表 13 第二轮监测雨天运行状态统计表" not in text:
@@ -66,3 +86,13 @@ def validate_report(
             result.critical.append("排污规律章节仍包含模板旧图题")
 
     return result
+
+
+def _document_text(doc: Document) -> str:
+    values = [paragraph.text for paragraph in doc.paragraphs]
+    for table in doc.tables:
+        values.extend(cell.text for row in table.rows for cell in row.cells)
+    for section in doc.sections:
+        values.extend(paragraph.text for paragraph in section.header.paragraphs)
+        values.extend(paragraph.text for paragraph in section.footer.paragraphs)
+    return "\n".join(values)

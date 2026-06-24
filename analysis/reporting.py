@@ -750,17 +750,23 @@ def _pattern_description(row: pd.Series) -> str:
     return "，".join(parts) + "。"
 
 
-def _pattern_image_path(outputs_dir: Path | None, point_id: str) -> Path | None:
-    if not outputs_dir:
-        return None
-    image_dir = outputs_dir / "特征曲线图"
-    path = image_dir / f"{point_id}_流量特征曲线.png"
-    if path.exists():
-        return path
+def _pattern_image_path(image_paths: dict[str, list[str]] | None, point_id: str) -> Path | None:
+    for path_text in (image_paths or {}).get(point_id, []):
+        path = Path(path_text)
+        if path.exists() and "流量" in path.name:
+            return path
+    for path_text in (image_paths or {}).get("selected", []):
+        path = Path(path_text)
+        if path.exists():
+            return path
     return None
 
 
-def _render_pattern_section(document: DocumentObject, tables: dict[str, pd.DataFrame], outputs_dir: Path | None) -> tuple[int, int]:
+def _render_pattern_section(
+    document: DocumentObject,
+    tables: dict[str, pd.DataFrame],
+    pattern_chart_paths: dict[str, list[str]] | None,
+) -> tuple[int, int]:
     patterns = tables.get("排污规律分析", pd.DataFrame())
     if patterns.empty:
         return 0, 0
@@ -803,7 +809,7 @@ def _render_pattern_section(document: DocumentObject, tables: dict[str, pd.DataF
             point_id = _pattern_point_id(row)
             anchor = _new_paragraph_after(document, anchor, _pattern_description(row))
             text_blocks += 1
-            image_path = _pattern_image_path(outputs_dir, point_id)
+            image_path = _pattern_image_path(pattern_chart_paths, point_id)
             if image_path:
                 anchor = _add_picture_after(document, anchor, image_path, width_inches=5.6)
                 inserted_images += 1
@@ -910,24 +916,17 @@ def _module_summary(module: ReportModule, module_tables: list[tuple[str, pd.Data
     return f"{module.title}已根据综合结果表生成。"
 
 
-def _rainfall_chart_paths(outputs_dir: Path | None) -> list[Path]:
-    if not outputs_dir:
-        return []
-    chart_dir = outputs_dir / "降雨分析图"
-    if not chart_dir.exists():
-        return []
-    return [path for path in chart_dir.glob("*.png") if path.is_file()]
+def _rainfall_chart_paths(chart_paths: dict[str, str] | None) -> list[Path]:
+    return [Path(value) for value in (chart_paths or {}).values() if value and Path(value).is_file()]
 
 
-def _rainfall_chart_map(outputs_dir: Path | None) -> dict[str, Path]:
-    if not outputs_dir:
-        return {}
-    chart_dir = outputs_dir / "降雨分析图"
+def _rainfall_chart_map(chart_paths: dict[str, str] | None) -> dict[str, Path]:
+    values = chart_paths or {}
     paths = {
-        "daily": chart_dir / "日降雨量时间序列图.png",
-        "ratio": chart_dir / "降雨日占比饼图.png",
+        "daily": Path(values["daily_bar"]) if values.get("daily_bar") else None,
+        "ratio": Path(values["rainy_ratio"]) if values.get("rainy_ratio") else None,
     }
-    return {key: path for key, path in paths.items() if path.exists()}
+    return {key: path for key, path in paths.items() if path is not None and path.is_file()}
 
 
 def _add_picture_before_paragraph(document: DocumentObject, paragraph: Paragraph, image_path: Path, width_inches: float = 5.6):
@@ -940,9 +939,9 @@ def _add_picture_before_paragraph(document: DocumentObject, paragraph: Paragraph
     paragraph._p.addprevious(block)
 
 
-def _insert_rainfall_images_at_captions(document: DocumentObject, outputs_dir: Path | None) -> int:
-    chart_paths = _rainfall_chart_map(outputs_dir)
-    if not chart_paths:
+def _insert_rainfall_images_at_captions(document: DocumentObject, rainfall_chart_paths: dict[str, str] | None) -> int:
+    chart_map = _rainfall_chart_map(rainfall_chart_paths)
+    if not chart_map:
         return 0
     targets = (
         ("daily", ("日降雨量时间序列", "日降雨量统计图", "图 15", "图15")),
@@ -951,7 +950,7 @@ def _insert_rainfall_images_at_captions(document: DocumentObject, outputs_dir: P
     inserted = 0
     used: set[str] = set()
     for key, keywords in targets:
-        path = chart_paths.get(key)
+        path = chart_map.get(key)
         if not path:
             continue
         for paragraph in document.paragraphs:
@@ -978,49 +977,54 @@ def build_report(
     point_ids: list[str] | None = None,
     start: str | None = None,
     end: str | None = None,
+    rainfall_chart_paths: dict[str, str] | None = None,
+    pattern_chart_paths: dict[str, list[str]] | None = None,
+    artifact_scope: str = "全网_全时段",
 ) -> dict[str, object]:
+    if Path(output_file).suffix.lower() != ".docx":
+        raise ValueError(f"报告输出必须是 .docx 文件: {Path(output_file).name}")
     summaries = summaries or []
     tables = analysis_tables or {}
     template_used = bool(template_file and template_file.exists())
     if template_used:
-        try:
-            from .pipeline_report_assembler.assembler import run_report_assembler
+        from .pipeline_report_assembler.assembler import run_report_assembler
 
-            result = run_report_assembler(
-                template_file=template_file,
-                analysis_results=tables,
-                site_info_file=site_info_file or Path(),
-                output_file=output_file,
-                dry_curve_data=dry_curve_data,
-                filter_result_path=None,
-                config={"monitoring_start": start or "", "monitoring_end": end or ""},
-                has_rainfall_data=has_rainfall_data,
-                llm_client=None,
-                sections=sections,
-                point_ids=point_ids,
-            )
-            stats = result.get("stats", {})
-            return {
-                "output_file": str(result.get("output_file", output_file)),
-                "template_used": True,
-                "template_file": str(template_file),
-                "templated_sections": sections or ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"],
-                "generated_sections": [],
-                "missing_sheets": [],
-                "warnings": [str(item) for item in result.get("warnings", [])],
-                "stats": {
-                    "paragraphs": stats.get("paragraphs", 0),
-                    "tables": stats.get("tables_filled", 0),
-                    "inserted_tables": stats.get("tables_filled", 0),
-                    "filled_template_tables": stats.get("tables_filled", 0),
-                    "inserted_images": stats.get("images_inserted", 0),
-                    "text_replaced": stats.get("text_replaced", 0),
-                    "points_processed": stats.get("points_processed", 0),
-                    "llm_generated": stats.get("llm_generated", 0),
-                },
-            }
-        except Exception as exc:
-            summaries = [*summaries, f"pipeline_report_assembler failed: {exc}"]
+        result = run_report_assembler(
+            template_file=template_file,
+            analysis_results=tables,
+            site_info_file=site_info_file or Path(),
+            output_file=output_file,
+            dry_curve_data=dry_curve_data,
+            filter_result_path=None,
+            config={"monitoring_start": start or "", "monitoring_end": end or ""},
+            has_rainfall_data=has_rainfall_data,
+            llm_client=None,
+            sections=sections,
+            point_ids=point_ids,
+            rainfall_chart_paths=rainfall_chart_paths,
+            pattern_chart_paths=pattern_chart_paths,
+            artifact_scope=artifact_scope,
+        )
+        stats = result.get("stats", {})
+        return {
+            "output_file": str(result.get("output_file", output_file)),
+            "template_used": True,
+            "template_file": str(template_file),
+            "templated_sections": sections or ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"],
+            "generated_sections": [],
+            "missing_sheets": [],
+            "warnings": [str(item) for item in result.get("warnings", [])],
+            "stats": {
+                "paragraphs": stats.get("paragraphs", 0),
+                "tables": stats.get("tables_filled", 0),
+                "inserted_tables": stats.get("tables_filled", 0),
+                "filled_template_tables": stats.get("tables_filled", 0),
+                "inserted_images": stats.get("images_inserted", 0),
+                "text_replaced": stats.get("text_replaced", 0),
+                "points_processed": stats.get("points_processed", 0),
+                "llm_generated": stats.get("llm_generated", 0),
+            },
+        }
 
     document = Document(str(template_file)) if template_used else Document()
     if not template_used:
@@ -1039,9 +1043,9 @@ def build_report(
         filled_template_table_count, filled_template_sheets = _fill_template_tables(document, tables, site_info_file)
         inserted_tables += filled_template_table_count
         text_replaced = _replace_template_text(document, tables)
-        rainfall_caption_images = _insert_rainfall_images_at_captions(document, outputs_dir)
+        rainfall_caption_images = _insert_rainfall_images_at_captions(document, rainfall_chart_paths)
         inserted_images += rainfall_caption_images
-        pattern_text, pattern_images = _render_pattern_section(document, tables, outputs_dir)
+        pattern_text, pattern_images = _render_pattern_section(document, tables, pattern_chart_paths)
         if pattern_text:
             text_replaced += pattern_text
             inserted_images += pattern_images
@@ -1074,7 +1078,7 @@ def build_report(
 
         if module.key == "rainfall_analysis":
             if rainfall_caption_images == 0:
-                for image_path in _rainfall_chart_paths(outputs_dir):
+                for image_path in _rainfall_chart_paths(rainfall_chart_paths):
                     anchor = _add_picture_after(document, anchor, image_path)
                     inserted_images += 1
 

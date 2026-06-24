@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
+from zipfile import is_zipfile
 
 import pandas as pd
 from docx import Document
@@ -43,12 +44,17 @@ def run_report_assembler(
     llm_client=None,
     sections: list[str] | None = None,
     point_ids: list[str] | None = None,
+    rainfall_chart_paths: dict[str, str] | None = None,
+    pattern_chart_paths: dict[str, list[str]] | None = None,
+    artifact_scope: str = "全网_全时段",
 ) -> Dict[str, Any]:
     """Assemble the Word report by template sections."""
     cfg = _build_config(config)
     template_file = Path(template_file)
     site_info_file = Path(site_info_file)
     output_file = Path(output_file)
+    if output_file.suffix.lower() != ".docx":
+        raise ValueError(f"报告输出必须是 .docx 文件: {output_file.name}")
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"读取报告模板: {template_file}")
@@ -61,7 +67,11 @@ def run_report_assembler(
         dry_curve_data=dry_curve_data,
         has_rainfall_data=has_rainfall_data,
         point_ids=point_ids,
+        rainfall_chart_paths=rainfall_chart_paths,
+        pattern_chart_paths=pattern_chart_paths,
+        artifact_scope=artifact_scope,
     )
+    _resolve_pattern_chart_paths(context, output_file.parent)
     template_map = scan_template(doc)
     baseinfo_path = Path(cfg.baseinfo_path) if cfg.baseinfo_path else _default_baseinfo_path(template_file)
     facts = build_report_facts(context, baseinfo_path=baseinfo_path)
@@ -85,20 +95,35 @@ def run_report_assembler(
     print(f"报告包含 {len(doc.tables)} 个表格")
     print(f"识别点位: {facts.point_ids}")
 
+    include_dry_risk, include_rainy_risk = _selected_risk_modes(sections)
     renderers = {
         "monitoring_overview": lambda: render_site_overview(doc, template_map, context, facts, warnings),
         "rainfall_analysis": lambda: render_rainfall_section(
             doc, template_map, context, facts, output_file.parent, warnings
         ),
         "dry_pattern_analysis": lambda: render_pattern_section(
-            doc, template_map, facts, output_file.parent / "特征曲线图", llm_writer, warnings
+            doc, template_map, context, facts, llm_writer, warnings
         ),
         "operation_risk_analysis": lambda: render_risk_section(
-            doc, template_map, context, facts, llm_writer, warnings
+            doc,
+            template_map,
+            context,
+            facts,
+            llm_writer,
+            warnings,
+            include_dry=include_dry_risk,
+            include_rainy=include_rainy_risk,
         ),
     }
     for key in selected:
         section_stats = renderers[key]()
+        if key == "dry_pattern_analysis":
+            expected_images = 2 * len(facts.pattern_details)
+            if section_stats.get("images_inserted", 0) != expected_images:
+                raise ValueError(
+                    f"排污规律图片插入不完整: 应插入 {expected_images} 张，"
+                    f"实际 {section_stats.get('images_inserted', 0)} 张"
+                )
         _merge_stats(stats, section_stats)
 
     validation = validate_report(doc, facts, selected_sections=selected)
@@ -108,6 +133,8 @@ def run_report_assembler(
         raise ValueError("报告校验失败: " + "；".join(validation.critical))
 
     doc.save(output_file)
+    if not is_zipfile(output_file):
+        raise ValueError(f"生成的报告不是有效 Word 文档: {output_file}")
     stats["warnings"] = len(warnings)
     print(f"保存报告: {output_file}")
     _print_warnings(warnings)
@@ -127,6 +154,33 @@ def _selected_section_keys(sections: list[str] | None) -> list[str]:
         return list(SECTION_ALIASES)
     selected = [key for key, aliases in SECTION_ALIASES.items() if any(section in aliases for section in sections)]
     return selected or list(SECTION_ALIASES)
+
+
+def _selected_risk_modes(sections: list[str] | None) -> tuple[bool, bool]:
+    if not sections:
+        return True, True
+    requested = set(sections)
+    full = bool(requested.intersection({"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估"}))
+    include_dry = full or "旱天风险" in requested
+    include_rainy = full or bool(requested.intersection({"雨天风险", "雨天溢流风险", "溢流风险"}))
+    return include_dry, include_rainy
+
+
+def _resolve_pattern_chart_paths(context, output_dir: Path) -> None:
+    """Fill missing chart mappings from the exact scoped output directory."""
+    scoped_dir = output_dir / "特征曲线图" / context.artifact_scope
+    resolved: dict[str, list[str]] = {}
+    for point_id in context.point_ids:
+        mapped = [Path(value) for value in context.pattern_chart_paths.get(point_id, [])]
+        candidates = [path for path in mapped if path.is_file()]
+        if scoped_dir.is_dir():
+            for path in sorted(scoped_dir.glob(f"{point_id}_*.png")):
+                if path not in candidates:
+                    candidates.append(path)
+        resolved[point_id] = [str(path) for path in candidates]
+    if "selected" in context.pattern_chart_paths:
+        resolved["selected"] = list(context.pattern_chart_paths["selected"])
+    context.pattern_chart_paths = resolved
 
 
 def _prune_unselected_sections(doc: Document, selected: list[str]) -> None:

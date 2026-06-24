@@ -87,16 +87,25 @@ def _replace_rainfall_text(doc: Document, facts: ReportFacts) -> int:
 
 def _insert_rainfall_images(doc: Document, context, output_dir: Path) -> tuple[int, list[str]]:
     chart_dir = output_dir / "降雨分析图"
-    daily_path = chart_dir / "日降雨量时间序列图.png"
-    ratio_path = chart_dir / "降雨日占比饼图.png"
+    daily_path = _existing_chart_path(context.rainfall_chart_paths.get("daily_bar"))
+    ratio_path = _existing_chart_path(context.rainfall_chart_paths.get("rainy_ratio"))
     warnings: list[str] = []
-    if not daily_path.exists() or not ratio_path.exists():
-        warnings.extend(_generate_fallback_charts(context.df("rainfall_daily"), chart_dir))
+    if not daily_path.is_file() or not ratio_path.is_file():
+        fallback_paths, fallback_warnings = _generate_fallback_charts(
+            context.df("rainfall_daily"), chart_dir, context.artifact_scope
+        )
+        warnings.extend(fallback_warnings)
+        daily_path = daily_path if daily_path.is_file() else fallback_paths.get("daily_bar", daily_path)
+        ratio_path = ratio_path if ratio_path.is_file() else fallback_paths.get("rainy_ratio", ratio_path)
 
     inserted = 0
     inserted += _insert_image_before_caption(doc, "图 15", daily_path, warnings)
     inserted += _insert_image_before_caption(doc, "图 16", ratio_path, warnings)
     return inserted, warnings
+
+
+def _existing_chart_path(value: str | None) -> Path:
+    return Path(value) if value else Path("__missing_rainfall_chart__.png")
 
 
 def _insert_image_before_caption(doc: Document, caption_keyword: str, image_path: Path, warnings: list[str]) -> int:
@@ -111,18 +120,22 @@ def _insert_image_before_caption(doc: Document, caption_keyword: str, image_path
     return 1
 
 
-def _generate_fallback_charts(df: pd.DataFrame, chart_dir: Path) -> list[str]:
+def _generate_fallback_charts(df: pd.DataFrame, chart_dir: Path, scope_prefix: str) -> tuple[dict[str, Path], list[str]]:
+    paths = {
+        "daily_bar": chart_dir / f"{scope_prefix}_日降雨量时间序列图.png",
+        "rainy_ratio": chart_dir / f"{scope_prefix}_降雨日占比饼图.png",
+    }
     warnings: list[str] = []
     if df.empty:
         warnings.append("缺少降雨日数据，无法兜底生成降雨图")
-        return warnings
+        return paths, warnings
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception as exc:
         warnings.append(f"matplotlib 不可用，无法兜底生成降雨图: {exc}")
-        return warnings
+        return paths, warnings
 
     chart_dir.mkdir(parents=True, exist_ok=True)
     plot_df = df.copy()
@@ -150,7 +163,7 @@ def _generate_fallback_charts(df: pd.DataFrame, chart_dir: Path) -> list[str]:
         spine.set_color("#000000")
         spine.set_linewidth(0.8)
     fig.tight_layout()
-    fig.savefig(chart_dir / "日降雨量时间序列图.png", bbox_inches="tight")
+    fig.savefig(paths["daily_bar"], bbox_inches="tight")
     plt.close(fig)
 
     rainy_days = int((plot_df["daily_rain_mm"] > 0).sum())
@@ -170,10 +183,10 @@ def _generate_fallback_charts(df: pd.DataFrame, chart_dir: Path) -> list[str]:
     )
     ax.axis("equal")
     fig.tight_layout()
-    fig.savefig(chart_dir / "降雨日占比饼图.png", bbox_inches="tight")
+    fig.savefig(paths["rainy_ratio"], bbox_inches="tight")
     plt.close(fig)
     warnings.append("降雨 PNG 缺失，已由报告组装兜底生成")
-    return warnings
+    return paths, warnings
 
 
 def _pie_autopct(pct: float, total: int, label: str) -> str:

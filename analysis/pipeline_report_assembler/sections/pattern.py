@@ -37,8 +37,8 @@ CLASS_NAMES = {
 def render_pattern_section(
     doc: Document,
     template_map: TemplateMap,
+    context,
     facts: ReportFacts,
-    image_dir: Path,
     llm_writer: LLMSectionWriter,
     warnings: list[str],
 ) -> dict[str, int]:
@@ -79,7 +79,9 @@ def render_pattern_section(
 
         for point in points:
             anchor = _insert_paragraph_after(doc, anchor, templates["normal"], _point_description(point))
-            anchor, inserted = _insert_curve_table_after(doc, anchor, templates["curve_table"], image_dir, point.point_id, warnings)
+            anchor, inserted = _insert_curve_table_after(
+                doc, anchor, templates["curve_table"], context.pattern_chart_paths, point.point_id, warnings
+            )
             stats["images_inserted"] += inserted
             anchor = _insert_paragraph_after(
                 doc,
@@ -164,30 +166,40 @@ def _insert_curve_table_after(
     doc: Document,
     anchor,
     template_element,
-    image_dir: Path,
+    image_paths: dict[str, list[str]],
     point_id: str,
     warnings: list[str],
 ) -> tuple[object, int]:
     new_element = deepcopy(template_element)
     anchor.addnext(new_element)
     table = Table(new_element, doc._body)
-    inserted = _fill_curve_table(table, image_dir, point_id, warnings)
+    inserted = _fill_curve_table(table, image_paths, point_id, warnings)
     return new_element, inserted
 
 
-def _fill_curve_table(table: Table, image_dir: Path, point_id: str, warnings: list[str]) -> int:
+def _fill_curve_table(table: Table, image_paths: dict[str, list[str]], point_id: str, warnings: list[str]) -> int:
     if not table.rows or len(table.rows[0].cells) < 2:
         warnings.append(f"排污规律曲线表格结构异常: {point_id}")
         return 0
     row = table.rows[0]
     _remove_table_borders(table)
-    flow_path = image_dir / f"{point_id}_流量特征曲线.png"
-    level_path = image_dir / f"{point_id}_液位特征曲线.png"
-    combined_path = image_dir / f"{point_id}_特征曲线.png"
+    flow_path, level_path, combined_path = _curve_image_candidates(image_paths, point_id)
     inserted = 0
     inserted += _insert_curve_image(row.cells[0], flow_path, combined_path, f"{point_id}流量特征曲线", "（a）流量特征曲线图", warnings)
     inserted += _insert_curve_image(row.cells[1], level_path, combined_path, f"{point_id}液位特征曲线", "（b）液位特征曲线图", warnings)
     return inserted
+
+
+def _curve_image_candidates(image_paths: dict[str, list[str]], point_id: str) -> tuple[Path, Path, Path]:
+    point_paths = [Path(value) for value in image_paths.get(point_id, [])]
+    selected_paths = [Path(value) for value in image_paths.get("selected", [])]
+    flow_path = next((path for path in point_paths if "流量" in path.name), Path("__missing_flow_image__.png"))
+    level_path = next((path for path in point_paths if "液位" in path.name), Path("__missing_level_image__.png"))
+    combined_path = selected_paths[0] if selected_paths else next(
+        (path for path in point_paths if "特征曲线" in path.name and "流量" not in path.name and "液位" not in path.name),
+        Path("__missing_combined_image__.png"),
+    )
+    return flow_path, level_path, combined_path
 
 
 def _insert_curve_image(cell, primary: Path, fallback: Path, label: str, subcaption: str, warnings: list[str]) -> int:

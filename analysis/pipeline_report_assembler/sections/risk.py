@@ -11,7 +11,7 @@ from ..llm_section_writer import LLMSectionWriter
 from ..report_tables import TABLE_SPECS, render_report_table
 from ..style_writer import set_paragraph_text
 from ..template_scanner import TemplateMap
-from .common import delete_body_range_between_paragraphs, find_paragraph
+from .common import delete_body_range_between_paragraphs, find_paragraph, replace_first_paragraph
 
 
 def render_risk_section(
@@ -21,11 +21,20 @@ def render_risk_section(
     facts: ReportFacts,
     llm_writer: LLMSectionWriter,
     warnings: list[str],
+    include_dry: bool = True,
+    include_rainy: bool = True,
 ) -> dict[str, int]:
     stats = {"tables_filled": 0, "text_replaced": 0, "llm_generated": 0}
 
+    if not include_dry:
+        delete_body_range_between_paragraphs(doc, "旱天运行风险分析", "雨天运行风险分析")
+    if not include_rainy or not context.has_rainfall_data:
+        delete_body_range_between_paragraphs(doc, "雨天运行风险分析", "本章小结")
+
     for role in ("dry_risk", "rainy_overflow_risk"):
-        if role == "rainy_overflow_risk" and not context.has_rainfall_data:
+        if role == "dry_risk" and not include_dry:
+            continue
+        if role == "rainy_overflow_risk" and (not include_rainy or not context.has_rainfall_data):
             continue
         table = template_map.get(role)
         if table is None:
@@ -34,28 +43,56 @@ def render_risk_section(
         warnings.extend(render_report_table(table, TABLE_SPECS[role], context))
         stats["tables_filled"] += 1
 
-    stats["text_replaced"] += _replace_risk_text(doc, context, facts, llm_writer, stats)
+    stats["text_replaced"] += _replace_risk_text(
+        doc, context, facts, llm_writer, stats, include_dry=include_dry, include_rainy=include_rainy
+    )
     return stats
 
 
-def _replace_risk_text(doc: Document, context, facts: ReportFacts, llm_writer: LLMSectionWriter, stats: dict) -> int:
+def _replace_risk_text(
+    doc: Document,
+    context,
+    facts: ReportFacts,
+    llm_writer: LLMSectionWriter,
+    stats: dict,
+    include_dry: bool,
+    include_rainy: bool,
+) -> int:
     replaced = 0
     dry = context.df("dry_risk")
     rainy = context.df("rainy_overflow_risk")
 
-    replaced += _replace_block(doc, "监测期间，19处监测点的旱天最大充满度情况如下：", _fullness_text(dry, facts), clear_next=4)
-    replaced += _replace_block(doc, "第一轮监测期间，19处监测点的旱天溢流风险值情况如下：", _overflow_text(dry, facts), clear_next=3)
-    replaced += _replace_block(doc, "第一轮监测期间，19处监测点的淤积风险情况如下：", _silting_text(dry, facts), clear_next=4)
-    if context.has_rainfall_data:
-        replaced += _replace_block(doc, "监测期间，19处监测点位在", _rainy_text(rainy, facts), clear_next=3)
-    else:
-        delete_body_range_between_paragraphs(doc, "雨天运行风险分析", "本章小结")
+    if replace_first_paragraph(doc, "最大充满度W5代表运行中风险", "最大充满度1-2代表运行中风险；"):
+        replaced += 1
+    if replace_first_paragraph(doc, "监测时段内", _risk_intro(facts, include_dry, include_rainy)):
+        replaced += 1
 
-    summary_text, used_llm = llm_writer.generate("风险分析本章小结", facts, lambda f: _summary_text(dry, rainy, f))
+    if include_dry:
+        replaced += _replace_block(doc, "旱天最大充满度情况如下", _fullness_text(dry, facts), clear_next=4)
+        replaced += _replace_block(doc, "旱天溢流风险值情况如下", _overflow_text(dry, facts), clear_next=3)
+        replaced += _replace_block(doc, "淤积风险情况如下", _silting_text(dry, facts), clear_next=4)
+    if include_rainy and context.has_rainfall_data:
+        replaced += _replace_block(doc, "处监测点位在", _rainy_text(rainy, facts), clear_next=3)
+
+    fallback = lambda f: _summary_text(dry, rainy, f, include_dry, include_rainy)
+    summary_text, used_llm = llm_writer.generate("风险分析本章小结", facts, fallback)
     if _replace_block(doc, "本章从最大充满度", summary_text, clear_next=5):
         replaced += 1
         stats["llm_generated"] += int(used_llm)
     return replaced
+
+
+def _risk_intro(facts: ReportFacts, include_dry: bool, include_rainy: bool) -> str:
+    scopes = []
+    if include_dry:
+        scopes.append("旱天运行风险")
+    if include_rainy:
+        scopes.append(f"{facts.rainfall_event_count}场有效降雨下的雨天溢流风险")
+    scope_text = "和".join(scopes) or "运行风险"
+    return (
+        f"本章对{facts.point_count}个监测点位的{scope_text}进行分析，"
+        "以最大充满度、溢流风险值和旱天流速等实际监测指标评估排水系统运行状态。"
+    )
 
 
 def _replace_block(doc: Document, keyword: str, text: str | list[str], clear_next: int) -> int:
@@ -150,12 +187,20 @@ def _rainy_text(df: pd.DataFrame, facts: ReportFacts) -> list[str]:
     ])
 
 
-def _summary_text(dry: pd.DataFrame, rainy: pd.DataFrame, facts: ReportFacts) -> str:
-    return (
-        f"本章从最大充满度、溢流风险和淤积风险三个维度，对{facts.point_count}个监测点位的污水系统运行风险进行了评估。"
-        f"监测结果显示，部分点位存在较高充满度或低流速淤积风险，需结合管径、井深、上下游关系和运维记录进一步核查。"
-        f"雨天条件下，降雨会抬升系统液位并增加溢流风险，建议对中高风险点位优先开展清淤、排水能力复核和雨天调度优化。"
-    )
+def _summary_text(
+    dry: pd.DataFrame,
+    rainy: pd.DataFrame,
+    facts: ReportFacts,
+    include_dry: bool = True,
+    include_rainy: bool = True,
+) -> str:
+    parts = [f"本章对{facts.point_count}个监测点位的污水系统运行风险进行了评估。"]
+    if include_dry:
+        parts.append("旱天结果重点反映最大充满度、溢流风险和低流速淤积风险。")
+    if include_rainy:
+        parts.append("雨天结果反映选定降雨事件下的液位抬升和溢流安全裕度。")
+    parts.append("建议结合管径、井深、上下游关系和运维记录，对中高风险点位优先复核和处置。")
+    return "".join(parts)
 
 
 def _join(points: list) -> str:

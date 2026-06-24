@@ -22,6 +22,9 @@ class ReportDataContext:
     point_ids: list[str]
     dry_curve_data: Dict[str, pd.DataFrame] = field(default_factory=dict)
     has_rainfall_data: bool = True
+    rainfall_chart_paths: Dict[str, str] = field(default_factory=dict)
+    pattern_chart_paths: Dict[str, list[str]] = field(default_factory=dict)
+    artifact_scope: str = "全网_全时段"
     warnings: list[str] = field(default_factory=list)
 
     def df(self, name: str) -> pd.DataFrame:
@@ -34,6 +37,9 @@ def build_report_context(
     dry_curve_data: Optional[Dict[str, pd.DataFrame]],
     has_rainfall_data: bool,
     point_ids: Optional[list[str]] = None,
+    rainfall_chart_paths: Optional[Dict[str, str]] = None,
+    pattern_chart_paths: Optional[Dict[str, list[str]]] = None,
+    artifact_scope: str = "全网_全时段",
 ) -> ReportDataContext:
     """Normalize in-memory analysis results for report rendering."""
     warnings: list[str] = []
@@ -53,6 +59,9 @@ def build_report_context(
         point_ids=resolved_points,
         dry_curve_data=curves,
         has_rainfall_data=has_rainfall_data,
+        rainfall_chart_paths=dict(rainfall_chart_paths or {}),
+        pattern_chart_paths={key: list(value) for key, value in (pattern_chart_paths or {}).items()},
+        artifact_scope=artifact_scope,
         warnings=warnings,
     )
     return context
@@ -105,7 +114,7 @@ def point_match_keys(point_id: object) -> set[str]:
 
 
 def _load_site_info(path: Path, warnings: list[str]) -> pd.DataFrame:
-    if not Path(path).exists():
+    if not Path(path).is_file():
         warnings.append(f"点位信息文件不存在: {path}")
         return pd.DataFrame()
     df = pd.read_excel(path)

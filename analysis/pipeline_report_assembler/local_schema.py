@@ -7,6 +7,7 @@ import pandas as pd
 from analysis.schema import find_column
 
 SHEET_ALIASES: dict[str, str] = {
+    "数据体检": "data_collection",
     "数据收集率统计": "data_collection",
     "降雨概况": "rainfall_daily",
     "日降雨量统计": "rainfall_daily",
@@ -23,10 +24,10 @@ SHEET_ALIASES: dict[str, str] = {
 SHEET_COLUMN_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     "data_collection": {
         "point_id": ("点位编号", "监测点编号", "监测点位", "安装点位"),
-        "record_count": ("监测数据条数",),
+        "record_count": ("监测数据条数", "记录数"),
         "monitoring_days": ("监测天数",),
         "theoretical_count": ("理论数据条数",),
-        "collection_rate": ("数据收集率(%)", "数据收集率"),
+        "collection_rate": ("数据收集率(%)", "数据收集率", "收集率"),
     },
     "rainfall_daily": {
         "date": ("日期", "date"),
