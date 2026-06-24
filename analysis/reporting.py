@@ -78,19 +78,6 @@ def _selected_modules(sections: Iterable[str] | None) -> list[ReportModule]:
     return selected or list(MODULES)
 
 
-def _read_workbook_tables(combined_xlsx: Path | None) -> dict[str, pd.DataFrame]:
-    if not combined_xlsx or not combined_xlsx.exists():
-        return {}
-    tables: dict[str, pd.DataFrame] = {}
-    with pd.ExcelFile(combined_xlsx) as workbook:
-        for sheet in workbook.sheet_names:
-            try:
-                tables[sheet] = pd.read_excel(workbook, sheet_name=sheet)
-            except Exception:
-                tables[sheet] = pd.DataFrame()
-    return tables
-
-
 def _find_template_anchor(document: DocumentObject, module: ReportModule) -> Paragraph | None:
     for paragraph in document.paragraphs:
         text = paragraph.text.strip()
@@ -982,34 +969,42 @@ def build_report(
     title: str,
     summaries: list[str] | None = None,
     template_file: Path | None = None,
-    combined_xlsx: Path | None = None,
+    analysis_tables: dict[str, pd.DataFrame] | None = None,
     site_info_file: Path | None = None,
     outputs_dir: Path | None = None,
     sections: list[str] | None = None,
+    dry_curve_data: dict[str, pd.DataFrame] | None = None,
+    has_rainfall_data: bool = True,
+    point_ids: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
 ) -> dict[str, object]:
     summaries = summaries or []
+    tables = analysis_tables or {}
     template_used = bool(template_file and template_file.exists())
-    if template_used and combined_xlsx and combined_xlsx.exists():
+    if template_used:
         try:
             from .pipeline_report_assembler.assembler import run_report_assembler
 
             result = run_report_assembler(
                 template_file=template_file,
-                combined_xlsx=combined_xlsx,
+                analysis_results=tables,
                 site_info_file=site_info_file or Path(),
                 output_file=output_file,
-                dry_curve_data=None,
+                dry_curve_data=dry_curve_data,
                 filter_result_path=None,
-                config={},
-                has_rainfall_data=True,
+                config={"monitoring_start": start or "", "monitoring_end": end or ""},
+                has_rainfall_data=has_rainfall_data,
                 llm_client=None,
+                sections=sections,
+                point_ids=point_ids,
             )
             stats = result.get("stats", {})
             return {
                 "output_file": str(result.get("output_file", output_file)),
                 "template_used": True,
                 "template_file": str(template_file),
-                "templated_sections": ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"],
+                "templated_sections": sections or ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"],
                 "generated_sections": [],
                 "missing_sheets": [],
                 "warnings": [str(item) for item in result.get("warnings", [])],
@@ -1031,7 +1026,6 @@ def build_report(
     if not template_used:
         document.add_heading(title, level=0)
 
-    tables = _read_workbook_tables(combined_xlsx)
     templated_sections: list[str] = []
     generated_sections: list[str] = []
     missing_sheets: list[str] = []

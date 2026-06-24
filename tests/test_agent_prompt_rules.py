@@ -100,6 +100,15 @@ def test_prompt_requires_needs_input_for_event_ids() -> None:
     assert "`options`" in prompt
 
 
+def test_prompt_requires_report_scope_and_nonempty_rainy_risk() -> None:
+    prompt = read_prompt()
+    assert "点位范围传给 `points`" in prompt
+    assert "时间范围传给 `start/end`" in prompt
+    assert "不得省略后退回全网或全时段" in prompt
+    assert "默认生成全套标准章节，包含雨天风险" in prompt
+    assert "不能生成雨天风险空白的报告" in prompt
+
+
 def test_prompt_documents_exception_and_quality_reminders() -> None:
     prompt = read_prompt()
     assert "有效天数少" in prompt

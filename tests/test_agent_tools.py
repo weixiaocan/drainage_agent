@@ -31,6 +31,11 @@ from agent.tools.module_tools import (
 from agent.tools.python_tool import run_python_impl
 
 
+def _workbook_tables(path: Path) -> dict[str, pd.DataFrame]:
+    with pd.ExcelFile(path) as workbook:
+        return {sheet: pd.read_excel(workbook, sheet_name=sheet) for sheet in workbook.sheet_names}
+
+
 def make_deps(root: Path) -> AgentDeps:
     paths = Paths.from_root(root)
     ensure_directories(paths)
@@ -706,7 +711,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 outputs_dir=outputs,
                 sections=["降雨分析", "污水系统运行风险分析"],
             )
@@ -756,7 +761,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 sections=["监测概况"],
             )
 
@@ -818,7 +823,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 site_info_file=site_info,
                 sections=["监测概况"],
             )
@@ -864,7 +869,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 outputs_dir=outputs,
                 sections=["旱天排污规律统计分析"],
             )
@@ -907,7 +912,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 sections=["污水系统运行风险分析"],
             )
 
@@ -954,7 +959,7 @@ class AgentToolTests(unittest.TestCase):
                 output,
                 "排水监测数据分析报告",
                 template_file=template,
-                combined_xlsx=combined,
+                analysis_tables=_workbook_tables(combined),
                 outputs_dir=outputs,
                 sections=["降雨分析"],
             )

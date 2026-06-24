@@ -120,9 +120,15 @@ def build_agent(deps: AgentDeps) -> Any:
             return traced_tool(ctx, "data_filter", args, lambda: data_filter_impl(ctx.deps, **args))
 
         @agent.tool
-        def check_data(ctx: RunContext[AgentDeps], points: list[str] | None = None, export: bool = False) -> dict:
+        def check_data(
+            ctx: RunContext[AgentDeps],
+            points: list[str] | None = None,
+            export: bool = False,
+            start: str | None = None,
+            end: str | None = None,
+        ) -> dict:
             """检查数据收集率、缺失、异常概况与格式问题。"""
-            args = {"points": points, "export": export}
+            args = {"points": points, "export": export, "start": start, "end": end}
             return traced_tool(ctx, "check_data", args, lambda: check_data_impl(ctx.deps, **args))
 
         @agent.tool
@@ -194,9 +200,22 @@ def build_agent(deps: AgentDeps) -> Any:
             return traced_tool(ctx, "assess_risk", args, lambda: assess_risk_impl(ctx.deps, **args))
 
         @agent.tool
-        def generate_report(ctx: RunContext[AgentDeps], sections: list[str] | None = None, event_ids: list[int] | None = None) -> dict:
+        def generate_report(
+            ctx: RunContext[AgentDeps],
+            points: list[str] | None = None,
+            start: str | None = None,
+            end: str | None = None,
+            sections: list[str] | None = None,
+            event_ids: list[int] | None = None,
+        ) -> dict:
             """生成排水监测分析报告。"""
-            args = {"sections": sections, "event_ids": event_ids}
+            args = {
+                "points": points,
+                "start": start,
+                "end": end,
+                "sections": sections,
+                "event_ids": event_ids,
+            }
             return traced_tool(ctx, "generate_report", args, lambda: generate_report_impl(ctx.deps, **args))
 
         @agent.tool

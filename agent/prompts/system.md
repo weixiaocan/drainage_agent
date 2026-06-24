@@ -19,6 +19,8 @@
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
 - `analyze_patterns` 负责排污规律和旱天特征曲线底料。
 - `generate_report` 默认使用内置模板；用户上传 docx 时可按其标题结构自由生成，但所有数字只能来自计算结果。
+- 生成报告时必须把对话中已确定的点位范围传给 `points`、时间范围传给 `start/end`，不得省略后退回全网或全时段。用户未限制范围时才使用默认全网、全时段。
+- `generate_report` 默认生成全套标准章节，包含雨天风险；缺少 `event_ids` 时必须让用户选择，不能生成雨天风险空白的报告。用户明确指定 `sections` 时只生成对应章节。
 
 ## 路由规则
 

@@ -29,27 +29,52 @@ class ReportDataContext:
 
 
 def build_report_context(
-    combined_xlsx: Path,
+    analysis_results: Dict[str, pd.DataFrame],
     site_info_file: Path,
     dry_curve_data: Optional[Dict[str, pd.DataFrame]],
     has_rainfall_data: bool,
+    point_ids: Optional[list[str]] = None,
 ) -> ReportDataContext:
-    """Load and normalize all report inputs once."""
+    """Normalize in-memory analysis results for report rendering."""
     warnings: list[str] = []
-    analysis = _load_analysis_results(combined_xlsx, warnings)
+    analysis = _normalize_analysis_results(analysis_results)
     site_info = _load_site_info(site_info_file, warnings)
     curves = _normalize_curve_keys(dry_curve_data or {})
 
-    point_ids = _collect_point_ids(curves.keys(), analysis, site_info)
+    resolved_points = [clean_point_id(point) for point in point_ids or [] if clean_point_id(point)]
+    if not resolved_points:
+        resolved_points = _collect_point_ids(curves.keys(), analysis, site_info)
+    if resolved_points:
+        site_info = _filter_points(site_info, resolved_points)
+        analysis = {name: _filter_points(frame, resolved_points) for name, frame in analysis.items()}
     context = ReportDataContext(
         analysis=analysis,
         site_info=site_info,
-        point_ids=point_ids,
+        point_ids=resolved_points,
         dry_curve_data=curves,
         has_rainfall_data=has_rainfall_data,
         warnings=warnings,
     )
     return context
+
+
+def _normalize_analysis_results(analysis_results: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    results: Dict[str, pd.DataFrame] = {}
+    for name, frame in analysis_results.items():
+        if not isinstance(frame, pd.DataFrame):
+            continue
+        logical_name, normalized = normalize_sheet_df(name, frame)
+        if "point_id" in normalized.columns:
+            normalized["point_id"] = normalized["point_id"].map(clean_point_id)
+        results[logical_name] = normalized
+    return results
+
+
+def _filter_points(df: pd.DataFrame, point_ids: list[str]) -> pd.DataFrame:
+    if df.empty or "point_id" not in df.columns:
+        return df.copy()
+    wanted = {clean_point_id(point) for point in point_ids}
+    return df[df["point_id"].map(clean_point_id).isin(wanted)].reset_index(drop=True)
 
 
 def clean_point_id(value: object) -> str:
@@ -77,25 +102,6 @@ def point_match_keys(point_id: object) -> set[str]:
     if bare:
         keys.add(f"1-{bare}#")
     return {k for k in keys if k}
-
-
-def _load_analysis_results(xlsx_path: Path, warnings: list[str]) -> Dict[str, pd.DataFrame]:
-    results: Dict[str, pd.DataFrame] = {}
-    if not Path(xlsx_path).exists():
-        warnings.append(f"综合分析结果不存在: {xlsx_path}")
-        return results
-
-    with pd.ExcelFile(xlsx_path) as excel:
-        for sheet_name in excel.sheet_names:
-            if sheet_name.startswith("特征曲线_"):
-                continue
-            df = excel.parse(sheet_name)
-            results[sheet_name] = df
-            logical_name, normalized_df = normalize_sheet_df(sheet_name, df)
-            if "point_id" in normalized_df.columns:
-                normalized_df["point_id"] = normalized_df["point_id"].map(clean_point_id)
-            results[logical_name] = normalized_df
-    return results
 
 
 def _load_site_info(path: Path, warnings: list[str]) -> pd.DataFrame:

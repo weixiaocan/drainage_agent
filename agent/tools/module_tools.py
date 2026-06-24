@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+import json
 import pickle
 import re
 import time
@@ -10,7 +12,7 @@ from typing import Any, Callable
 import pandas as pd
 
 from agent.deps import AgentDeps
-from agent.tools.manifest import load_manifest, record_result
+from agent.tools.manifest import data_fingerprint, load_manifest, record_result
 from agent.types import ToolResult, error, needs_input, ok
 from analysis import io
 from analysis.dry_curves import build_dry_curves, dry_statistics
@@ -21,7 +23,7 @@ from analysis.rainfall import analyze_rainfall
 from analysis.rdii import analyze_rdii
 from analysis.reporting import build_report
 from analysis.risk import assess_risk
-from analysis.schema import from_display_columns, to_display_columns
+from analysis.schema import to_display_columns
 from analysis.stats import check_data
 
 
@@ -141,8 +143,9 @@ def _route_table_result(
     sheet_name: str,
     points: list[str] | None,
     export: bool,
+    allow_combined: bool = True,
 ) -> dict[str, Any]:
-    if is_full_network(points, deps):
+    if allow_combined and is_full_network(points, deps):
         _write_sheet(deps.paths.combined_xlsx, sheet_name, df)
         return {
             "kind": "combined_xlsx",
@@ -653,16 +656,106 @@ def _run(
     tool_name: str,
     fn: Callable[[], tuple[str, dict[str, Any]]],
     params: dict[str, Any] | None = None,
+    use_cache: bool = True,
 ) -> ToolResult:
+    cache_key = _analysis_cache_key(deps, tool_name, params or {})
+    if use_cache and cache_key in deps.session.analysis_cache:
+        cached = deepcopy(deps.session.analysis_cache[cache_key])
+        return ok(cached["summary"], artifacts=_artifacts(deps), **cached["data"])
     try:
         deps.paths.outputs.mkdir(parents=True, exist_ok=True)
         summary, data = fn()
         artifacts = _artifacts(deps)
         record_result(deps, tool_name, artifacts, params=params)
+        if use_cache:
+            deps.session.analysis_cache[cache_key] = {"summary": summary, "data": deepcopy(data)}
+        _store_report_data_components(deps, tool_name, params or {}, data)
         return ok(summary, artifacts=artifacts, **data)
     except Exception as exc:
         deps.logger.exception("%s failed", tool_name)
         return error(f"{tool_name} 执行失败: {exc}", traceback=traceback.format_exc(limit=8))
+
+
+def _analysis_cache_key(deps: AgentDeps, tool_name: str, params: dict[str, Any]) -> str:
+    normalized_params = dict(params)
+    for key in ("points", "event_ids", "sections"):
+        value = normalized_params.get(key)
+        if isinstance(value, list):
+            normalized_params[key] = sorted(value, key=str)
+    payload = {
+        "tool": tool_name,
+        "params": normalized_params,
+        "data_fingerprint": data_fingerprint(deps)["digest"],
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _report_data_key(
+    deps: AgentDeps,
+    component: str,
+    points: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    event_ids: list[int] | None = None,
+) -> str:
+    payload = {
+        "component": component,
+        "points": sorted(points or [], key=str),
+        "start": start,
+        "end": end,
+        "event_ids": sorted(event_ids or []),
+        "data_fingerprint": data_fingerprint(deps)["digest"],
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _store_report_data_components(
+    deps: AgentDeps,
+    tool_name: str,
+    params: dict[str, Any],
+    data: dict[str, Any],
+) -> None:
+    points = params.get("points") or []
+    start = params.get("start")
+    end = params.get("end")
+    event_ids = params.get("event_ids") or []
+    components: list[tuple[str, str, list[int] | None]] = []
+    if tool_name == "check_data":
+        components = [("data_collection", "table", None)]
+    elif tool_name == "analyze_rainfall":
+        time_range = params.get("time_range") or []
+        start = time_range[0] if len(time_range) == 2 else None
+        end = time_range[1] if len(time_range) == 2 else None
+        components = [("rainfall_daily", "daily", None), ("rainfall_events", "events", None)]
+    elif tool_name == "analyze_patterns":
+        components = [("pattern_analysis", "table", None)]
+    elif tool_name == "assess_risk":
+        scope = params.get("scope", "all")
+        if scope in {"dry", "all"} and data.get("dry_analysis") is not None:
+            components.append(("dry_analysis", "dry_analysis", None))
+        if scope in {"dry", "all"} and data.get("dry_risk") is not None:
+            components.append(("dry_risk", "dry_risk", None))
+        if scope in {"rainy", "all"} and data.get("rainy_risk") is not None:
+            components.append(("rainy_overflow_risk", "rainy_risk", event_ids))
+    for component, data_key, component_events in components:
+        records = data.get(data_key)
+        if records is None:
+            continue
+        key = _report_data_key(deps, component, points, start, end, component_events)
+        deps.session.report_data_cache[key] = deepcopy(records)
+
+
+def _cached_report_frame(
+    deps: AgentDeps,
+    component: str,
+    points: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    event_ids: list[int] | None = None,
+) -> pd.DataFrame | None:
+    key = _report_data_key(deps, component, points, start, end, event_ids)
+    records = deps.session.report_data_cache.get(key)
+    return pd.DataFrame(deepcopy(records)) if records is not None else None
 
 
 def _manifest_stale(deps: AgentDeps, tool_name: str) -> bool:
@@ -764,15 +857,8 @@ def data_filter_impl(
 
 
 def _load_event_table(deps: AgentDeps) -> pd.DataFrame:
-    if not deps.paths.combined_xlsx.exists():
-        return pd.DataFrame()
-    for sheet_name in ("降雨场次分析", "场次降雨统计"):
-        try:
-            events = pd.read_excel(deps.paths.combined_xlsx, sheet_name=sheet_name)
-            return from_display_columns(events, "rainfall_events")
-        except Exception:
-            continue
-    return pd.DataFrame()
+    rain = io.load_rain(root=deps.paths.root)
+    return analyze_rainfall(rain)["events"]
 
 
 def _event_options(events: pd.DataFrame) -> list[dict[str, Any]]:
@@ -794,12 +880,6 @@ def _require_event_ids(deps: AgentDeps, event_ids: list[int] | None) -> ToolResu
     if deps.session.selected_event_ids:
         return None
     events = _load_event_table(deps)
-    if events.empty:
-        rain = io.load_rain(root=deps.paths.root)
-        events = analyze_rainfall(rain)["events"]
-        if not events.empty:
-            _write_sheet(deps.paths.combined_xlsx, "降雨场次分析", events)
-            _remove_sheet(deps.paths.combined_xlsx, "场次降雨统计")
     return needs_input(
         "event_ids",
         "请从 options 中选择降雨场次编号；也可以回复“只出旱天报告”。",
@@ -816,11 +896,6 @@ def _event_data_coverage(
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[dict[str, str]]]:
     flow = io.load_flow(points=points, root=deps.paths.root)
     events = _load_event_table(deps)
-    if events.empty:
-        events = analyze_rainfall(io.load_rain(root=deps.paths.root))["events"]
-        if not events.empty:
-            _write_sheet(deps.paths.combined_xlsx, "降雨场次分析", events)
-            _remove_sheet(deps.paths.combined_xlsx, "场次降雨统计")
 
     wanted = {int(event_id) for event_id in event_ids}
     selected_events = events[events["event_id"].astype(int).isin(wanted)].copy() if not events.empty else events
@@ -956,18 +1031,56 @@ def _load_filtered_dry_flow(
     return io.load_filtered_flow(points=points, time_range=time_range, root=deps.paths.root)
 
 
-def check_data_impl(deps: AgentDeps, points: list[str] | None = None, export: bool = False) -> ToolResult:
+def check_data_impl(
+    deps: AgentDeps,
+    points: list[str] | None = None,
+    export: bool = False,
+    start: str | None = None,
+    end: str | None = None,
+) -> ToolResult:
+    windowed = start is not None or end is not None
+
     def work() -> tuple[str, dict[str, Any]]:
         flow = io.load_flow(points=points, root=deps.paths.root)
+        coverage = None
+        if windowed:
+            start_ts, end_ts = _window_bounds(start, end)
+            if start_ts is not None:
+                flow = flow[flow["timestamp"] >= start_ts]
+            if end_ts is not None:
+                flow = flow[flow["timestamp"] <= end_ts]
+            coverage = {
+                "requested_start": start,
+                "requested_end": end,
+                "actual_start": flow["timestamp"].min().isoformat(sep=" ") if not flow.empty else None,
+                "actual_end": flow["timestamp"].max().isoformat(sep=" ") if not flow.empty else None,
+            }
         stats_df = check_data(flow)
-        destination = _route_table_result(deps, stats_df, "数据收集率统计", points, export)
+        if windowed and not stats_df.empty:
+            effective_start = start_ts or flow["timestamp"].min()
+            effective_end = end_ts or flow["timestamp"].max()
+            expected = max(int((effective_end - effective_start) / pd.Timedelta(minutes=1)) + 1, 1)
+            stats_df["monitoring_days"] = max(int((expected + 1439) // 1440), 1)
+            stats_df["theoretical_count"] = expected
+            stats_df["collection_rate"] = (stats_df["record_count"] / expected).clip(upper=1.0)
+        destination = _route_table_result(
+            deps, stats_df, "数据收集率统计", points, export, allow_combined=not windowed
+        )
         if destination["kind"] == "combined_xlsx":
             _remove_sheet(deps.paths.combined_xlsx, "数据体检")
         avg = float(stats_df["collection_rate"].mean()) if not stats_df.empty else 0.0
         summary = f"数据收集率统计完成：处理 {len(stats_df)} 个点位，平均收集率 {avg:.1%}。"
-        return summary, {"table": stats_df.to_dict(orient="records"), "result_destinations": [destination]}
+        data = {"table": stats_df.to_dict(orient="records"), "result_destinations": [destination]}
+        if coverage is not None:
+            data["window_coverage"] = coverage
+        return summary, data
 
-    return _run(deps, "check_data", work, params={"points": points or [], "export": export})
+    return _run(
+        deps,
+        "check_data",
+        work,
+        params={"points": points or [], "export": export, "start": start, "end": end},
+    )
 
 
 def _rainfall_window_bounds(time_range: list[str]) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -1005,12 +1118,13 @@ def analyze_rainfall_impl(deps: AgentDeps, time_range: list[str] | None = None, 
         if time_range:
             result = _filter_rainfall_result_to_window(rain, result, time_range)
         chart_paths: dict[str, str] = {}
-        if output in {"all", "daily"}:
+        if output in {"all", "daily"} and not time_range:
             _write_sheet(deps.paths.combined_xlsx, "降雨概况", result["daily"])
             _remove_sheet(deps.paths.combined_xlsx, "日降雨量统计")
             _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
+        if output in {"all", "daily"}:
             chart_paths = _save_rainfall_png_charts(result["daily"], deps.paths.outputs / "降雨分析图")
-        if output in {"all", "events"}:
+        if output in {"all", "events"} and not time_range:
             _write_sheet(deps.paths.combined_xlsx, "降雨场次分析", result["events"])
             _remove_sheet(deps.paths.combined_xlsx, "场次降雨统计")
         rainy_days = int(result["daily"]["is_rainy"].sum()) if not result["daily"].empty else 0
@@ -1068,7 +1182,9 @@ def analyze_patterns_impl(
             curve_images = _save_partial_pattern_curve_png(curves, points, deps.paths.outputs)
         else:
             curve_images = {}
-        destination = _route_table_result(deps, patterns, "排污规律分析", points, export)
+        destination = _route_table_result(
+            deps, patterns, "排污规律分析", points, export, allow_combined=not windowed
+        )
         llm_note = "描述由 LLM JSON 生成并经规则后处理" if llm_client is not None else "未配置 LLM，描述使用规则兜底生成"
         summary = (
             f"排污规律分析完成：分析 {len(patterns)} 个点位，生成 {len(curves)} 条旱天曲线。"
@@ -1278,16 +1394,35 @@ def assess_risk_impl(
             events=events,
             event_ids=event_ids,
         )
-        destinations = [_route_table_result(deps, dry_stats, "旱天分析", points, export)]
+        allow_combined = not (start is not None or end is not None)
+        destinations = [
+            _route_table_result(
+                deps, dry_stats, "旱天分析", points, export, allow_combined=allow_combined
+            )
+        ]
         if not result["dry_risk"].empty:
-            destinations.append(_route_table_result(deps, result["dry_risk"], "旱天风险", points, export))
+            destinations.append(
+                _route_table_result(
+                    deps, result["dry_risk"], "旱天风险", points, export, allow_combined=allow_combined
+                )
+            )
         if not result["rainy_risk"].empty:
-            destinations.append(_route_table_result(deps, result["rainy_risk"], "雨天溢流风险", points, export))
+            destinations.append(
+                _route_table_result(
+                    deps,
+                    result["rainy_risk"],
+                    "雨天溢流风险",
+                    points,
+                    export,
+                    allow_combined=allow_combined,
+                )
+            )
         excluded_note = f"；雨天分析剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"风险评估完成：旱天风险 {len(result['dry_risk'])} 行，雨天风险 {len(result['rainy_risk'])} 行{excluded_note}。"
         if window_coverage is not None:
             summary += _window_coverage_note(window_coverage, dry_excluded)
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
+        data["dry_analysis"] = dry_stats.to_dict(orient="records")
         data["covered_points"] = covered
         data["excluded_points"] = excluded
         if windowed:
@@ -1300,50 +1435,174 @@ def assess_risk_impl(
     return _run(deps, "assess_risk", work, params=params)
 
 
-def generate_report_impl(deps: AgentDeps, sections: list[str] | None = None, event_ids: list[int] | None = None) -> ToolResult:
-    sections = sections or ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"]
-    selected_event_ids = event_ids or deps.session.selected_event_ids
+DEFAULT_REPORT_SECTIONS = ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"]
+REPORT_MONITORING_SECTIONS = {"监测概况", "数据体检", "数据质量"}
+REPORT_RAINFALL_SECTIONS = {"降雨分析", "降雨统计", "雨天事件统计", "事件响应", "RDII"}
+REPORT_PATTERN_SECTIONS = {"旱天排污规律统计分析", "排污规律", "排污规律分析", "旱天分析"}
+REPORT_RISK_SECTIONS = {"污水系统运行风险分析", "污水系统运行风险", "运行风险分析", "风险评估", "旱天风险", "雨天风险", "雨天溢流风险", "溢流风险"}
+
+
+def generate_report_impl(
+    deps: AgentDeps,
+    points: list[str] | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    sections: list[str] | None = None,
+    event_ids: list[int] | None = None,
+) -> ToolResult:
+    sections = sections or list(DEFAULT_REPORT_SECTIONS)
+    selected_event_ids = list(event_ids or deps.session.selected_event_ids)
     unavailable = sorted(set(selected_event_ids).intersection(deps.session.unavailable_event_ids))
     if unavailable:
         return error(
             f"无法生成可靠报告：场次 {unavailable} 与监测数据无时间重叠，缺少事件响应、RDII 和雨天风险依据。"
         )
-    rainy_sections = {"降雨分析", "雨天事件统计", "事件响应", "RDII", "雨天风险", "雨天溢流风险"}
-    if rainy_sections.intersection(sections):
-        precheck = _require_event_ids(deps, event_ids)
-        if precheck:
-            return precheck
-    params = {"sections": sections, "event_ids": selected_event_ids}
+
+    wants_monitoring = bool(REPORT_MONITORING_SECTIONS.intersection(sections))
+    wants_rainfall = bool(REPORT_RAINFALL_SECTIONS.intersection(sections))
+    wants_patterns = bool(REPORT_PATTERN_SECTIONS.intersection(sections))
+    wants_risk = bool(REPORT_RISK_SECTIONS.intersection(sections))
+    if not any((wants_monitoring, wants_rainfall, wants_patterns, wants_risk)):
+        return error(f"无法识别报告章节: {sections}")
+    tables: dict[str, pd.DataFrame] = {}
+    summaries: list[str] = []
+    time_range = _resolved_report_time_range(deps, start, end) if start is not None or end is not None else None
+
+    if wants_monitoring:
+        cached = _cached_report_frame(deps, "data_collection", points, start, end)
+        if cached is None:
+            data_check = check_data_impl(deps, points=points, start=start, end=end)
+            if data_check["status"] != "ok":
+                return data_check
+            cached = _result_frame(data_check, "table")
+            summaries.append(data_check["summary"])
+        tables["data_collection"] = cached
+
+    rain: ToolResult | None = None
+    if wants_rainfall or wants_risk:
+        rain_start = time_range[0] if time_range else None
+        rain_end = time_range[1] if time_range else None
+        cached_daily = _cached_report_frame(deps, "rainfall_daily", start=rain_start, end=rain_end)
+        cached_events = _cached_report_frame(deps, "rainfall_events", start=rain_start, end=rain_end)
+        if cached_daily is None or cached_events is None:
+            rain = analyze_rainfall_impl(deps, time_range=time_range)
+            if rain["status"] != "ok":
+                return rain
+            cached_daily = _result_frame(rain, "daily")
+            cached_events = _result_frame(rain, "events")
+            summaries.append(rain["summary"])
+        tables["rainfall_daily"] = cached_daily
+        tables["rainfall_events"] = cached_events
+
+    if wants_patterns:
+        cached = _cached_report_frame(deps, "pattern_analysis", points, start, end)
+        if cached is None:
+            patterns = analyze_patterns_impl(deps, points=points, start=start, end=end)
+            if patterns["status"] != "ok":
+                return patterns
+            cached = _result_frame(patterns, "table")
+            summaries.append(patterns["summary"])
+        tables["pattern_analysis"] = cached
+
+    if wants_risk:
+        window_events = tables.get("rainfall_events", pd.DataFrame())
+        available_ids = (
+            set(pd.to_numeric(window_events.get("event_id"), errors="coerce").dropna().astype(int).tolist())
+            if not window_events.empty and "event_id" in window_events.columns
+            else set()
+        )
+        if not selected_event_ids:
+            return needs_input(
+                "event_ids",
+                "请选择报告雨天风险所使用的降雨场次编号。",
+                summary="默认全套报告包含雨天风险，需要先选择降雨场次。",
+                options=_event_options(window_events),
+            )
+        outside = sorted(set(selected_event_ids) - available_ids)
+        if time_range and outside:
+            return error(f"降雨场次 {outside} 不在报告时间窗 [{start or '不限'}, {end or '不限'}] 内。")
+        dry_analysis = _cached_report_frame(deps, "dry_analysis", points, start, end)
+        dry_risk = _cached_report_frame(deps, "dry_risk", points, start, end)
+        rainy_risk = _cached_report_frame(
+            deps, "rainy_overflow_risk", points, start, end, selected_event_ids
+        )
+        missing_dry = dry_analysis is None or dry_risk is None
+        missing_rainy = rainy_risk is None
+        if missing_dry or missing_rainy:
+            scope = "all" if missing_dry and missing_rainy else "dry" if missing_dry else "rainy"
+            risk = assess_risk_impl(
+                deps,
+                scope=scope,
+                event_ids=selected_event_ids if scope in {"all", "rainy"} else None,
+                points=points,
+                start=start,
+                end=end,
+            )
+            if risk["status"] != "ok":
+                return risk
+            if missing_dry:
+                dry_analysis = _result_frame(risk, "dry_analysis")
+                dry_risk = _result_frame(risk, "dry_risk")
+            if missing_rainy:
+                rainy_risk = _result_frame(risk, "rainy_risk")
+            summaries.append(risk["summary"])
+        tables["dry_analysis"] = dry_analysis if dry_analysis is not None else pd.DataFrame()
+        tables["dry_risk"] = dry_risk if dry_risk is not None else pd.DataFrame()
+        tables["rainy_overflow_risk"] = rainy_risk if rainy_risk is not None else pd.DataFrame()
+        if tables["rainy_overflow_risk"].empty:
+            return error("雨天风险计算结果为空，拒绝生成带空雨天风险章节的报告。")
+
+    params = {
+        "points": points or [],
+        "start": start,
+        "end": end,
+        "sections": sections,
+        "event_ids": selected_event_ids,
+    }
 
     def work() -> tuple[str, dict[str, Any]]:
-        summaries: list[str] = []
-        data_check = check_data_impl(deps)
-        summaries.append(data_check["summary"])
-        if any(section in sections for section in ("降雨分析", "雨天事件统计", "事件响应", "RDII", "雨天风险", "雨天溢流风险")):
-            rain = analyze_rainfall_impl(deps)
-            summaries.append(rain["summary"])
-        if any(section in sections for section in ("旱天排污规律统计分析", "排污规律", "排污规律分析", "旱天分析")):
-            patterns = analyze_patterns_impl(deps)
-            summaries.append(patterns["summary"])
-        if any(section in sections for section in ("污水系统运行风险分析", "运行风险分析", "风险评估", "旱天风险", "雨天风险", "溢流风险")):
-            risk = assess_risk_impl(deps, scope="dry")
-            summaries.append(risk["summary"])
-        output_file = deps.paths.outputs / "分析报告.docx"
+        output_file = deps.paths.outputs / _report_filename(points, start, end)
         result = build_report(
             output_file,
             "排水监测数据分析报告",
             summaries,
             template_file=deps.paths.report_template_file,
-            combined_xlsx=deps.paths.combined_xlsx,
+            analysis_tables=tables,
             site_info_file=deps.paths.site_info_file,
             outputs_dir=deps.paths.outputs,
             sections=sections,
+            has_rainfall_data=not tables.get("rainfall_daily", pd.DataFrame()).empty,
+            point_ids=points,
+            start=start,
+            end=end,
         )
         summary = (
-            f"报告生成完成：{_rel(deps, output_file)}，"
-            f"模板匹配 {len(result['templated_sections'])} 个模块，"
-            f"补充生成 {len(result['generated_sections'])} 个模块。"
+            f"报告生成完成：{_rel(deps, output_file)}，范围点位 {points or ['全网']}，"
+            f"时间窗 [{start or '全时段'}, {end or '全时段'}]。"
         )
         return summary, result
 
-    return _run(deps, "generate_report", work, params=params)
+    return _run(deps, "generate_report", work, params=params, use_cache=False)
+
+
+def _result_frame(result: ToolResult, key: str) -> pd.DataFrame:
+    value = result.get("data", {}).get(key, [])
+    return pd.DataFrame(value)
+
+
+def _resolved_report_time_range(deps: AgentDeps, start: str | None, end: str | None) -> list[str]:
+    rain = io.load_rain(root=deps.paths.root)
+    resolved_start = start or rain["timestamp"].min().strftime("%Y-%m-%d %H:%M:%S")
+    resolved_end = end or rain["timestamp"].max().strftime("%Y-%m-%d %H:%M:%S")
+    return [resolved_start, resolved_end]
+
+
+def _report_filename(points: list[str] | None, start: str | None, end: str | None) -> str:
+    if not points and start is None and end is None:
+        return "分析报告.docx"
+    parts: list[str] = []
+    if points:
+        parts.append(_point_result_prefix(points))
+    if start or end:
+        parts.append(f"{_safe_filename_part(start or '起始')}_{_safe_filename_part(end or '结束')}")
+    return "_".join(parts + ["分析报告.docx"])

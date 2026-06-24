@@ -20,7 +20,11 @@ class ValidationResult:
         return not self.critical
 
 
-def validate_report(doc: Document, facts: ReportFacts) -> ValidationResult:
+def validate_report(
+    doc: Document,
+    facts: ReportFacts,
+    selected_sections: list[str] | None = None,
+) -> ValidationResult:
     result = ValidationResult()
     text = "\n".join(p.text for p in doc.paragraphs)
 
@@ -39,9 +43,10 @@ def validate_report(doc: Document, facts: ReportFacts) -> ValidationResult:
     if facts.point_count and f"共布设{facts.point_count}个流量监测点位" not in text:
         result.warnings.append("未找到与事实一致的点位总数描述")
 
-    if "表 12 旱天运行状态统计表" not in text:
+    selected = set(selected_sections or ["monitoring_overview", "rainfall_analysis", "dry_pattern_analysis", "operation_risk_analysis"])
+    if "operation_risk_analysis" in selected and "表 12 旱天运行状态统计表" not in text:
         result.critical.append("报告缺少表题: 表 12 旱天运行状态统计表")
-    if "雨天运行风险分析" in text and "表 13 第二轮监测雨天运行状态统计表" not in text:
+    if "operation_risk_analysis" in selected and "雨天运行风险分析" in text and "表 13 第二轮监测雨天运行状态统计表" not in text:
         result.critical.append("报告缺少表题: 表 13 第二轮监测雨天运行状态统计表")
 
     pattern_start = text.find("旱天排污规律统计分析")

@@ -7,8 +7,10 @@ from typing import get_args
 
 import pandas as pd
 import pytest
+from docx import Document
 
 from analysis import io
+from analysis.reporting import build_report
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.inspect_tools import list_results_impl
 from agent.tools.manifest import record_result
@@ -24,7 +26,7 @@ from agent.tools.module_tools import (
     generate_report_impl,
 )
 from agent.tools.python_tool import run_python_impl
-from agent.types import ToolStatus
+from agent.types import ToolStatus, ok
 
 
 def make_deps(root: Path) -> AgentDeps:
@@ -319,7 +321,8 @@ def test_patterns_none_window_preserves_full_input(
     assert before["status"] == after["status"] == "ok"
     assert before["data"] == after["data"]
     assert "window_coverage" not in after["data"]
-    pd.testing.assert_frame_equal(captured[0], captured[1])
+    assert len(captured) == 1
+    pd.testing.assert_frame_equal(captured[0], flow)
     pd.testing.assert_frame_equal(captured[0], flow)
 
 
@@ -634,7 +637,7 @@ def test_patterns_and_report_success(tmp_path: Path) -> None:
     write_sample_data(deps)
 
     patterns = analyze_patterns_impl(deps)
-    report = generate_report_impl(deps, sections=["数据体检", "排污规律", "风险评估"])
+    report = generate_report_impl(deps, sections=["数据体检", "排污规律"])
 
     assert patterns["status"] == "ok"
     assert report["status"] == "ok"
@@ -654,6 +657,277 @@ def test_list_results_exposes_fresh_manifest_metadata(tmp_path: Path) -> None:
     assert result["status"] == "ok"
     assert item["fresh"] is True
     assert item["params"] == {}
+
+
+def _install_report_stubs(monkeypatch: pytest.MonkeyPatch, captured: dict, counts: dict) -> None:
+    def selected(points: list[str] | None) -> list[str]:
+        return points or ["W1", "W2"]
+
+    def fake_check(_deps, points=None, export=False, start=None, end=None):
+        counts["check"] = counts.get("check", 0) + 1
+        captured["check_scope"] = (points, start, end)
+        return ok("checked", table=[{"point_id": point, "record_count": 10} for point in selected(points)])
+
+    def fake_rain(_deps, time_range=None, output="all", rainfall_gap_hours=12):
+        counts["rain"] = counts.get("rain", 0) + 1
+        captured["rain_scope"] = time_range
+        return ok(
+            "rain",
+            daily=[{"date": "2026-03-10", "daily_rain_mm": 5.0, "is_rainy": True}],
+            events=[{
+                "event_id": 1,
+                "start_time": "2026-03-10 01:00",
+                "end_time": "2026-03-10 03:00",
+                "total_rain_mm": 5.0,
+            }],
+        )
+
+    def fake_patterns(_deps, points=None, output="all", export=False, start=None, end=None):
+        counts["patterns"] = counts.get("patterns", 0) + 1
+        captured["pattern_scope"] = (points, start, end)
+        return ok("patterns", table=[{"point_id": point, "category": 1} for point in selected(points)])
+
+    def fake_risk(_deps, scope="all", event_ids=None, points=None, export=False, start=None, end=None):
+        counts["risk"] = counts.get("risk", 0) + 1
+        captured["risk_scope"] = (scope, event_ids, points, start, end)
+        rows = selected(points)
+        return ok(
+            "risk",
+            dry_analysis=[{"point_id": point} for point in rows],
+            dry_risk=[{"point_id": point, "overflow_value": 0.2} for point in rows],
+            rainy_risk=[{"point_id": point, "overflow_value": 0.3} for point in rows],
+        )
+
+    def fake_build(output_file: Path, *_args, **kwargs):
+        counts["build"] = counts.get("build", 0) + 1
+        captured["build"] = kwargs
+        output_file.write_bytes(b"report")
+        return {
+            "output_file": str(output_file),
+            "templated_sections": kwargs.get("sections") or [],
+            "generated_sections": [],
+            "stats": {},
+        }
+
+    monkeypatch.setattr("agent.tools.module_tools.check_data_impl", fake_check)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns_impl", fake_patterns)
+    monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
+    monkeypatch.setattr("agent.tools.module_tools.build_report", fake_build)
+
+
+def test_default_full_report_has_all_scope_and_nonempty_rainy_risk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    result = generate_report_impl(deps, event_ids=[1])
+
+    assert result["status"] == "ok"
+    build = captured["build"]
+    assert build["point_ids"] is None
+    assert build["start"] is None and build["end"] is None
+    assert build["sections"] == ["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"]
+    assert not build["analysis_tables"]["rainy_overflow_risk"].empty
+    assert set(build["analysis_tables"]["rainy_overflow_risk"]["point_id"]) == {"W1", "W2"}
+
+
+def test_single_point_report_does_not_fall_back_to_full_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    result = generate_report_impl(deps, points=["W1"], event_ids=[1])
+
+    assert result["status"] == "ok"
+    build = captured["build"]
+    assert build["point_ids"] == ["W1"]
+    for name in ("data_collection", "pattern_analysis", "dry_risk", "rainy_overflow_risk"):
+        assert set(build["analysis_tables"][name]["point_id"]) == {"W1"}
+    assert (deps.paths.outputs / "W1_分析报告.docx").exists()
+
+
+def test_time_window_report_passes_one_scope_to_all_analyses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._resolved_report_time_range",
+        lambda *_args: ["2026-03-07", "2026-03-10"],
+    )
+
+    result = generate_report_impl(
+        deps,
+        start="2026-03-07",
+        end="2026-03-10",
+        event_ids=[1],
+    )
+
+    assert result["status"] == "ok"
+    assert captured["check_scope"] == (None, "2026-03-07", "2026-03-10")
+    assert captured["rain_scope"] == ["2026-03-07", "2026-03-10"]
+    assert captured["pattern_scope"] == (None, "2026-03-07", "2026-03-10")
+    assert captured["risk_scope"] == ("all", [1], None, "2026-03-07", "2026-03-10")
+    assert captured["build"]["start"] == "2026-03-07"
+    assert captured["build"]["end"] == "2026-03-10"
+
+
+def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(
+        deps,
+        points=["W1"],
+        start="2026-01-01 00:10:00",
+        end="2026-01-01 00:19:00",
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["table"][0]["record_count"] == 10
+    assert result["data"]["table"][0]["theoretical_count"] == 10
+    assert result["data"]["table"][0]["collection_rate"] == 1.0
+    assert result["data"]["window_coverage"]["actual_start"].startswith("2026-01-01 00:10:00")
+    assert not deps.paths.combined_xlsx.exists()
+
+
+def test_report_with_selected_sections_only_computes_selected_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    result = generate_report_impl(deps, sections=["监测概况"])
+
+    assert result["status"] == "ok"
+    assert counts == {"check": 1, "build": 1}
+    assert captured["build"]["sections"] == ["监测概况"]
+    assert set(captured["build"]["analysis_tables"]) == {"data_collection"}
+
+
+def test_repeated_same_scope_report_reuses_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    pd.DataFrame({"点位编号": ["W1", "W2"], "管径": [1.0, 1.0]}).to_excel(
+        deps.paths.site_info_file, index=False
+    )
+    flow = sample_two_point_pattern_flow()
+    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_a, **_k: flow)
+    calls = {"analysis": 0, "build": 0}
+
+    def fake_analysis(_flow, **_kwargs):
+        calls["analysis"] += 1
+        return {"patterns": pd.DataFrame([{"point_id": "W1", "category": 1}]), "curves": {}}
+
+    def fake_build(output_file: Path, *_args, **kwargs):
+        calls["build"] += 1
+        output_file.write_bytes(b"report")
+        return {"output_file": str(output_file), "templated_sections": kwargs["sections"], "generated_sections": [], "stats": {}}
+
+    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", fake_analysis)
+    monkeypatch.setattr("agent.tools.module_tools.build_report", fake_build)
+
+    first = generate_report_impl(deps, points=["W1"], sections=["排污规律"])
+    second = generate_report_impl(deps, points=["W1"], sections=["排污规律"])
+
+    assert first["status"] == second["status"] == "ok"
+    assert calls == {"analysis": 1, "build": 2}
+
+
+def _fixed_template_tables() -> dict[str, pd.DataFrame]:
+    return {
+        "data_collection": pd.DataFrame([{
+            "point_id": "W1", "record_count": 1440, "monitoring_days": 1,
+            "theoretical_count": 1440, "collection_rate": 1.0,
+        }]),
+        "rainfall_daily": pd.DataFrame([{"date": "2026-03-10", "daily_rain_mm": 5.0}]),
+        "rainfall_events": pd.DataFrame([{
+            "event_id": 1, "start_time": "2026-03-10 01:00", "end_time": "2026-03-10 03:00",
+            "total_rain_mm": 5.0, "duration_h": 2.0, "avg_intensity_mmh": 2.5, "rain_level": "小雨",
+        }]),
+        "pattern_analysis": pd.DataFrame([{
+            "point_id": "W1", "category": 1, "category_name": "第1类 符合生活用水规律",
+            "description": "W1点位符合生活用水规律。",
+        }]),
+        "dry_risk": pd.DataFrame([{
+            "index": 1, "point_id": "W1", "diameter_m": 1.0, "well_depth_m": 3.0,
+            "dry_velocity_mps": 0.5, "max_level_m": 0.8, "max_fullness": 0.8,
+            "overflow_value": 0.27, "silting_risk": "中风险", "running_risk": "低风险",
+            "overflow_risk": "低风险",
+        }]),
+        "rainy_overflow_risk": pd.DataFrame([{
+            "event_id": 1, "point_id": "W1", "max_level_m": 1.2, "well_depth_m": 3.0,
+            "overflow_value": 0.4, "overflow_risk": "低风险",
+        }]),
+    }
+
+
+def test_fixed_template_report_uses_in_memory_tables_and_fills_rainy_section(tmp_path: Path) -> None:
+    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    site_info = tmp_path / "点位信息.xlsx"
+    pd.DataFrame([{
+        "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
+        "井深(m)": 3.0, "设备安装时间": "2026-03-01",
+    }]).to_excel(site_info, index=False)
+    output = tmp_path / "W1_分析报告.docx"
+
+    result = build_report(
+        output,
+        "排水监测数据分析报告",
+        template_file=template,
+        analysis_tables=_fixed_template_tables(),
+        site_info_file=site_info,
+        sections=["监测概况", "降雨分析", "旱天排污规律统计分析", "污水系统运行风险分析"],
+        point_ids=["W1"],
+        start="2026-03-07",
+        end="2026-03-10",
+    )
+
+    text = "\n".join(paragraph.text for paragraph in Document(output).paragraphs)
+    assert result["template_used"] is True
+    assert result["stats"]["points_processed"] == 1
+    assert not any("pipeline_report_assembler failed" in warning for warning in result.get("warnings", []))
+    assert "雨天运行风险分析" in text
+    assert "雨天溢流风险数据暂不完整" not in text
+    assert "W1" in text
+
+
+def test_fixed_template_selected_sections_remove_unselected_chapters(tmp_path: Path) -> None:
+    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    site_info = tmp_path / "点位信息.xlsx"
+    pd.DataFrame([{
+        "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
+        "井深(m)": 3.0, "设备安装时间": "2026-03-01",
+    }]).to_excel(site_info, index=False)
+    output = tmp_path / "概况报告.docx"
+
+    build_report(
+        output,
+        "排水监测数据分析报告",
+        template_file=template,
+        analysis_tables={"data_collection": _fixed_template_tables()["data_collection"]},
+        site_info_file=site_info,
+        sections=["监测概况"],
+        point_ids=["W1"],
+    )
+
+    text = "\n".join(paragraph.text for paragraph in Document(output).paragraphs)
+    assert "监测概况" in text
+    assert "降雨分析" not in text
+    assert "旱天排污规律统计分析" not in text
+    assert "污水系统运行风险" not in text
 
 
 def test_record_note_success(tmp_path: Path) -> None:
