@@ -918,7 +918,10 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     assert captured["risk_scope"] == ("all", [1], None, "2026-03-07", "2026-03-10")
     assert captured["build"]["start"] == "2026-03-08 00:00:00"
     assert captured["build"]["end"] == "2026-03-09 23:59:00"
-    assert deps.paths.combined_xlsx.exists()
+    combined = deps.paths.outputs / "全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
+    assert combined.exists()
+    assert not deps.paths.combined_xlsx.exists()
+    assert result["data"]["result_destinations"][0]["path"] == "outputs/全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
 
 
 def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
@@ -954,7 +957,9 @@ def test_report_with_selected_sections_only_computes_selected_data(
     assert counts == {"check": 1, "build": 1}
     assert captured["build"]["sections"] == ["监测概况"]
     assert set(captured["build"]["analysis_tables"]) == {"data_collection"}
-    assert pd.ExcelFile(deps.paths.combined_xlsx).sheet_names == ["数据收集率统计"]
+    combined = deps.paths.outputs / "全网_全时段_综合分析结果.xlsx"
+    assert pd.ExcelFile(combined).sheet_names == ["数据收集率统计"]
+    assert not deps.paths.combined_xlsx.exists()
 
 
 def test_custom_dry_only_section_names_still_generate_docx(
@@ -996,12 +1001,14 @@ def test_dry_only_report_keeps_monitoring_and_writes_matching_combined_sheets(
         "dry_analysis",
         "dry_risk",
     }
-    assert pd.ExcelFile(deps.paths.combined_xlsx).sheet_names == [
+    combined = deps.paths.outputs / "全网_全时段_综合分析结果.xlsx"
+    assert pd.ExcelFile(combined).sheet_names == [
         "数据收集率统计",
         "排污规律分析",
         "旱天分析",
         "旱天风险",
     ]
+    assert not deps.paths.combined_xlsx.exists()
     assert result["data"]["report_combined_sheets"] == [
         "数据收集率统计",
         "排污规律分析",

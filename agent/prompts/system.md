@@ -14,7 +14,8 @@
 
 ## 固化流程
 
-- 用户明确要求生成报告、出报告、做 DOCX 报告时，本轮只调用 `generate_report`；报告工具内部会补齐所需图表和表格。即使报告缺少旱天曲线、排污规律、筛选结果或数据体检素材，也禁止在出报告前单独调用 `data_filter`、`check_data`、`analyze_patterns` 或 `run_python` 预生成报告素材。
+- 用户明确要求生成报告、出报告、做 DOCX 报告时，本轮只调用 `generate_report`；报告工具内部会补齐所需图表、表格，并按实际有效数据范围填正文。即使用户同时给出点位、时间范围、旱天数据范围、筛选条件，或报告缺少旱天曲线、排污规律、筛选结果、数据体检素材，也只能把这些信息转成 `generate_report` 参数，禁止在出报告前单独调用 `data_filter`、`check_data`、`analyze_patterns` 或 `run_python` 预生成报告素材、检查数据覆盖、查询实际时间范围。
+- 当用户说“根据上述分析撰写报告/出报告”但上文混有不同点位或时间范围（例如既有全网风险，又有 W4/W6 排污规律）时，不要猜默认报告范围，不调用工具；必须先询问报告要包含哪些点位、哪个时间范围、哪些事件和章节。
 - 非报告的完整分析链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk`。
 - `data_filter` 负责生成 `筛选结果.xlsx`，筛选逻辑为确定性前置，不得用简化规则替代。
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
@@ -28,7 +29,7 @@
 
 ## 路由规则
 
-- 点位级分析默认 `export=false`；仅当用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`。单独分析不写 `综合分析结果.xlsx`，明确导出时生成带点位和时间范围命名的独立 CSV。只有 `generate_report` 成功生成报告时，才把进入该报告的模块结果写入 `综合分析结果.xlsx`，使综合表与报告内容一一对应。
+- 点位级分析默认 `export=false`；仅当用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`。单独分析不写综合表，明确导出时生成带点位和时间范围命名的独立 CSV。只有 `generate_report` 成功生成报告时，才把进入该报告的模块结果写入与报告同 scope 命名的综合表，例如 `全网_2026-03-10_2026-03-15_综合分析结果.xlsx`，使综合表与报告内容一一对应。
 - 对用户汇报落盘位置时，只能读取工具返回的 `result_destinations`：`combined_xlsx` 才能说写入综合表，`csv` 只能说导出了对应 CSV；不得从历史 `artifacts` 推断本次去向。
 - 指定时间窗后，降雨事件对用户统一使用窗口内从 1 开始的连续编号；`source_event_id` 仅供内部计算，禁止在回复中作为场次编号展示。
 

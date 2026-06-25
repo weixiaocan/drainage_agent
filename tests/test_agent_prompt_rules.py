@@ -30,6 +30,9 @@ def test_prompt_documents_v2_workflow_order() -> None:
     assert expected_order in prompt
     assert "本轮只调用 `generate_report`" in prompt
     assert "禁止在出报告前单独调用 `data_filter`、`check_data`、`analyze_patterns`" in prompt
+    assert "查询实际时间范围" in prompt
+    assert "上文混有不同点位或时间范围" in prompt
+    assert "必须先询问报告要包含哪些点位、哪个时间范围" in prompt
     assert "不要编造编号" in prompt
 
 
@@ -42,8 +45,9 @@ def test_prompt_documents_routing_rules() -> None:
     assert "`run_python`" in prompt
     assert "点位级分析默认 `export=false`" in prompt
     assert "用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`" in prompt
-    assert "单独分析不写 `综合分析结果.xlsx`" in prompt
+    assert "单独分析不写综合表" in prompt
     assert "只有 `generate_report` 成功生成报告时" in prompt
+    assert "与报告同 scope 命名的综合表" in prompt
     assert "综合表与报告内容一一对应" in prompt
 
 

@@ -271,18 +271,26 @@ REPORT_COMBINED_SHEETS: tuple[tuple[str, str], ...] = (
 def _write_report_combined_workbook(
     deps: AgentDeps,
     tables: dict[str, pd.DataFrame],
+    output_path: Path,
 ) -> list[str]:
     """Write only the tables included in the current report."""
     written: list[str] = []
-    if deps.paths.combined_xlsx.exists():
+    if output_path.exists():
+        output_path.unlink()
+    if deps.paths.combined_xlsx != output_path and deps.paths.combined_xlsx.exists():
         deps.paths.combined_xlsx.unlink()
     for key, sheet_name in REPORT_COMBINED_SHEETS:
         table = tables.get(key)
         if table is None or table.empty:
             continue
-        _write_sheet(deps.paths.combined_xlsx, sheet_name, table)
+        _write_sheet(output_path, sheet_name, table)
         written.append(sheet_name)
     return written
+
+
+def _report_combined_workbook_path(output_file: Path) -> Path:
+    report_stem = output_file.stem.removesuffix("_分析报告")
+    return output_file.with_name(f"{report_stem}_综合分析结果.xlsx")
 
 
 def _remove_sheet(path: Path, sheet_name: str) -> None:
@@ -1887,6 +1895,7 @@ def generate_report_impl(
 
     def work() -> tuple[str, dict[str, Any]]:
         output_file = deps.paths.outputs / _report_filename(points, deps, start, end)
+        combined_file = _report_combined_workbook_path(output_file)
         result = build_report(
             output_file,
             "排水监测数据分析报告",
@@ -1904,13 +1913,13 @@ def generate_report_impl(
             pattern_chart_paths=pattern_chart_paths,
             artifact_scope=_range_result_prefix(points, deps, start, end),
         )
-        combined_sheets = _write_report_combined_workbook(deps, tables)
+        combined_sheets = _write_report_combined_workbook(deps, tables, combined_file)
         result["report_combined_sheets"] = combined_sheets
         if combined_sheets:
             result["result_destinations"] = [
                 {
                     "kind": "combined_xlsx",
-                    "path": _rel(deps, deps.paths.combined_xlsx),
+                    "path": _rel(deps, combined_file),
                     "sheet": None,
                 }
             ]
