@@ -138,10 +138,10 @@ def test_check_data_success(tmp_path: Path) -> None:
     check = check_data_impl(deps)
 
     assert check["status"] == "ok"
-    assert deps.paths.combined_xlsx.exists()
+    assert not deps.paths.combined_xlsx.exists()
 
 
-def test_full_network_analysis_writes_combined_sheet(tmp_path: Path) -> None:
+def test_full_network_standalone_analysis_does_not_write_combined_sheet(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
 
@@ -149,14 +149,10 @@ def test_full_network_analysis_writes_combined_sheet(tmp_path: Path) -> None:
 
     assert result["status"] == "ok"
     assert result["data"]["result_destinations"] == [
-        {
-            "kind": "combined_xlsx",
-            "path": "outputs/综合分析结果.xlsx",
-            "sheet": "数据收集率统计",
-        }
+        {"kind": "not_persisted", "path": None, "sheet": None}
     ]
-    assert pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计").shape[0] == 2
-    assert "已写入 outputs/综合分析结果.xlsx（数据收集率统计）" in result["summary"]
+    assert not deps.paths.combined_xlsx.exists()
+    assert "综合分析结果.xlsx" not in result["summary"]
 
 
 def test_partial_analysis_without_export_does_not_persist_table(tmp_path: Path) -> None:
@@ -196,7 +192,9 @@ def test_partial_analysis_with_export_writes_csv_not_combined(tmp_path: Path) ->
 def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
-    check_data_impl(deps)
+    pd.DataFrame([{"point_id": "W1", "record_count": 1}]).to_excel(
+        deps.paths.combined_xlsx, sheet_name="数据收集率统计", index=False
+    )
     before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
 
     result = check_data_impl(deps, points=["W1"], export=False)
@@ -245,7 +243,9 @@ def test_partial_points_partial_time_does_not_write_combined(tmp_path: Path) -> 
 def test_full_network_partial_time_does_not_replace_full_time_sheet(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
-    check_data_impl(deps)
+    pd.DataFrame([{"point_id": "W1", "record_count": 1}]).to_excel(
+        deps.paths.combined_xlsx, sheet_name="数据收集率统计", index=False
+    )
     before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
 
     result = check_data_impl(
@@ -259,7 +259,7 @@ def test_full_network_partial_time_does_not_replace_full_time_sheet(tmp_path: Pa
     pd.testing.assert_frame_equal(after, before)
 
 
-def test_full_network_patterns_write_combined_and_full_network_pngs(
+def test_full_network_patterns_write_no_combined_and_full_network_pngs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -271,8 +271,8 @@ def test_full_network_patterns_write_combined_and_full_network_pngs(
     result = analyze_patterns_impl(deps)
 
     assert result["status"] == "ok"
-    assert result["data"]["result_destinations"][0]["kind"] == "combined_xlsx"
-    assert "排污规律分析" in pd.ExcelFile(deps.paths.combined_xlsx).sheet_names
+    assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
+    assert not deps.paths.combined_xlsx.exists()
     assert (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png").exists()
     assert (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W2_流量特征曲线.png").exists()
 
@@ -326,6 +326,9 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
     flow = sample_two_point_pattern_flow()
     monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
     analyze_patterns_impl(deps)
+    pd.DataFrame([{"point_id": "W2", "category": 1}]).to_excel(
+        deps.paths.combined_xlsx, sheet_name="排污规律分析", index=False
+    )
     sheet_before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="排污规律分析")
     fixed_png = deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png"
     png_before = fixed_png.read_bytes()
@@ -611,6 +614,8 @@ def test_rainfall_and_event_needs_input(tmp_path: Path) -> None:
     response = analyze_event_response_impl(deps)
 
     assert rain["status"] == "ok"
+    assert not deps.paths.combined_xlsx.exists()
+    assert "综合分析结果.xlsx" not in rain["summary"]
     assert response["status"] == "needs_input"
     assert response["missing"] == "event_ids"
     assert response["options"]
@@ -894,6 +899,10 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
         "agent.tools.module_tools._resolved_report_time_range",
         lambda *_args: ["2026-03-07", "2026-03-10"],
     )
+    monkeypatch.setattr(
+        "agent.tools.module_tools._report_actual_time_range",
+        lambda *_args, **_kwargs: ("2026-03-08 00:00:00", "2026-03-09 23:59:00"),
+    )
 
     result = generate_report_impl(
         deps,
@@ -907,9 +916,9 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     assert captured["rain_scope"] == ["2026-03-07", "2026-03-10"]
     assert captured["pattern_scope"] == (None, "2026-03-07", "2026-03-10")
     assert captured["risk_scope"] == ("all", [1], None, "2026-03-07", "2026-03-10")
-    assert captured["build"]["start"] == "2026-03-07"
-    assert captured["build"]["end"] == "2026-03-10"
-    assert not deps.paths.combined_xlsx.exists()
+    assert captured["build"]["start"] == "2026-03-08 00:00:00"
+    assert captured["build"]["end"] == "2026-03-09 23:59:00"
+    assert deps.paths.combined_xlsx.exists()
 
 
 def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
@@ -945,6 +954,7 @@ def test_report_with_selected_sections_only_computes_selected_data(
     assert counts == {"check": 1, "build": 1}
     assert captured["build"]["sections"] == ["监测概况"]
     assert set(captured["build"]["analysis_tables"]) == {"data_collection"}
+    assert pd.ExcelFile(deps.paths.combined_xlsx).sheet_names == ["数据收集率统计"]
 
 
 def test_custom_dry_only_section_names_still_generate_docx(
@@ -964,6 +974,40 @@ def test_custom_dry_only_section_names_still_generate_docx(
     output = Path(result["data"]["output_file"])
     assert output.suffix == ".docx" and output.exists()
     assert not list(deps.paths.outputs.glob("*.md"))
+
+
+def test_dry_only_report_keeps_monitoring_and_writes_matching_combined_sheets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+
+    result = generate_report_impl(deps, sections=["旱天分析", "排污规律", "旱天风险"])
+
+    assert result["status"] == "ok"
+    assert counts == {"check": 1, "patterns": 1, "risk": 1, "build": 1}
+    assert captured["risk_scope"][0] == "dry"
+    assert captured["build"]["sections"][0] == "监测概况"
+    assert set(captured["build"]["analysis_tables"]) == {
+        "data_collection",
+        "pattern_analysis",
+        "dry_analysis",
+        "dry_risk",
+    }
+    assert pd.ExcelFile(deps.paths.combined_xlsx).sheet_names == [
+        "数据收集率统计",
+        "排污规律分析",
+        "旱天分析",
+        "旱天风险",
+    ]
+    assert result["data"]["report_combined_sheets"] == [
+        "数据收集率统计",
+        "排污规律分析",
+        "旱天分析",
+        "旱天风险",
+    ]
 
 
 def test_repeated_same_scope_report_reuses_analysis(
@@ -1104,6 +1148,47 @@ def test_fixed_template_selected_sections_remove_unselected_chapters(tmp_path: P
     assert "降雨分析" not in text
     assert "旱天排污规律统计分析" not in text
     assert "污水系统运行风险" not in text
+
+
+def test_fixed_template_dry_report_keeps_overview_and_removes_only_rain_sections(tmp_path: Path) -> None:
+    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    site_info = tmp_path / "点位信息.xlsx"
+    pd.DataFrame([{
+        "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
+        "井深(m)": 3.0, "设备安装时间": "2026-03-01",
+    }]).to_excel(site_info, index=False)
+    output = tmp_path / "旱天报告.docx"
+    flow_png = tmp_path / "charts" / "W1_流量特征曲线.png"
+    level_png = tmp_path / "charts" / "W1_液位特征曲线.png"
+    _write_test_png(flow_png)
+    _write_test_png(level_png)
+
+    build_report(
+        output,
+        "排水监测数据分析报告",
+        template_file=template,
+        analysis_tables={
+            "data_collection": _fixed_template_tables()["data_collection"],
+            "pattern_analysis": _fixed_template_tables()["pattern_analysis"],
+            "dry_risk": _fixed_template_tables()["dry_risk"],
+        },
+        site_info_file=site_info,
+        sections=["监测概况", "旱天排污规律统计分析", "旱天风险"],
+        point_ids=["W1"],
+        has_rainfall_data=False,
+        pattern_chart_paths={"W1": [str(flow_png), str(level_png)]},
+    )
+
+    text = _word_text(Document(output))
+    assert "监测概况" in text
+    assert "监测设备安装" in text
+    assert "监测数据质量" in text
+    assert "旱天排污规律统计分析" in text
+    assert "旱天运行风险分析" in text
+    assert "降雨分析" not in text
+    assert "降雨日分析" not in text
+    assert "降雨场次分析" not in text
+    assert "雨天运行风险分析" not in text
 
 
 def test_fixed_template_dry_risk_only_removes_rain_and_exactly_sizes_table(tmp_path: Path) -> None:

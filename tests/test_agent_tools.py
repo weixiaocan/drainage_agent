@@ -118,13 +118,8 @@ class AgentToolTests(unittest.TestCase):
             result = check_data_impl(deps)
             self.assertEqual(result["status"], "ok")
             self.assertIn("数据收集率统计完成", result["summary"])
-            df = pd.read_excel(deps.paths.combined_xlsx, sheet_name="数据收集率统计")
-            self.assertEqual(
-                list(df.columns),
-                ["点位编号", "监测数据条数", "监测天数", "理论数据条数", "数据收集率(%)"],
-            )
-            self.assertEqual(df["点位编号"].tolist(), ["W1", "W2", "W10"])
-            self.assertNotIn("数据体检", load_workbook(deps.paths.combined_xlsx).sheetnames)
+            self.assertEqual(result["data"]["result_destinations"][0]["kind"], "not_persisted")
+            self.assertFalse(deps.paths.combined_xlsx.exists())
 
     def test_data_filter_writes_filter_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -271,12 +266,7 @@ class AgentToolTests(unittest.TestCase):
             result = analyze_rainfall_impl(deps)
 
             self.assertEqual(result["status"], "ok")
-            workbook = load_workbook(deps.paths.combined_xlsx)
-            sheet = workbook["降雨概况"]
-            self.assertEqual(len(sheet._charts), 2)
-            self.assertIn("降雨场次分析", workbook.sheetnames)
-            self.assertNotIn("日降雨量统计", workbook.sheetnames)
-            self.assertNotIn("场次降雨统计", workbook.sheetnames)
+            self.assertFalse(deps.paths.combined_xlsx.exists())
             self.assertTrue((deps.paths.outputs / "降雨分析图" / "全网_全时段_日降雨量时间序列图.png").exists())
             self.assertTrue((deps.paths.outputs / "降雨分析图" / "全网_全时段_降雨日占比饼图.png").exists())
 
@@ -665,8 +655,7 @@ class AgentToolTests(unittest.TestCase):
             self.assertEqual(result["data"]["result_destinations"][0]["kind"], "not_persisted")
             self.assertFalse(list(deps.paths.outputs.glob("*.csv")))
             self.assertFalse(list(deps.paths.outputs.rglob("*.png")))
-            workbook = load_workbook(deps.paths.combined_xlsx)
-            self.assertNotIn("RDII总量统计", workbook.sheetnames)
+            self.assertFalse(deps.paths.combined_xlsx.exists())
 
     def test_partial_rdii_with_export_writes_named_csv_and_png(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -679,8 +668,7 @@ class AgentToolTests(unittest.TestCase):
             self.assertTrue((deps.paths.outputs / "W1_全时段_RDII总量统计.csv").exists())
             self.assertTrue((deps.paths.outputs / "W1_event1_RDII曲线.png").exists())
             self.assertFalse((deps.paths.outputs / "rdii_curve" / "event1_1_3" / "W1_event1.png").exists())
-            workbook = load_workbook(deps.paths.combined_xlsx)
-            self.assertNotIn("RDII总量统计", workbook.sheetnames)
+            self.assertFalse(deps.paths.combined_xlsx.exists())
 
     def test_run_python_success_and_workspace_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -247,13 +247,6 @@ def _route_table_result(
     start: str | None = None,
     end: str | None = None,
 ) -> dict[str, Any]:
-    if is_complete_scope(points, deps, start, end):
-        _write_sheet(deps.paths.combined_xlsx, sheet_name, df)
-        return {
-            "kind": "combined_xlsx",
-            "path": _rel(deps, deps.paths.combined_xlsx),
-            "sheet": sheet_name,
-        }
     if export:
         filename = f"{_range_result_prefix(points, deps, start, end)}_{_safe_filename_part(sheet_name)}.csv"
         output_path = deps.paths.outputs / filename
@@ -262,6 +255,34 @@ def _route_table_result(
         display_df.to_csv(output_path, index=False, encoding="utf-8-sig")
         return {"kind": "csv", "path": _rel(deps, output_path), "sheet": None}
     return {"kind": "not_persisted", "path": None, "sheet": None}
+
+
+REPORT_COMBINED_SHEETS: tuple[tuple[str, str], ...] = (
+    ("data_collection", "数据收集率统计"),
+    ("rainfall_daily", "降雨概况"),
+    ("rainfall_events", "降雨场次分析"),
+    ("pattern_analysis", "排污规律分析"),
+    ("dry_analysis", "旱天分析"),
+    ("dry_risk", "旱天风险"),
+    ("rainy_overflow_risk", "雨天溢流风险"),
+)
+
+
+def _write_report_combined_workbook(
+    deps: AgentDeps,
+    tables: dict[str, pd.DataFrame],
+) -> list[str]:
+    """Write only the tables included in the current report."""
+    written: list[str] = []
+    if deps.paths.combined_xlsx.exists():
+        deps.paths.combined_xlsx.unlink()
+    for key, sheet_name in REPORT_COMBINED_SHEETS:
+        table = tables.get(key)
+        if table is None or table.empty:
+            continue
+        _write_sheet(deps.paths.combined_xlsx, sheet_name, table)
+        written.append(sheet_name)
+    return written
 
 
 def _remove_sheet(path: Path, sheet_name: str) -> None:
@@ -1660,6 +1681,40 @@ def _section_requested(sections: list[str], aliases: set[str]) -> bool:
     )
 
 
+def _is_dry_only_report_sections(sections: list[str]) -> bool:
+    wants_any_dry = _section_requested(sections, REPORT_PATTERN_SECTIONS | REPORT_DRY_RISK_SECTIONS)
+    wants_rain = _section_requested(sections, REPORT_RAINFALL_SECTIONS | REPORT_RAINY_RISK_SECTIONS)
+    wants_full_risk = _section_requested(sections, REPORT_FULL_RISK_SECTIONS)
+    return wants_any_dry and not wants_rain and not wants_full_risk
+
+
+def _report_actual_time_range(
+    deps: AgentDeps,
+    points: list[str] | None,
+    start: str | None,
+    end: str | None,
+    *,
+    prefer_dry_flow: bool,
+) -> tuple[str | None, str | None]:
+    try:
+        if prefer_dry_flow:
+            flow = _load_filtered_dry_flow(deps, points=points)
+        else:
+            flow = io.load_flow(points=points, root=deps.paths.root)
+        start_ts, end_ts = _window_bounds(start, end)
+    except Exception:
+        return start, end
+    if start_ts is not None:
+        flow = flow[flow["timestamp"] >= start_ts]
+    if end_ts is not None:
+        flow = flow[flow["timestamp"] <= end_ts]
+    if flow.empty:
+        return start, end
+    actual_start = flow["timestamp"].min()
+    actual_end = flow["timestamp"].max()
+    return actual_start.isoformat(sep=" "), actual_end.isoformat(sep=" ")
+
+
 def generate_report_impl(
     deps: AgentDeps,
     points: list[str] | None = None,
@@ -1684,6 +1739,9 @@ def generate_report_impl(
     wants_dry_risk = wants_full_risk or _section_requested(sections, REPORT_DRY_RISK_SECTIONS)
     wants_rainy_risk = wants_full_risk or _section_requested(sections, REPORT_RAINY_RISK_SECTIONS)
     wants_risk = wants_dry_risk or wants_rainy_risk
+    dry_only_report = _is_dry_only_report_sections(sections)
+    if dry_only_report:
+        wants_monitoring = True
     if not any((wants_monitoring, wants_rainfall, wants_patterns, wants_risk)):
         return error(f"无法识别报告章节: {sections}")
     tables: dict[str, pd.DataFrame] = {}
@@ -1691,6 +1749,16 @@ def generate_report_impl(
     pattern_chart_paths: dict[str, list[str]] = {}
     summaries: list[str] = []
     time_range = _resolved_report_time_range(deps, start, end) if start is not None or end is not None else None
+    report_start, report_end = _report_actual_time_range(
+        deps,
+        points,
+        start,
+        end,
+        prefer_dry_flow=wants_patterns or wants_dry_risk,
+    )
+    report_sections = list(sections)
+    if dry_only_report and not _section_requested(report_sections, REPORT_MONITORING_SECTIONS):
+        report_sections.insert(0, "监测概况")
 
     if wants_monitoring:
         cached = _cached_report_frame(deps, "data_collection", points, start, end)
@@ -1813,7 +1881,7 @@ def generate_report_impl(
         "points": points or [],
         "start": start,
         "end": end,
-        "sections": sections,
+        "sections": report_sections,
         "event_ids": public_event_ids if wants_risk else selected_event_ids,
     }
 
@@ -1827,19 +1895,31 @@ def generate_report_impl(
             analysis_tables=tables,
             site_info_file=deps.paths.site_info_file,
             outputs_dir=deps.paths.outputs,
-            sections=sections,
+            sections=report_sections,
             has_rainfall_data=not tables.get("rainfall_daily", pd.DataFrame()).empty,
             point_ids=points,
-            start=start,
-            end=end,
+            start=report_start,
+            end=report_end,
             rainfall_chart_paths=rainfall_chart_paths,
             pattern_chart_paths=pattern_chart_paths,
             artifact_scope=_range_result_prefix(points, deps, start, end),
         )
+        combined_sheets = _write_report_combined_workbook(deps, tables)
+        result["report_combined_sheets"] = combined_sheets
+        if combined_sheets:
+            result["result_destinations"] = [
+                {
+                    "kind": "combined_xlsx",
+                    "path": _rel(deps, deps.paths.combined_xlsx),
+                    "sheet": None,
+                }
+            ]
         summary = (
             f"报告生成完成：{_rel(deps, output_file)}，范围点位 {points or ['全网']}，"
             f"时间窗 [{start or '全时段'}, {end or '全时段'}]。"
         )
+        if report_start or report_end:
+            summary += f" 报告正文按实际有效数据范围 [{report_start or '不限'}, {report_end or '不限'}] 填充。"
         if wants_rainy_risk:
             summary += f" 窗口内降雨场次编号 {public_event_ids}。"
         return summary, result

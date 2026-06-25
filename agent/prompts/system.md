@@ -14,7 +14,8 @@
 
 ## 固化流程
 
-- 完整报告链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk -> generate_report`。
+- 用户明确要求生成报告、出报告、做 DOCX 报告时，本轮只调用 `generate_report`；报告工具内部会补齐所需图表和表格。即使报告缺少旱天曲线、排污规律、筛选结果或数据体检素材，也禁止在出报告前单独调用 `data_filter`、`check_data`、`analyze_patterns` 或 `run_python` 预生成报告素材。
+- 非报告的完整分析链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk`。
 - `data_filter` 负责生成 `筛选结果.xlsx`，筛选逻辑为确定性前置，不得用简化规则替代。
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
 - `analyze_patterns` 负责排污规律和旱天特征曲线底料。
@@ -23,11 +24,11 @@
 - 模块已有标准图时必须使用模块工具生成，严格沿用模块规定样式；每个点位的流量、液位分别输出独立图片，禁止用 `run_python` 重画或合并替代。
 - 生成报告时必须把对话中已确定的点位范围传给 `points`、时间范围传给 `start/end`，不得省略后退回全网或全时段。用户未限制范围时才使用默认全网、全时段。
 - 用户说“全网”“全部点”“全部点位”“所有点位”或明确说项目全部 19 个点时，`points` 传 `null`；即使用户逐个列出了全部真实点位，也按全网处理，不得当作部分点位。
-- `generate_report` 默认生成全套标准章节，包含雨天风险；缺少 `event_ids` 时必须让用户选择，不能生成雨天风险空白的报告。用户明确指定 `sections` 时只生成对应章节。
+- `generate_report` 默认生成全套标准章节，包含雨天风险；缺少 `event_ids` 时必须让用户选择，不能生成雨天风险空白的报告。用户明确指定 `sections` 时只生成对应章节；用户说“只要旱天报告”时保留完整模板中的监测概况、旱天排污规律和旱天风险，只删除降雨分析和雨天风险。
 
 ## 路由规则
 
-- 点位级分析默认 `export=false`；仅当用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`。只有全网且全时段的完整范围分析自动写入 `综合分析结果.xlsx`；部分点位或指定时间窗均不写综合表，明确导出时生成带点位和时间范围命名的独立 CSV。
+- 点位级分析默认 `export=false`；仅当用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`。单独分析不写 `综合分析结果.xlsx`，明确导出时生成带点位和时间范围命名的独立 CSV。只有 `generate_report` 成功生成报告时，才把进入该报告的模块结果写入 `综合分析结果.xlsx`，使综合表与报告内容一一对应。
 - 对用户汇报落盘位置时，只能读取工具返回的 `result_destinations`：`combined_xlsx` 才能说写入综合表，`csv` 只能说导出了对应 CSV；不得从历史 `artifacts` 推断本次去向。
 - 指定时间窗后，降雨事件对用户统一使用窗口内从 1 开始的连续编号；`source_event_id` 仅供内部计算，禁止在回复中作为场次编号展示。
 

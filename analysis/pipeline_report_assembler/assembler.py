@@ -60,7 +60,10 @@ def run_report_assembler(
     print(f"读取报告模板: {template_file}")
     doc = Document(template_file)
     selected = _selected_section_keys(sections)
+    dry_only = _is_dry_only_report(sections, selected)
     _prune_unselected_sections(doc, selected)
+    if dry_only:
+        _prune_heading_blocks(doc, {"雨天运行风险分析", "雨天风险"})
     context = build_report_context(
         analysis_results=analysis_results,
         site_info_file=site_info_file,
@@ -180,6 +183,17 @@ def _selected_risk_modes(sections: list[str] | None) -> tuple[bool, bool]:
     return include_dry, include_rainy
 
 
+def _is_dry_only_report(sections: list[str] | None, selected: list[str]) -> bool:
+    if not sections:
+        return False
+    include_dry, include_rainy = _selected_risk_modes(sections)
+    return (
+        "rainfall_analysis" not in selected
+        and not include_rainy
+        and ("dry_pattern_analysis" in selected or include_dry)
+    )
+
+
 def _resolve_pattern_chart_paths(context, output_dir: Path) -> None:
     """Fill missing chart mappings from the exact scoped output directory."""
     scoped_dir = output_dir / "特征曲线图" / context.artifact_scope
@@ -218,6 +232,42 @@ def _prune_unselected_sections(doc: Document, selected: list[str]) -> None:
         for child in children[start:end]:
             if child.getparent() is body:
                 body.remove(child)
+
+
+def _prune_heading_blocks(doc: Document, titles: set[str]) -> None:
+    starts: list[tuple[int, int, object]] = []
+    body = doc._element.body
+    children = list(body)
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        if text not in titles or paragraph._p not in children:
+            continue
+        level = _heading_level(paragraph.style.name)
+        starts.append((children.index(paragraph._p), level, paragraph._p))
+    for start, level, _element in sorted(starts, reverse=True):
+        end = len(children) - 1
+        for idx in range(start + 1, len(children)):
+            child = children[idx]
+            paragraph = next((p for p in doc.paragraphs if p._p is child), None)
+            if paragraph is None:
+                continue
+            next_level = _heading_level(paragraph.style.name)
+            if next_level and (not level or next_level <= level):
+                end = idx
+                break
+        for child in children[start:end]:
+            if child.getparent() is body:
+                body.remove(child)
+
+
+def _heading_level(style_name: str) -> int | None:
+    if style_name.startswith("标题"):
+        suffix = style_name.removeprefix("标题")
+        return int(suffix) if suffix.isdigit() else None
+    if style_name.startswith("Heading "):
+        suffix = style_name.removeprefix("Heading ")
+        return int(suffix) if suffix.isdigit() else None
+    return None
 
 
 def _build_config(config: Optional[Dict[str, Any]]) -> ReportConfig:
