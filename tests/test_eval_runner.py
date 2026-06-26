@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from eval.eval_stage2.run_eval import (
+    canonical_case_id,
     compact_pending_results,
     completed_case_ids,
     fresh_root,
@@ -56,6 +57,26 @@ def test_preserve_artifacts_replaces_stale_case_directory(tmp_path, monkeypatch)
 
     assert not (destination / "stale.txt").exists()
     assert (destination / "logs" / "trace.jsonl").read_text(encoding="utf-8") == "trace"
+
+
+def test_preserve_artifacts_collapses_derived_case_directories(tmp_path, monkeypatch) -> None:
+    project = tmp_path / "project"
+    artifacts = project / "eval" / "eval_stage2" / "artifacts"
+    root = tmp_path / "isolated"
+    for name in ("outputs", "workspace", "logs"):
+        (root / name).mkdir(parents=True)
+    (root / "outputs" / "latest.txt").write_text("latest", encoding="utf-8")
+    stale = artifacts / "M003A_SCOPE_GUARD"
+    stale.mkdir(parents=True)
+    (stale / "stale.txt").write_text("stale", encoding="utf-8")
+    monkeypatch.setattr("eval.eval_stage2.run_eval.STAGE_DIR", project / "eval" / "eval_stage2")
+
+    destination = preserve_artifacts(root, "M003A_SCOPE_RULE2")
+
+    assert canonical_case_id("M003A_SCOPE_RULE2") == "M003A"
+    assert destination == artifacts / "M003A"
+    assert not stale.exists()
+    assert (destination / "outputs" / "latest.txt").read_text(encoding="utf-8") == "latest"
 
 
 def test_normalize_multiturn_case_preserves_key_turns() -> None:

@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -20,6 +21,24 @@ from agent.core import build_agent
 from agent.logging_utils import TraceLogger, trace_event
 
 
+CASE_ID_PREFIX_RE = re.compile(r"^(M\d{3}[A-Z]?)")
+
+
+def canonical_case_id(case_id: str) -> str:
+    match = CASE_ID_PREFIX_RE.match(str(case_id))
+    return match.group(1) if match else str(case_id)
+
+
+def cleanup_artifacts_for_case(case_id: str) -> Path:
+    artifacts_dir = STAGE_DIR / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    canonical_id = canonical_case_id(case_id)
+    for child in artifacts_dir.iterdir():
+        if child.is_dir() and canonical_case_id(child.name) == canonical_id:
+            shutil.rmtree(child)
+    return artifacts_dir / canonical_id
+
+
 def fresh_root(root: Path) -> Path:
     """每条用例一个隔离 root：只拷只读输入，outputs/记忆全空。"""
     shutil.copytree(PROJECT / "data", root / "data")
@@ -33,9 +52,7 @@ def fresh_root(root: Path) -> Path:
 
 def preserve_artifacts(root: Path, case_id: str) -> Path:
     """保存人工判分需要的产物，然后允许临时 root 被安全清理。"""
-    destination = STAGE_DIR / "artifacts" / case_id
-    if destination.exists():
-        shutil.rmtree(destination)
+    destination = cleanup_artifacts_for_case(case_id)
     destination.mkdir(parents=True)
     for name in ("outputs", "workspace", "logs"):
         source = root / name
