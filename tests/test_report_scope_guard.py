@@ -3,6 +3,7 @@ from __future__ import annotations
 from agent.core import (
     _report_args_from_message,
     _should_direct_generate_report,
+    needs_pending_report_scope_completion,
     needs_report_scope_confirmation,
 )
 
@@ -46,6 +47,31 @@ def test_explicit_report_request_is_direct_generate_candidate() -> None:
     )
 
 
+def test_partial_scope_reply_after_report_confirmation_keeps_confirmation() -> None:
+    history = [
+        "先检查一下数据质量。",
+        "没大问题的话，给我全网旱天排污规律。",
+        "单独比较W1和W4的排污特征并输出。",
+        "生成分析报告。",
+    ]
+
+    assert needs_report_scope_confirmation(history[-1], history[:-1])
+    assert needs_pending_report_scope_completion("跳过雨天部分，也我只要旱天相关的，降雨分析都不要。", history)
+    assert not _should_direct_generate_report("跳过雨天部分，也我只要旱天相关的，降雨分析都不要。", history)
+
+
+def test_complete_scope_reply_after_report_confirmation_directly_generates() -> None:
+    history = [
+        "先检查一下数据质量。",
+        "没大问题的话，给我全网旱天排污规律。",
+        "单独比较W1和W4的排污特征并输出。",
+        "生成分析报告。",
+        "跳过雨天部分，也我只要旱天相关的，降雨分析都不要。",
+    ]
+
+    assert _should_direct_generate_report("要所有关于旱天的分析，雨天的不要，包含所有点位，全时段。", history)
+
+
 def test_report_args_parse_common_scope_markers() -> None:
     args = _report_args_from_message(
         "旱天数据范围选择3月10号之后的数据，采用第6场降雨，报告包含19个点位，要全部章节的内容"
@@ -63,6 +89,13 @@ def test_report_args_parse_common_scope_markers() -> None:
 def test_report_args_parse_dry_only_sections() -> None:
     args = _report_args_from_message("跳过雨天部分，也我只要旱天相关的，降雨分析都不要。")
 
+    assert args["sections"] == ["监测概况", "旱天排污规律统计分析", "旱天风险"]
+
+
+def test_report_args_parse_all_dry_no_rain_sections() -> None:
+    args = _report_args_from_message("要所有关于旱天的分析，雨天的不要，包含所有点位，全时段。")
+
+    assert args["points"] is None
     assert args["sections"] == ["监测概况", "旱天排污规律统计分析", "旱天风险"]
 
 

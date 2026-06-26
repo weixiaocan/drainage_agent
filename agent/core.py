@@ -28,6 +28,10 @@ REPORT_SCOPE_CONFIRMATION_PROMPT = (
     "我需要先确认报告范围：要包含哪些点位、哪段时间、哪些模块/章节？"
     "如果包含雨天风险，也请说明采用哪些降雨事件。"
 )
+PENDING_REPORT_SCOPE_COMPLETION_PROMPT = (
+    "已按只要旱天、不要雨天记录。请再确认报告点位范围（例如全网/所有点位或指定 W 点位）和时间范围；"
+    "未限制时间时我将按全时段处理。"
+)
 
 
 def _is_report_request(message: str) -> bool:
@@ -74,6 +78,27 @@ def needs_report_scope_confirmation(message: str, history: list[str]) -> bool:
     return _history_has_mixed_report_scope(history)
 
 
+def _has_pending_report_scope_confirmation(history: list[str]) -> bool:
+    for index in range(len(history) - 1, -1, -1):
+        if needs_report_scope_confirmation(history[index], history[:index]):
+            return True
+    return False
+
+
+def _has_report_point_scope(message: str) -> bool:
+    if re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, flags=re.IGNORECASE):
+        return True
+    return any(keyword in message for keyword in ("全网", "19个点", "19 个点", "全部点位", "所有点位"))
+
+
+def needs_pending_report_scope_completion(message: str, history: list[str]) -> bool:
+    return (
+        _has_pending_report_scope_confirmation(history)
+        and _has_explicit_report_scope(message)
+        and not _has_report_point_scope(message)
+    )
+
+
 class _PreflightResult:
     def __init__(self, output: str, message_history: list[Any], new_messages: list[Any] | None = None):
         self.output = output
@@ -101,7 +126,15 @@ class _FakeToolMessage:
 
 
 def _report_sections_from_message(message: str) -> list[str] | None:
-    dry_only_markers = ("只要旱天", "跳过雨天", "不要雨天", "降雨分析都不要", "不含降雨")
+    dry_only_markers = (
+        "只要旱天",
+        "跳过雨天",
+        "不要雨天",
+        "雨天的不要",
+        "降雨分析都不要",
+        "不含降雨",
+        "所有关于旱天",
+    )
     if any(marker in message for marker in dry_only_markers):
         return ["监测概况", "旱天排污规律统计分析", "旱天风险"]
     return None
@@ -138,7 +171,17 @@ def _report_args_from_message(message: str) -> dict[str, Any]:
 
 
 def _should_direct_generate_report(message: str, history: list[str]) -> bool:
-    return _is_report_request(message) and _has_explicit_report_scope(message) and not needs_report_scope_confirmation(message, history)
+    is_direct_report = (
+        _is_report_request(message)
+        and _has_explicit_report_scope(message)
+        and not needs_report_scope_confirmation(message, history)
+    )
+    is_report_scope_reply = (
+        _has_pending_report_scope_confirmation(history)
+        and _has_explicit_report_scope(message)
+        and _has_report_point_scope(message)
+    )
+    return is_direct_report or is_report_scope_reply
 
 
 def _report_tool_output(result: dict[str, Any]) -> str:
@@ -170,6 +213,8 @@ class _ReportScopeGuardedAgent:
         try:
             if needs_report_scope_confirmation(message, prior_user_prompts):
                 return _PreflightResult(REPORT_SCOPE_CONFIRMATION_PROMPT, history)
+            if needs_pending_report_scope_completion(message, prior_user_prompts):
+                return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
             if _should_direct_generate_report(message, prior_user_prompts):
                 args = _report_args_from_message(message)
                 result = generate_report_impl(deps, **args)
