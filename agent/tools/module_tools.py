@@ -1701,14 +1701,9 @@ def _report_actual_time_range(
     points: list[str] | None,
     start: str | None,
     end: str | None,
-    *,
-    prefer_dry_flow: bool,
 ) -> tuple[str | None, str | None]:
     try:
-        if prefer_dry_flow:
-            flow = _load_filtered_dry_flow(deps, points=points)
-        else:
-            flow = io.load_flow(points=points, root=deps.paths.root)
+        flow = io.load_flow(points=points, root=deps.paths.root)
         start_ts, end_ts = _window_bounds(start, end)
     except Exception:
         return start, end
@@ -1762,7 +1757,6 @@ def generate_report_impl(
         points,
         start,
         end,
-        prefer_dry_flow=wants_patterns or wants_dry_risk,
     )
     report_sections = list(sections)
     if dry_only_report and not _section_requested(report_sections, REPORT_MONITORING_SECTIONS):

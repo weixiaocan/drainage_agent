@@ -27,6 +27,7 @@ from agent.tools.module_tools import (
     data_filter_impl,
     generate_report_impl,
     is_full_network,
+    _report_actual_time_range,
     _time_result_prefix,
 )
 from analysis.pipeline_report_assembler.assembler import _scope_period_text
@@ -922,6 +923,75 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     assert combined.exists()
     assert not deps.paths.combined_xlsx.exists()
     assert result["data"]["result_destinations"][0]["path"] == "outputs/全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
+
+
+def test_report_actual_time_range_uses_raw_flow_even_for_dry_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    raw_flow = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-03-10 00:00:00", "2026-03-15 23:59:00"]),
+            "point_id": ["W1", "W1"],
+            "flow_lps": [1.0, 2.0],
+            "level_m": [0.1, 0.2],
+            "velocity_mps": [0.3, 0.4],
+        }
+    )
+    filtered_dry_flow = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-03-11 00:00:00", "2026-03-14 23:59:00"]),
+            "point_id": ["W1", "W1"],
+            "flow_lps": [1.0, 2.0],
+            "level_m": [0.1, 0.2],
+            "velocity_mps": [0.3, 0.4],
+        }
+    )
+    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda *_args, **_kwargs: raw_flow)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._load_filtered_dry_flow",
+        lambda *_args, **_kwargs: filtered_dry_flow,
+    )
+
+    start, end = _report_actual_time_range(deps, points=["W1"], start=None, end=None)
+
+    assert start == "2026-03-10 00:00:00"
+    assert end == "2026-03-15 23:59:00"
+    assert (start, end) != ("2026-03-11 00:00:00", "2026-03-14 23:59:00")
+
+
+def test_generate_report_uses_raw_flow_period_and_matching_combined_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+    raw_flow = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-03-10 00:00:00", "2026-03-15 23:59:00"]),
+            "point_id": ["W1", "W1"],
+            "flow_lps": [1.0, 2.0],
+            "level_m": [0.1, 0.2],
+            "velocity_mps": [0.3, 0.4],
+        }
+    )
+    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda *_args, **_kwargs: raw_flow)
+
+    result = generate_report_impl(deps, sections=["数据概况", "排污规律", "旱天风险"])
+
+    assert result["status"] == "ok"
+    assert captured["build"]["start"] == "2026-03-10 00:00:00"
+    assert captured["build"]["end"] == "2026-03-15 23:59:00"
+    assert (captured["build"]["start"], captured["build"]["end"]) != (
+        "2026-03-11 00:00:00",
+        "2026-03-14 23:59:00",
+    )
+    report_path = Path(result["data"]["output_file"])
+    combined_path = deps.paths.root / result["data"]["result_destinations"][0]["path"]
+    expected_combined_stem = report_path.stem.removesuffix("_分析报告") + "_综合分析结果"
+    assert combined_path.name == expected_combined_stem + ".xlsx"
+    assert combined_path.exists()
 
 
 def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
