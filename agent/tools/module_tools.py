@@ -1715,7 +1715,7 @@ def _report_actual_time_range(
         return start, end
     actual_start = flow["timestamp"].min()
     actual_end = flow["timestamp"].max()
-    return actual_start.isoformat(sep=" "), actual_end.isoformat(sep=" ")
+    return actual_start.strftime("%Y-%m-%d"), actual_end.strftime("%Y-%m-%d")
 
 
 def generate_report_impl(

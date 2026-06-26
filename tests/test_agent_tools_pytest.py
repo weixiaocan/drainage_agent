@@ -955,9 +955,9 @@ def test_report_actual_time_range_uses_raw_flow_even_for_dry_reports(
 
     start, end = _report_actual_time_range(deps, points=["W1"], start=None, end=None)
 
-    assert start == "2026-03-10 00:00:00"
-    assert end == "2026-03-15 23:59:00"
-    assert (start, end) != ("2026-03-11 00:00:00", "2026-03-14 23:59:00")
+    assert start == "2026-03-10"
+    assert end == "2026-03-15"
+    assert (start, end) != ("2026-03-11", "2026-03-14")
 
 
 def test_generate_report_uses_raw_flow_period_and_matching_combined_name(
@@ -981,11 +981,11 @@ def test_generate_report_uses_raw_flow_period_and_matching_combined_name(
     result = generate_report_impl(deps, sections=["数据概况", "排污规律", "旱天风险"])
 
     assert result["status"] == "ok"
-    assert captured["build"]["start"] == "2026-03-10 00:00:00"
-    assert captured["build"]["end"] == "2026-03-15 23:59:00"
+    assert captured["build"]["start"] == "2026-03-10"
+    assert captured["build"]["end"] == "2026-03-15"
     assert (captured["build"]["start"], captured["build"]["end"]) != (
-        "2026-03-11 00:00:00",
-        "2026-03-14 23:59:00",
+        "2026-03-11",
+        "2026-03-14",
     )
     report_path = Path(result["data"]["output_file"])
     combined_path = deps.paths.root / result["data"]["result_destinations"][0]["path"]
