@@ -54,8 +54,11 @@ def test_prompt_documents_routing_rules() -> None:
     assert "`data_filter`" in prompt
     assert "`analyze_rainfall`" in prompt
     assert "`run_python`" in prompt
-    assert "点位级分析默认 `export=false`" in prompt
-    assert "用户明确要求“存下来”“导出”或“保存成文件”时设置 `export=true`" in prompt
+    assert "所有非报告分析工具默认 `export=false`" in prompt
+    assert "`check_data`、`analyze_patterns`、`assess_risk`、`analyze_event_response`、`analyze_rdii`" in prompt
+    assert "只有用户明确要求“输出”“存下来”“导出”“保存成文件”“落盘”“生成 CSV/Excel/图片文件”“输出为文件”“输出图表”“把结果导出/保存”时，才设置 `export=true`" in prompt
+    assert "用户说“看一下”“分析一下”“比较一下”“给我结论”“给我结果”“给出覆盖率/缺失情况”只表示在对话中展示结论或摘要" in prompt
+    assert "不等于落盘，不得设置 `export=true`" in prompt
     assert "单独分析不写综合表" in prompt
     assert "只有 `generate_report` 成功生成报告时" in prompt
     assert "与报告同 scope 命名的综合表" in prompt
