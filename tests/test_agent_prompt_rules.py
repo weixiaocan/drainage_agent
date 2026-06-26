@@ -28,11 +28,22 @@ def test_prompt_documents_v2_workflow_order() -> None:
         "analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk`"
     )
     assert expected_order in prompt
-    assert "本轮只调用 `generate_report`" in prompt
+    assert "报告范围明确时，本轮只调用 `generate_report`" in prompt
     assert "禁止在出报告前单独调用 `data_filter`、`check_data`、`analyze_patterns`" in prompt
     assert "查询实际时间范围" in prompt
-    assert "上文混有不同点位或时间范围" in prompt
-    assert "必须先询问报告要包含哪些点位、哪个时间范围" in prompt
+    assert "报告范围明确的判定必须结合本轮请求和已有对话上下文" in prompt
+    assert "直接调用 `generate_report`，不要反问" in prompt
+    assert "报告范围不明确时才先询问，不要无脑一律先问" in prompt
+    assert "先询问报告要包含哪些点位、哪段时间、哪些模块/章节" in prompt
+    assert "上文混有多个点位/时间/模块范围但本轮没有选择" in prompt
+    assert "绝对禁止调用 `generate_report`" in prompt
+    assert "报告包含19个点位、3月10号之后、第6场降雨、全部章节" in prompt
+    assert "明确报告请求不得预调任何分析工具" in prompt
+    assert "生成W1的数据分析报告" in prompt
+    assert "报告覆盖全月，降雨采用第6场，雨天和旱天都包括" in prompt
+    assert "`generate_report` 返回 `error` 时" in prompt
+    assert "立即把失败原因告诉用户并停止本轮" in prompt
+    assert "禁止继续调用 `run_python`、`analyze_patterns`、`list_results`" in prompt
     assert "不要编造编号" in prompt
 
 

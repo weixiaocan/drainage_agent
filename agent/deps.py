@@ -84,6 +84,8 @@ class SessionState:
     unavailable_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
     current_run_id: str | None = None
+    current_user_prompt: str | None = None
+    user_prompt_history: list[str] = field(default_factory=list)
     analysis_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     report_data_cache: dict[str, Any] = field(default_factory=dict)
 

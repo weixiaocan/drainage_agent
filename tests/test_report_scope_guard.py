@@ -1,0 +1,80 @@
+from __future__ import annotations
+
+from agent.core import (
+    _report_args_from_message,
+    _should_direct_generate_report,
+    needs_report_scope_confirmation,
+)
+
+
+def test_generic_report_request_asks_when_history_has_mixed_scopes() -> None:
+    history = [
+        "看一下全网旱天风险。",
+        "再加上第 6 场降雨的雨天风险。",
+        "W4 和 W6 的排污规律如何，输出图表？",
+    ]
+
+    assert needs_report_scope_confirmation("根据上述分析撰写分析报告？", history)
+
+
+def test_explicit_report_request_does_not_ask_again() -> None:
+    history = [
+        "看一下全网旱天风险。",
+        "W4 和 W6 的排污规律如何，输出图表？",
+    ]
+
+    assert not needs_report_scope_confirmation(
+        "旱天数据范围选择3月10号之后的数据，采用第6场降雨，报告包含19个点位，要全部章节的内容",
+        history,
+    )
+
+
+def test_generic_report_request_asks_without_carryable_history() -> None:
+    assert needs_report_scope_confirmation("生成分析报告。", [])
+
+
+def test_non_report_request_is_not_intercepted() -> None:
+    assert not needs_report_scope_confirmation("再看一下 W4 的排污规律。", [])
+
+
+def test_explicit_report_request_is_direct_generate_candidate() -> None:
+    history = ["W4 和 W6 的排污规律如何，输出图表？"]
+
+    assert _should_direct_generate_report(
+        "旱天数据范围选择3月10号之后的数据，采用第6场降雨，报告包含19个点位，要全部章节的内容",
+        history,
+    )
+
+
+def test_report_args_parse_common_scope_markers() -> None:
+    args = _report_args_from_message(
+        "旱天数据范围选择3月10号之后的数据，采用第6场降雨，报告包含19个点位，要全部章节的内容"
+    )
+
+    assert args == {
+        "points": None,
+        "start": "2026-03-10",
+        "end": None,
+        "sections": None,
+        "event_ids": [6],
+    }
+
+
+def test_report_args_parse_dry_only_sections() -> None:
+    args = _report_args_from_message("跳过雨天部分，也我只要旱天相关的，降雨分析都不要。")
+
+    assert args["sections"] == ["监测概况", "旱天排污规律统计分析", "旱天风险"]
+
+
+def test_report_args_parse_point_attached_to_chinese_text() -> None:
+    args = _report_args_from_message("生成W1的数据分析报告。")
+
+    assert args["points"] == ["W1"]
+
+
+def test_report_args_parse_full_month_without_month_name() -> None:
+    args = _report_args_from_message("报告覆盖全月，降雨时间采用第6场降雨，报告雨天和旱天都要包括")
+
+    assert args["start"] == "2026-03-01"
+    assert args["end"] == "2026-03-31"
+    assert args["event_ids"] == [6]
