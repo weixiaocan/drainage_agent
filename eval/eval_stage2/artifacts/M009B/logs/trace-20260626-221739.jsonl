@@ -1,0 +1,2 @@
+{"ts": "2026-06-26T22:17:40", "event": "turn_start", "run_id": "a0da7feaffae487d9f826cc5871c176d", "user": "分析 W999 在 2030 年的排污规律。"}
+{"ts": "2026-06-26T22:17:43", "event": "turn_error", "run_id": "a0da7feaffae487d9f826cc5871c176d", "error": "ModelHTTPError(\"status_code: 402, model_name: deepseek-chat, body: {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}\")"}

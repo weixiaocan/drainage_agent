@@ -1,0 +1,2 @@
+{"ts": "2026-06-26T22:17:50", "event": "turn_start", "run_id": "74e36707ae5f484497a233ffd1510447", "user": "接下来都只看旱天。先给我 W1、W6 的排污规律。"}
+{"ts": "2026-06-26T22:17:52", "event": "turn_error", "run_id": "74e36707ae5f484497a233ffd1510447", "error": "ModelHTTPError(\"status_code: 402, model_name: deepseek-chat, body: {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}\")"}

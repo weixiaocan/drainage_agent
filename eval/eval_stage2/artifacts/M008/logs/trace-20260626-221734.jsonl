@@ -1,0 +1,2 @@
+{"ts": "2026-06-26T22:17:34", "event": "turn_start", "run_id": "49f3c6400041484b891e972abea84650", "user": "帮我看看这数据有没有什么问题。"}
+{"ts": "2026-06-26T22:17:37", "event": "turn_error", "run_id": "49f3c6400041484b891e972abea84650", "error": "ModelHTTPError(\"status_code: 402, model_name: deepseek-chat, body: {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}\")"}

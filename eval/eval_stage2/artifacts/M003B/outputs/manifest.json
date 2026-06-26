@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "results": {
+    "assess_risk": {
+      "generated_at": "2026-06-26T22:10:24",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "scope": "rainy",
+        "event_ids": [
+          6
+        ],
+        "points": [],
+        "start": null,
+        "end": null,
+        "export": false
+      },
+      "artifacts": []
+    },
+    "analyze_rainfall": {
+      "generated_at": "2026-06-26T22:10:15",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "time_range": [],
+        "output": "events",
+        "rainfall_gap_hours": 12,
+        "export": false
+      },
+      "artifacts": []
+    }
+  }
+}

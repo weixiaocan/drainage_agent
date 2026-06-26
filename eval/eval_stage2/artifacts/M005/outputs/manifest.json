@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "results": {
+    "check_data": {
+      "generated_at": "2026-06-26T22:11:14",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "points": [],
+        "export": false,
+        "start": null,
+        "end": null
+      },
+      "artifacts": []
+    },
+    "data_filter": {
+      "generated_at": "2026-06-26T22:11:23",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "missing_rate_threshold": 0.1,
+        "expected_rows_per_day": 1440,
+        "rain_day_filter_threshold": 2.0,
+        "zero_like_threshold": 0.02,
+        "high_zero_ratio_threshold": 0.5,
+        "high_zero_ratio_normal_days_threshold": 5,
+        "zero_day_drop_min_nonzero_keep_days": 3,
+        "mean_lower_ratio": 0.5,
+        "mean_upper_ratio": 2.0,
+        "output_file": ""
+      },
+      "artifacts": [
+        "outputs/筛选结果.xlsx"
+      ]
+    },
+    "analyze_patterns": {
+      "generated_at": "2026-06-26T22:12:37",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "points": [
+          "W1",
+          "W4"
+        ],
+        "start": null,
+        "end": null,
+        "output": "all",
+        "export": true,
+        "report_charts": false
+      },
+      "artifacts": [
+        "outputs/W1_W4_全时段_排污规律分析.csv",
+        "outputs/特征曲线图/W1_W4_全时段/W1_流量特征曲线.png",
+        "outputs/特征曲线图/W1_W4_全时段/W1_液位特征曲线.png",
+        "outputs/特征曲线图/W1_W4_全时段/W4_流量特征曲线.png",
+        "outputs/特征曲线图/W1_W4_全时段/W4_液位特征曲线.png"
+      ]
+    },
+    "assess_risk": {
+      "generated_at": "2026-06-26T22:12:53",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "scope": "dry",
+        "event_ids": [],
+        "points": [],
+        "start": null,
+        "end": null,
+        "export": false
+      },
+      "artifacts": []
+    },
+    "generate_report": {
+      "generated_at": "2026-06-26T22:12:56",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "points": [],
+        "start": null,
+        "end": null,
+        "sections": [
+          "监测概况",
+          "旱天排污规律统计分析",
+          "旱天风险"
+        ],
+        "event_ids": []
+      },
+      "artifacts": [
+        "outputs/全网_全时段_综合分析结果.xlsx",
+        "outputs/全网_全时段_分析报告.docx"
+      ]
+    }
+  }
+}

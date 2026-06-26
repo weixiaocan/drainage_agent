@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "results": {
+    "analyze_rainfall": {
+      "generated_at": "2026-06-26T22:10:39",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "time_range": [],
+        "output": "all",
+        "rainfall_gap_hours": 12,
+        "export": false
+      },
+      "artifacts": [
+        "outputs/降雨分析图/全网_全时段_日降雨量时间序列图.png",
+        "outputs/降雨分析图/全网_全时段_降雨日占比饼图.png"
+      ]
+    },
+    "check_data": {
+      "generated_at": "2026-06-26T22:10:57",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "points": [
+          "W1",
+          "W6"
+        ],
+        "export": false,
+        "start": null,
+        "end": null
+      },
+      "artifacts": []
+    },
+    "analyze_event_response": {
+      "generated_at": "2026-06-26T22:11:00",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "event_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "points": [
+          "W1",
+          "W6"
+        ],
+        "export": false
+      },
+      "artifacts": []
+    },
+    "analyze_rdii": {
+      "generated_at": "2026-06-26T22:11:05",
+      "data_fingerprint": "210ff8e6e6c34c2b7bcaa17983b0463c3295fc168936de459ccf3248bc4ce75b",
+      "params": {
+        "event_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "points": [
+          "W1",
+          "W6"
+        ],
+        "output": "all",
+        "export": false
+      },
+      "artifacts": []
+    }
+  }
+}
