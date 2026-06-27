@@ -716,6 +716,19 @@ def print_text_report(results: list[CheckResult]) -> None:
     )
 
 
+def print_summary_report(results: list[CheckResult]) -> None:
+    passed = sum(1 for item in results if item.status == "pass")
+    failed_items = [item for item in results if item.status == "fail"]
+    skipped = sum(1 for item in results if item.status == "skip")
+    print(f"客观项 {passed} 通过 / {len(failed_items)} 失败 / {skipped} 跳过")
+    if not failed_items:
+        return
+    print("失败项:")
+    for item in sorted(failed_items, key=lambda value: (value.case_id, value.check, value.turn or 0)):
+        turn = f" turn={item.turn}" if item.turn is not None else ""
+        print(f"  - {item.case_id}{turn} | {item.check} | {item.reason}")
+
+
 def default_results_paths(stage: str) -> list[Path]:
     if stage == "stage1":
         return [PROJECT / "eval" / "eval_stage1" / "results.jsonl"]

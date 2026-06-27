@@ -19,6 +19,7 @@ if str(PROJECT) not in sys.path:
 from agent.deps import build_deps
 from agent.core import build_agent
 from agent.logging_utils import TraceLogger, trace_event
+from eval.check import build_context, load_cases, print_summary_report, run_checks
 
 
 CASE_ID_PREFIX_RE = re.compile(r"^(M\d{3}[A-Z]?)")
@@ -177,6 +178,17 @@ def compact_pending_results(pending_path: Path) -> None:
     pending_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def run_objective_check(results_path: Path) -> None:
+    print("\n客观项自动判分:")
+    try:
+        cases = load_cases(results_path)
+        ctx = build_context(PROJECT)
+        results = run_checks(cases, ctx)
+        print_summary_report(results)
+    except Exception as exc:
+        print(f"客观项自动判分失败: {exc!r}")
+
+
 def run_case(case: dict) -> dict:
     """跑一条（已归一化的）用例：在同一个隔离 root、同一条 message_history 上逐轮推进。"""
     rec = {
@@ -296,6 +308,7 @@ def main():
     compact_pending_results(pending_path)
     pending_path.replace(out_path)
     print(f"\n→ {out_path}  (model={meta['model']})")
+    run_objective_check(out_path)
 
 
 if __name__ == "__main__":
