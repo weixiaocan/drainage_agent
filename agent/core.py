@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from pydantic_ai import RunContext
+from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 
 from .deps import AgentDeps
 from .logging_utils import summarize_tool_result, trace_event
@@ -32,6 +33,122 @@ PENDING_REPORT_SCOPE_COMPLETION_PROMPT = (
     "已按只要旱天、不要雨天记录。请再确认报告点位范围（例如全网/所有点位或指定 W 点位）和时间范围；"
     "未限制时间时我将按全时段处理。"
 )
+
+
+COMPACT_THRESHOLD = 40
+COMPACT_KEEP_RECENT_TURNS = 6
+COMPACT_SUMMARY_MARKER = "[CONVERSATION_COMPACT_SUMMARY]"
+
+
+def _part_text(part: Any) -> str:
+    content = getattr(part, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(str(item) for item in content)
+    args = getattr(part, "args", None)
+    if args is not None:
+        return f"{getattr(part, 'tool_name', 'tool')} args={args}"
+    return ""
+
+
+def _message_text(message: Any) -> str:
+    return "\n".join(text for part in getattr(message, "parts", []) if (text := _part_text(part)).strip())
+
+
+def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 1800) -> str:
+    lines: list[str] = []
+    for text in texts:
+        compact = " ".join(text.split())
+        if not compact:
+            continue
+        lines.append(f"- {compact[:180]}")
+        if len(lines) >= max_items:
+            break
+    summary = "\n".join(lines) or "- 无可提取的早期对话文本。"
+    return summary[:max_chars]
+
+
+def _extract_established_constraints(texts: list[str]) -> dict[str, list[str]]:
+    joined = "\n".join(texts)
+    constraints: dict[str, list[str]] = {
+        "口径": [],
+        "点位集合": [],
+        "时间窗": [],
+    }
+
+    dry_markers = ("只看旱天", "只要旱天", "旱天", "不要雨天", "跳过雨天", "不含降雨", "干天")
+    rainy_markers = ("只看雨天", "雨天", "降雨事件", "降雨期间", "RDII")
+    if any(marker in joined for marker in dry_markers):
+        constraints["口径"].append("只看旱天/干天，排除雨天或降雨相关内容")
+    elif any(marker in joined for marker in rainy_markers):
+        constraints["口径"].append("雨天/降雨事件相关分析")
+
+    points = sorted(
+        {match.upper() for match in re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", joined, flags=re.IGNORECASE)},
+        key=lambda value: int(value[1:]),
+    )
+    if points:
+        constraints["点位集合"].append(", ".join(points))
+    elif any(keyword in joined for keyword in ("全网", "全部点位", "所有点位", "19个点", "19 个点")):
+        constraints["点位集合"].append("全网/全部点位")
+
+    date_ranges = re.findall(
+        r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?\s*(?:至|到|~|-|—)\s*20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?",
+        joined,
+    )
+    single_dates = re.findall(r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?", joined)
+    month_windows = re.findall(r"(?:20\d{2}年)?\s*\d{1,2}\s*月(?:全月|上旬|中旬|下旬)?", joined)
+    for item in [*date_ranges, *single_dates[:4], *month_windows[:4]]:
+        normalized = " ".join(item.split())
+        if normalized and normalized not in constraints["时间窗"]:
+            constraints["时间窗"].append(normalized)
+
+    return constraints
+
+
+def _format_constraints(constraints: dict[str, list[str]]) -> str:
+    lines = []
+    for key in ("口径", "点位集合", "时间窗"):
+        values = constraints.get(key) or []
+        lines.append(f"- {key}: {'; '.join(values) if values else '未明确'}")
+    return "\n".join(lines)
+
+
+def _build_compact_summary_message(older_messages: list[ModelMessage]) -> ModelRequest:
+    older_texts = [_message_text(message) for message in older_messages]
+    prior_summaries = [text for text in older_texts if COMPACT_SUMMARY_MARKER in text]
+    raw_texts = [text for text in older_texts if COMPACT_SUMMARY_MARKER not in text]
+    constraints = _extract_established_constraints(older_texts)
+    content = (
+        f"{COMPACT_SUMMARY_MARKER}\n"
+        "以下是被压缩的早期对话摘要。后续回答必须继续遵守“已确立的约束/偏好”。\n\n"
+        "## 已确立的约束/偏好\n"
+        f"{_format_constraints(constraints)}\n\n"
+        "## 早期对话摘要\n"
+        f"{_summarize_texts([*prior_summaries, *raw_texts])}"
+    )
+    return ModelRequest(parts=[UserPromptPart(content=content)])
+
+
+def compact_history(ctx: RunContext[AgentDeps], messages: list[ModelMessage]) -> list[ModelMessage]:
+    if len(messages) <= COMPACT_THRESHOLD:
+        return messages
+
+    keep_count = max(COMPACT_KEEP_RECENT_TURNS * 2, 2)
+    older_messages = messages[:-keep_count]
+    recent_messages = messages[-keep_count:]
+    compacted = [_build_compact_summary_message(older_messages), *recent_messages]
+    trace_event(
+        ctx.deps.trace,
+        {
+            "event": "history_compaction",
+            "before_count": len(messages),
+            "after_count": len(compacted),
+        },
+    )
+    ctx.deps.logger.info("触发压缩,压缩前 %s 条→后 %s 条", len(messages), len(compacted))
+    return compacted
 
 
 def _is_report_request(message: str) -> bool:
@@ -240,6 +357,7 @@ def load_system_prompt(root: Path, project_notes: str = "") -> str:
 def build_agent(deps: AgentDeps) -> Any:
     try:
         from pydantic_ai import Agent
+        from pydantic_ai.capabilities import ProcessHistory
         from pydantic_ai.models.openai import OpenAIModel
         from pydantic_ai.providers.openai import OpenAIProvider
         from pydantic_ai.settings import ModelSettings
@@ -261,6 +379,7 @@ def build_agent(deps: AgentDeps) -> Any:
             deps_type=AgentDeps,
             system_prompt=load_system_prompt(deps.paths.root, deps.project_notes),
             model_settings=ModelSettings(request_limit=100),
+            capabilities=[ProcessHistory(compact_history)],
         )
 
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
