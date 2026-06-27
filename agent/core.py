@@ -56,6 +56,32 @@ def _message_text(message: Any) -> str:
     return "\n".join(text for part in getattr(message, "parts", []) if (text := _part_text(part)).strip())
 
 
+def _part_user_text(part: Any) -> str:
+    if not isinstance(part, UserPromptPart):
+        return ""
+    content = getattr(part, "content", None)
+    if isinstance(content, str):
+        if COMPACT_SUMMARY_MARKER in content:
+            return ""
+        return content
+    if isinstance(content, list):
+        text = " ".join(str(item) for item in content)
+        return "" if COMPACT_SUMMARY_MARKER in text else text
+    return ""
+
+
+def _message_user_text(message: Any) -> str:
+    return "\n".join(text for part in getattr(message, "parts", []) if (text := _part_user_text(part)).strip())
+
+
+def _empty_constraints() -> dict[str, list[str]]:
+    return {
+        "口径": [],
+        "点位集合": [],
+        "时间窗": [],
+    }
+
+
 def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 1800) -> str:
     lines: list[str] = []
     for text in texts:
@@ -70,41 +96,84 @@ def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 
 
 
 def _extract_established_constraints(texts: list[str]) -> dict[str, list[str]]:
-    joined = "\n".join(texts)
-    constraints: dict[str, list[str]] = {
-        "口径": [],
-        "点位集合": [],
-        "时间窗": [],
-    }
+    constraints = _empty_constraints()
 
-    dry_markers = ("只看旱天", "只要旱天", "旱天", "不要雨天", "跳过雨天", "不含降雨", "干天")
-    rainy_markers = ("只看雨天", "雨天", "降雨事件", "降雨期间", "RDII")
-    if any(marker in joined for marker in dry_markers):
-        constraints["口径"].append("只看旱天/干天，排除雨天或降雨相关内容")
-    elif any(marker in joined for marker in rainy_markers):
-        constraints["口径"].append("雨天/降雨事件相关分析")
+    scope_markers = ("只看", "只要", "全程", "不要", "排除", "限定", "限于", "仅看", "仅关注")
+    point_markers = ("只关注", "只看", "限定", "限于", "仅看", "仅关注", "点位集合")
+    time_markers = ("时间窗", "时间范围", "数据范围", "限定", "限于", "只看", "仅看", "范围选择")
+    point_re = re.compile(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", flags=re.IGNORECASE)
+    date_patterns = [
+        re.compile(
+            r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?\s*(?:至|到|~|-|—)\s*20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?"
+        ),
+        re.compile(r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:之后|以前|之前|以后)?"),
+        re.compile(r"\d{1,2}\s*月\s*\d{1,2}\s*(?:日|号)?(?:之后|以前|之前|以后)?"),
+    ]
 
-    points = sorted(
-        {match.upper() for match in re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", joined, flags=re.IGNORECASE)},
-        key=lambda value: int(value[1:]),
-    )
-    if points:
-        constraints["点位集合"].append(", ".join(points))
-    elif any(keyword in joined for keyword in ("全网", "全部点位", "所有点位", "19个点", "19 个点")):
-        constraints["点位集合"].append("全网/全部点位")
+    for text in texts:
+        clauses = [clause.strip() for clause in re.split(r"[。！？!?；;\n，,]", text) if clause.strip()]
+        for clause in clauses:
+            has_scope_marker = any(marker in clause for marker in scope_markers)
+            if has_scope_marker and any(marker in clause for marker in ("旱天", "干天")):
+                constraints["口径"] = ["只看旱天/干天，排除雨天或降雨相关内容"]
+            elif has_scope_marker and any(marker in clause for marker in ("雨天", "降雨期间", "降雨事件")):
+                constraints["口径"] = ["雨天/降雨事件相关分析"]
 
-    date_ranges = re.findall(
-        r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?\s*(?:至|到|~|-|—)\s*20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?",
-        joined,
-    )
-    single_dates = re.findall(r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?", joined)
-    month_windows = re.findall(r"(?:20\d{2}年)?\s*\d{1,2}\s*月(?:全月|上旬|中旬|下旬)?", joined)
-    for item in [*date_ranges, *single_dates[:4], *month_windows[:4]]:
-        normalized = " ".join(item.split())
-        if normalized and normalized not in constraints["时间窗"]:
-            constraints["时间窗"].append(normalized)
+            points = sorted({match.upper() for match in point_re.findall(clause)}, key=lambda value: int(value[1:]))
+            if points and any(marker in clause for marker in point_markers):
+                constraints["点位集合"] = [", ".join(points)]
+            elif any(marker in clause for marker in point_markers) and any(
+                keyword in clause for keyword in ("全网", "全部点位", "所有点位", "19个点", "19 个点")
+            ):
+                constraints["点位集合"] = ["全网/全部点位"]
+
+            if any(marker in clause for marker in time_markers):
+                dates: list[str] = []
+                for pattern in date_patterns:
+                    dates.extend(pattern.findall(clause))
+                normalized_dates = []
+                for item in dates:
+                    normalized = " ".join(str(item).split())
+                    if normalized and normalized not in normalized_dates:
+                        normalized_dates.append(normalized)
+                if normalized_dates:
+                    constraints["时间窗"] = normalized_dates
 
     return constraints
+
+
+def _extract_constraints_from_prior_summaries(texts: list[str]) -> dict[str, list[str]]:
+    constraints = _empty_constraints()
+    for text in texts:
+        if COMPACT_SUMMARY_MARKER not in text:
+            continue
+        in_constraints = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped == "## 已确立的约束/偏好":
+                in_constraints = True
+                continue
+            if in_constraints and stripped.startswith("## "):
+                break
+            if not in_constraints or not stripped.startswith("- "):
+                continue
+            for key in ("口径", "点位集合", "时间窗"):
+                prefix = f"- {key}:"
+                if stripped.startswith(prefix):
+                    value = stripped[len(prefix) :].strip()
+                    if value and value != "未明确":
+                        constraints[key] = [value]
+    return constraints
+
+
+def _merge_constraints(
+    prior: dict[str, list[str]],
+    current: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    merged = _empty_constraints()
+    for key in ("口径", "点位集合", "时间窗"):
+        merged[key] = current.get(key) or prior.get(key) or []
+    return merged
 
 
 def _format_constraints(constraints: dict[str, list[str]]) -> str:
@@ -117,9 +186,13 @@ def _format_constraints(constraints: dict[str, list[str]]) -> str:
 
 def _build_compact_summary_message(older_messages: list[ModelMessage]) -> ModelRequest:
     older_texts = [_message_text(message) for message in older_messages]
+    user_texts = [_message_user_text(message) for message in older_messages]
     prior_summaries = [text for text in older_texts if COMPACT_SUMMARY_MARKER in text]
     raw_texts = [text for text in older_texts if COMPACT_SUMMARY_MARKER not in text]
-    constraints = _extract_established_constraints(older_texts)
+    constraints = _merge_constraints(
+        _extract_constraints_from_prior_summaries(prior_summaries),
+        _extract_established_constraints(user_texts),
+    )
     content = (
         f"{COMPACT_SUMMARY_MARKER}\n"
         "以下是被压缩的早期对话摘要。后续回答必须继续遵守“已确立的约束/偏好”。\n\n"
@@ -138,16 +211,20 @@ def compact_history(ctx: RunContext[AgentDeps], messages: list[ModelMessage]) ->
     keep_count = max(COMPACT_KEEP_RECENT_TURNS * 2, 2)
     older_messages = messages[:-keep_count]
     recent_messages = messages[-keep_count:]
-    compacted = [_build_compact_summary_message(older_messages), *recent_messages]
+    summary_message = _build_compact_summary_message(older_messages)
+    summary_text = _message_text(summary_message)
+    compacted = [summary_message, *recent_messages]
     trace_event(
         ctx.deps.trace,
         {
             "event": "history_compaction",
             "before_count": len(messages),
             "after_count": len(compacted),
+            "summary_text": summary_text,
         },
     )
     ctx.deps.logger.info("触发压缩,压缩前 %s 条→后 %s 条", len(messages), len(compacted))
+    ctx.deps.logger.info("压缩摘要全文:\n%s", summary_text)
     return compacted
 
 
