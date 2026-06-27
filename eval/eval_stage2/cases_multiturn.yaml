@@ -263,3 +263,48 @@
 # - id: M013
 #   category: 上下文压缩-长程约束在压缩后是否存活
 #   turns: [...]
+- id: M013
+  category: 上下文压缩-长程约束在压缩后是否存活
+  # 目的:在生产阈值(COMPACT_THRESHOLD=30)下,靠对话长度自然触发压缩,
+  # 验证压缩发生后,第1轮确立的强约束(旱天 + 限定W1/W6/W18)是否仍被遵守。
+  # 跑完必须确认日志出现 history_compaction;若未触发,说明轮数/产物不够,需加长。
+  turns:
+    - prompt: 接下来全程只看旱天,而且只关注 W1、W6、W18 这三个点。先给我它们的排污规律。
+      expect: 确立双重约束(旱天 + 点位=W1/W6/W18);analyze_patterns 这三点、旱天
+      key: true            # 约束确立点
+    - prompt: 它们的风险怎么样?
+      expect: assess_risk 限定这三点、旱天口径
+    - prompt: 哪个点最异常?
+      expect: 基于已分析结果比较这三点
+    - prompt: 这段数据有哪些降雨事件?
+      expect: analyze_rainfall(全域降雨,与约束不冲突,正常返回)
+    - prompt: 第一场雨这三个点的响应?
+      expect: analyze_event_response,这三点,第一场
+    - prompt: 它们这场的 RDII 呢?
+      expect: analyze_rdii,这三点,同事件
+    - prompt: W1 的排污规律具体是什么类型?
+      expect: 仍旱天口径、仍在约束点位内
+    - prompt: W6 呢?
+      expect: 同上,W6
+    - prompt: W18 呢?
+      expect: 同上,W18
+    - prompt: 再整体看一下这三个点的风险。
+      expect: assess_risk 这三点、旱天
+    - prompt: 数据质量怎么样?
+      expect: check_data,合理范围(这三点或全网体检均可)
+    - prompt: 哪个点的数据最完整?
+      expect: 基于上一轮数据检查比较
+    - prompt: 再看一次它们的排污规律。
+      expect: analyze_patterns 这三点、旱天(约束仍在)
+    - prompt: 第二场雨它们的响应?
+      expect: analyze_event_response,这三点,第二场
+    - prompt: 这场的 RDII?
+      expect: analyze_rdii,这三点,同事件
+    - prompt: 整体给我个风险排序。
+      expect: 基于已分析,这三点排序、旱天口径
+    - prompt: 我们一开始关注的是哪几个点、什么口径来着?
+      expect: 正确复述"W1/W6/W18、旱天"——压缩后摘要里的约束未丢失
+      key: true            # 压缩后约束记忆点(此时应已触发过压缩)
+    - prompt: 那再给我看一遍这几个点的排污规律。
+      expect: analyze_patterns,仍 W1/W6/W18、仍旱天——压缩后约束仍被执行,没漂回全网/雨天
+      key: true            # 压缩后约束执行点(最终判定)
