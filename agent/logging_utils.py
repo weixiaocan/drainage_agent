@@ -10,6 +10,7 @@ from typing import Any
 MAX_TRACE_STRING = 2000
 MAX_TRACE_LIST_ITEMS = 20
 MAX_TRACE_DICT_ITEMS = 50
+MAX_TRACE_ARTIFACTS = 10
 
 
 def setup_logging(logs_dir: Path) -> Path:
@@ -35,14 +36,14 @@ class TraceLogger:
 
 
 def _trace_safe(value: Any, *, depth: int = 0) -> Any:
-    if depth >= 3:
-        return f"<{type(value).__name__}>"
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
         return value if len(value) <= MAX_TRACE_STRING else value[:MAX_TRACE_STRING] + "...<truncated>"
     if isinstance(value, Path):
         return str(value)
+    if depth >= 3:
+        return f"<{type(value).__name__}>"
     if isinstance(value, (list, tuple)):
         items = [_trace_safe(item, depth=depth + 1) for item in value[:MAX_TRACE_LIST_ITEMS]]
         if len(value) > MAX_TRACE_LIST_ITEMS:
@@ -61,13 +62,26 @@ def _trace_safe(value: Any, *, depth: int = 0) -> Any:
     return str(value)
 
 
+def _summarize_artifacts(artifacts: Any) -> dict[str, Any]:
+    if not isinstance(artifacts, list):
+        return {"artifacts": _trace_safe(artifacts), "artifact_count": 0}
+    visible = [_trace_safe(item) for item in artifacts[:MAX_TRACE_ARTIFACTS]]
+    summary: dict[str, Any] = {
+        "artifacts": visible,
+        "artifact_count": len(artifacts),
+    }
+    if len(artifacts) > MAX_TRACE_ARTIFACTS:
+        summary["artifacts_truncated"] = len(artifacts) - MAX_TRACE_ARTIFACTS
+    return summary
+
+
 def summarize_tool_result(result: Any) -> dict[str, Any]:
     if not isinstance(result, dict):
         return {"result_type": type(result).__name__, "summary": _trace_safe(result)}
     summary: dict[str, Any] = {
         "status": result.get("status"),
         "summary": result.get("summary"),
-        "artifacts": result.get("artifacts", []),
+        **_summarize_artifacts(result.get("artifacts", [])),
     }
     for key in ("missing", "hint", "options"):
         if key in result:

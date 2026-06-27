@@ -15,7 +15,7 @@ from .style_writer import add_picture_to_cell, set_cell_text
 def render_curve_images(
     doc: Document,
     curve_tables: List[Table],
-    image_dir: Path,
+    image_paths: dict[str, list[str]],
     point_ids: Iterable[str],
 ) -> tuple[int, list[str]]:
     """Render flow/level curve images into semantic curve tables."""
@@ -33,14 +33,24 @@ def render_curve_images(
 
     for table, point_id in zip(tables, points):
         row = table.rows[0]
-        flow_path = image_dir / f"{point_id}_流量特征曲线.png"
-        level_path = image_dir / f"{point_id}_液位特征曲线.png"
-        combined_path = image_dir / f"{point_id}_特征曲线.png"
+        flow_path, level_path, combined_path = _curve_image_candidates(image_paths, point_id)
 
         inserted += _insert_or_warn(row.cells[0], flow_path, combined_path, f"{point_id} 流量特征曲线", warnings)
         inserted += _insert_or_warn(row.cells[1], level_path, combined_path, f"{point_id} 液位特征曲线", warnings)
 
     return inserted, warnings
+
+
+def _curve_image_candidates(image_paths: dict[str, list[str]], point_id: str) -> tuple[Path, Path, Path]:
+    point_paths = [Path(value) for value in image_paths.get(point_id, [])]
+    selected_paths = [Path(value) for value in image_paths.get("selected", [])]
+    flow_path = next((path for path in point_paths if "流量" in path.name), Path("__missing_flow_image__.png"))
+    level_path = next((path for path in point_paths if "液位" in path.name), Path("__missing_level_image__.png"))
+    combined_path = selected_paths[0] if selected_paths else next(
+        (path for path in point_paths if "特征曲线" in path.name and "流量" not in path.name and "液位" not in path.name),
+        Path("__missing_combined_image__.png"),
+    )
+    return flow_path, level_path, combined_path
 
 
 def _resize_curve_tables(doc: Document, curve_tables: List[Table], target_count: int) -> None:

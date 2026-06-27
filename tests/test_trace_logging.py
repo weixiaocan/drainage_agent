@@ -36,6 +36,39 @@ def test_trace_logger_writes_minimal_tool_events(tmp_path) -> None:
     assert '"large"' not in lines[2]
 
 
+def test_trace_preserves_simple_list_args_and_limits_artifacts(tmp_path) -> None:
+    trace = TraceLogger(tmp_path)
+    artifacts = [f"outputs/artifact-{index}.txt" for index in range(12)]
+
+    trace_event(
+        trace,
+        {
+            "event": "tool_call",
+            "run_id": "run-2",
+            "tool_name": "analyze_event_response",
+            "args": {"points": ["W1"], "event_ids": [4, 6]},
+        },
+    )
+    trace_event(
+        trace,
+        {
+            "event": "tool_result",
+            "run_id": "run-2",
+            "tool_name": "analyze_event_response",
+            **summarize_tool_result({"status": "ok", "summary": "done", "artifacts": artifacts}),
+        },
+    )
+
+    lines = trace.path.read_text(encoding="utf-8").splitlines()
+
+    assert '"points": ["W1"]' in lines[0]
+    assert '"event_ids": [4, 6]' in lines[0]
+    assert '"artifact_count": 12' in lines[1]
+    assert '"artifacts_truncated": 2' in lines[1]
+    assert "artifact-9.txt" in lines[1]
+    assert "artifact-10.txt" not in lines[1]
+
+
 def test_trace_includes_run_python_stderr_on_error() -> None:
     summary = summarize_tool_result(
         {
