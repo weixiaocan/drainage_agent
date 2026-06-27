@@ -31,34 +31,48 @@
     - prompt: 分析 W6 在第 6 场降雨里的事件响应。
       expect: 先确认第6场覆盖,再 analyze_event_response,points=[W6],event=6
       key: true
-    - prompt: 把刚才那个导出。
-      expect: 把"刚才那个"指回上一轮 W6 事件响应结果,export=True 生成带点位命名的 csv,不反问"导出什么"
+
+    - prompt: 进一步分析RDII和雨天风险
+      expect: 分析W6在第6场降雨里的降雨入流和RDII，调用工具，填入相应的降雨场次
+      key: true
+
+    - prompt: 把上述结果导出。
+      expect: 把"上述"指前面 W6 事件响应结果和两个模块结果,export=True 生成带点位命名的 csv,不反问"导出什么"
       key: true
 
 - id: M003A
   category: 功能衔接-增量请求-A有效事件
   turns:
     - prompt: 看一下全网旱天风险。
-      expect: assess_risk,全网,旱天;全网结果进综合底稿
+      expect: assess_risk,全网,旱天;未要求导出/保存/报告,不得落CSV或综合表
       key: true
     - prompt: 再加上第 6 场降雨的雨天风险。
-      expect: assess_risk,全网,scope=rainy,event_ids=[6];在已有旱天风险基础上追加雨天溢流风险
+      expect: assess_risk,全网,scope=rainy,event_ids=[6];在已有旱天风险基础上追加雨天溢流风险;未要求导出/保存/报告,不得落CSV或综合表
       key: true
     - prompt: W4 和 W6 是不是雨天风险最高的？
       expect: 基于已分析结果回答,聚焦 W4/W6,有依据,不重算
+      key: true
+    - prompt: W4 和 W6 的排污规律如何，输出图表？
+      expect: 调用模块计算两个点的排污规律
+      key: true
+    - prompt: 根据上述分析撰写分析报告？
+      expect: 基于上面的结果看此处怎么撰写分析报告
+      key: true
+    - prompt: 旱天数据范围选择3月10号之后的数据，采用第6场降雨，报告包含19个点位，要全部章节的内容
+      expect: 看能不能按时间正确出报告
       key: true
 
 - id: M003B
   category: 功能衔接-增量请求-B缺少事件
   turns:
     - prompt: 看一下全网旱天风险。
-      expect: assess_risk,全网,旱天;全网结果进综合底稿
+      expect: assess_risk,全网,旱天;未要求导出/保存/报告,不得落CSV或综合表
       key: true
     - prompt: 再加上雨天的。
       expect: 不猜测 event_ids;提示用户选择降雨场次并展示可选场次
       key: true
     - prompt: 那就看第 6 场。
-      expect: 承接上一轮缺失参数,assess_risk,全网,scope=rainy,event_ids=[6];保留已有旱天结果
+      expect: 承接上一轮缺失参数,assess_risk,全网,scope=rainy,event_ids=[6];保留已有旱天结果;未要求导出/保存/报告,不得落CSV或综合表
       key: true
     - prompt: W4 和 W6 是不是雨天风险最高的？
       expect: 基于第6场雨天风险结果回答,聚焦 W4/W6,有依据,不重算
@@ -78,15 +92,30 @@
     - prompt: 这两个点这场的 RDII 谁更严重？
       expect: 同事件同点位 analyze_rdii,比较 W1/W6 严重性,不另选事件
       key: true
+    - prompt: 那就做有数据的场次吧，有几场就选几场
+      expect: 判断哪些场次有数据，然后再做分析
+      key: true
 
 - id: M005
   category: 跨模块组合-体检前置→分析
   turns:
     - prompt: 先检查一下数据质量。
-      expect: check_data,给出覆盖率/缺失情况
+      expect: check_data,给出覆盖率/缺失情况;未要求导出/保存/报告,不得落CSV或综合表
       key: true
     - prompt: 没大问题的话，给我全网旱天排污规律。
-      expect: 基于上一轮数据检查结论判断可用性,再 analyze_patterns 全网旱天
+      expect: 基于上一轮数据检查结论判断可用性,再 analyze_patterns 全网旱天;未要求导出/保存/报告,不得落CSV或综合表
+      key: true
+    - prompt: 单独比较W1和W4的排污特征并输出。
+      expect: 比较两个点位的排污规律和统计数据大小,在回复中输出结论;未要求导出/保存/报告,不得落CSV或综合表
+      key: true
+    - prompt: 生成分析报告。
+      expect: 基于前面的结果生成一个分析报告
+      key: true
+    - prompt: 跳过雨天部分，也我只要旱天相关的，降雨分析都不要。
+      expect: 按照模块生成报告
+      key: true
+    - prompt: 要所有关于旱天的分析，雨天的不要，包含所有点位，全时段。
+      expect: 按照模块生成报告
       key: true
 
 # ── 档3 时间窗:能力落定后再跑验证(现在写好,等 capability 合入再 run) ──
@@ -94,11 +123,21 @@
 - id: M006A
   category: 时间窗-子窗口分析-A有效窗口
   turns:
-    - prompt: 只看 3 月 7 日到 15 日的全网排污规律。
+    - prompt: 只看2026年3 月 7 日到 15 日的全网排污规律。
       expect: analyze_patterns,全网,start/end 限定 3 月 7 日到 15 日;报告实际覆盖范围
       key: true
     - prompt: 那 3 月上旬呢？
       expect: 指代排污规律,时间窗收窄到 3 月上旬重新分析;说明实际覆盖从 3 月 7 日开始
+      key: true
+    - prompt: 那 3 月中旬呢？
+      expect: 指代排污规律,时间窗收窄到 3 月中旬重新分析;说明实际覆盖从 3 月 7 日开始
+      key: true
+    - prompt: 生成分析报告？
+      expect: 应该要询问按照什么时间窗口出报告
+      key: true
+
+    - prompt: 报告覆盖全月，降雨时间采用第6场降雨，报告雨天和旱天都要包括
+      expect: 看能否按要求出报告
       key: true
 
 - id: M006B
@@ -116,6 +155,15 @@
   turns:
     - prompt: 分析 1 月份 W1 的排污规律。
       expect: 若 1 月无数据覆盖,明确告知该时段无数据、不分析、不编造原因;部分覆盖则分析覆盖部分并注明
+      key: true
+    - prompt: 对W1进一步做风险分析和RDII分析。
+      expect: 若 1 月无数据覆盖,明确告知该时段无数据、不分析、不编造原因;部分覆盖则分析覆盖部分并注明
+      key: true
+    - prompt: 生成W1的数据分析报告。
+      expect: 看是不是只生成了针对W1的报告
+      key: true
+    - prompt: 只要W1的旱天报告，雨天和降雨分析都不要。
+      expect: 看是不是只出了W1的旱天分析报告
       key: true
 
 # ── 档4 对抗/模糊:说不清、矛盾、超范围 ────────────────────────────
@@ -177,6 +225,15 @@
     - prompt: 再看下全网排污规律。
       expect: analyze_patterns 全网;仍旱天(约束在 6 轮后仍保持),不漂回雨天/全时段
       key: true            # 约束保持检查点2(长程)
+    - prompt: 各点位风险如何。
+      expect: 计算旱天风险，不漂回雨天/全时段
+      key: true
+    - prompt: 出个分析报告。
+      expect: 看是不是出了旱天的分析报告
+      key: true    
+    - prompt: 只要旱天报告。
+      expect: 看是不是只出了旱天分析报告
+      key: true    
 
 - id: M012
   category: 长程一致性-约束"只关注 W1/W6/W18"
@@ -196,6 +253,7 @@
     - prompt: 再给我看下排污规律统计。
       expect: analyze_patterns;仍限定 W1/W6/W18(约束在 5 轮后仍保持),不偷偷扩回全网
       key: true            # 约束保持检查点2(长程)
+
 
 # ── 档6 上下文压缩:占位,等压缩机制做完再填实 ──────────────────────
 # 现在没有被测对象(压缩机制还没做),先不写实。
