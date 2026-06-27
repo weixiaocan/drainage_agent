@@ -11,3 +11,7 @@ outputs/*
 eval/results.jsonl
 eval/results.jsonl.tmp
 eval/artifacts/
+eval/eval_stage1/artifacts/
+eval/eval_stage2/artifacts/
+eval/*/results.jsonl
+eval/*/results.jsonl.tmp
