@@ -1,2 +1,0 @@
-{"ts": "2026-06-26T22:17:37", "event": "turn_start", "run_id": "c3dee4a4c0ad424e914e27e2ed95ff47", "user": "分析 W1 在 2026 年 3 月 7 日到 15 日的排污规律。"}
-{"ts": "2026-06-26T22:17:39", "event": "turn_error", "run_id": "c3dee4a4c0ad424e914e27e2ed95ff47", "error": "ModelHTTPError(\"status_code: 402, model_name: deepseek-chat, body: {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}\")"}

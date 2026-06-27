@@ -1,2 +1,0 @@
-{"ts": "2026-06-26T22:17:44", "event": "turn_start", "run_id": "e965526315f8403586beef9177898a9f", "user": "比较 W1、W4、W6 的旱天统计。"}
-{"ts": "2026-06-26T22:17:46", "event": "turn_error", "run_id": "e965526315f8403586beef9177898a9f", "error": "ModelHTTPError(\"status_code: 402, model_name: deepseek-chat, body: {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}\")"}
