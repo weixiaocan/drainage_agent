@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 import pickle
 import re
@@ -13,7 +14,7 @@ import pandas as pd
 
 from agent.deps import AgentDeps
 from agent.tools.manifest import data_fingerprint, load_manifest, record_result
-from agent.types import ToolResult, error, needs_input, ok
+from agent.types import FilterConfirmationRequired, ToolResult, error, needs_confirmation, needs_input, ok
 from analysis import io
 from analysis.dry_curves import build_dry_curves, dry_statistics
 from analysis.event_response import analyze_event_response
@@ -792,6 +793,8 @@ def _run(
             deps.session.analysis_cache[cache_key] = {"summary": summary, "data": deepcopy(data)}
         _store_report_data_components(deps, tool_name, params or {}, data)
         return ok(summary, artifacts=artifacts, **data)
+    except FilterConfirmationRequired:
+        raise
     except Exception as exc:
         deps.logger.exception("%s failed", tool_name)
         return error(f"{tool_name} 执行失败: {exc}", traceback=traceback.format_exc(limit=8))
@@ -909,6 +912,120 @@ def _manifest_stale(deps: AgentDeps, tool_name: str) -> bool:
     return item.get("data_fingerprint") != data_fingerprint(deps)["digest"]
 
 
+def _file_sha256(path: Path) -> str | None:
+    if not path.exists() or not path.is_file():
+        return None
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _resolve_filter_output_path(deps: AgentDeps, output_file: str | None) -> Path:
+    out_path = Path(output_file) if output_file else deps.paths.filter_result
+    if output_file and out_path.suffix == "":
+        out_path = out_path.with_suffix(".xlsx")
+    if not out_path.is_absolute():
+        out_path = deps.paths.root / out_path
+    return out_path
+
+
+def _filter_result_identity(deps: AgentDeps, path: Path, params: dict[str, Any]) -> str | None:
+    digest = _file_sha256(path)
+    if digest is None:
+        return None
+    payload = {
+        "data_fingerprint": data_fingerprint(deps)["digest"],
+        "params": params,
+        "path": _rel(deps, path),
+        "sha256": digest,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _manifest_data_filter_item(deps: AgentDeps) -> dict[str, Any] | None:
+    item = load_manifest(deps).get("results", {}).get("data_filter")
+    return item if isinstance(item, dict) else None
+
+
+def _fresh_manifest_filter_path(deps: AgentDeps, params: dict[str, Any], out_path: Path) -> Path | None:
+    item = _manifest_data_filter_item(deps)
+    if not item:
+        return None
+    if item.get("data_fingerprint") != data_fingerprint(deps)["digest"]:
+        return None
+    if item.get("params") != params:
+        return None
+    artifacts = [str(path) for path in item.get("artifacts") or []]
+    candidates = artifacts or [_rel(deps, out_path)]
+    for candidate in candidates:
+        path = Path(candidate)
+        if not path.is_absolute():
+            path = deps.paths.root / path
+        if path.exists() and path.resolve() == out_path.resolve():
+            return path
+    return out_path if out_path.exists() else None
+
+
+def _filter_confirmation_result(
+    deps: AgentDeps,
+    path: Path,
+    params: dict[str, Any],
+    summary_prefix: str,
+) -> ToolResult:
+    identity = _filter_result_identity(deps, path, params)
+    rel_path = _rel(deps, path)
+    deps.session.pending_filter_result_path = str(path)
+    deps.session.pending_filter_result_identity = identity
+    deps.session.pending_filter_result_params = deepcopy(params)
+    deps.session.pending_filter_result_request = deps.session.current_user_prompt
+    summary = f"{summary_prefix}{rel_path}。请确认或修改后告知继续。"
+    deps.session.pending_filter_result_message = summary
+    return needs_confirmation(
+        "filter_result",
+        "请确认是否使用当前筛选结果继续后续分析；如已人工修改文件，请回复“确认”或“改好了”。",
+        summary=summary,
+        artifacts=[rel_path] if path.exists() else [],
+        output_file=str(path),
+        filter_result_identity=identity,
+    )
+
+
+def _confirmed_filter_result_path(deps: AgentDeps) -> Path | None:
+    path_text = deps.session.confirmed_filter_result_path
+    if not path_text:
+        return None
+    path = Path(path_text)
+    if not path.exists():
+        return None
+    identity = _filter_result_identity(deps, path, deps.session.confirmed_filter_result_params)
+    if identity and identity == deps.session.confirmed_filter_result_identity:
+        return path
+    return None
+
+
+def confirm_pending_filter_result(deps: AgentDeps) -> Path:
+    path_text = deps.session.pending_filter_result_path
+    if not path_text:
+        raise ValueError("no pending filter result")
+    path = Path(path_text)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    params = deepcopy(deps.session.pending_filter_result_params)
+    identity = _filter_result_identity(deps, path, params)
+    if identity is None:
+        raise FileNotFoundError(path)
+    deps.session.confirmed_filter_result_path = str(path)
+    deps.session.confirmed_filter_result_identity = identity
+    deps.session.confirmed_filter_result_params = params
+    deps.session.pending_filter_result_path = None
+    deps.session.pending_filter_result_identity = None
+    deps.session.pending_filter_result_params = {}
+    deps.session.pending_filter_result_message = None
+    return path
+
+
 def _intermediate_dir(deps: AgentDeps) -> Path:
     path = deps.paths.outputs / "intermediate"
     path.mkdir(parents=True, exist_ok=True)
@@ -966,13 +1083,29 @@ def data_filter_impl(
         "mean_upper_ratio": mean_upper_ratio,
         "output_file": output_file or "",
     }
+    out_path = _resolve_filter_output_path(deps, output_file)
+
+    fresh_path = _fresh_manifest_filter_path(deps, params, out_path)
+    if fresh_path is not None:
+        identity = _filter_result_identity(deps, fresh_path, params)
+        rel_path = _rel(deps, fresh_path)
+        already_confirmed = (
+            identity is not None
+            and deps.session.confirmed_filter_result_identity == identity
+            and deps.session.confirmed_filter_result_path == str(fresh_path)
+        )
+        if deps.session.auto_confirm_filter_result:
+            deps.session.confirmed_filter_result_path = str(fresh_path)
+            deps.session.confirmed_filter_result_identity = identity
+            deps.session.confirmed_filter_result_params = deepcopy(params)
+            return ok(f"筛选结果已存在且为 fresh，自动确认使用：{rel_path}。", artifacts=[rel_path], output_file=str(fresh_path))
+        if already_confirmed:
+            return ok(f"筛选结果已确认且为 fresh，直接使用：{rel_path}。", artifacts=[rel_path], output_file=str(fresh_path))
+        return _filter_confirmation_result(deps, fresh_path, params, "已有 fresh 筛选结果：")
 
     def work() -> tuple[str, dict[str, Any]]:
         flow = io.load_flow(root=deps.paths.root)
         rain = io.load_rain(root=deps.paths.root)
-        out_path = Path(output_file) if output_file else deps.paths.filter_result
-        if not out_path.is_absolute():
-            out_path = deps.paths.root / out_path
         selected = run_data_filter(
             flow=flow,
             rain=rain,
@@ -994,7 +1127,16 @@ def data_filter_impl(
         summary = f"数据筛选完成：处理 {point_count} 个点位，筛出有效旱天 {total_days} 个点位日，输出 {_rel(deps, out_path)}。"
         return summary, {"selected": selected, "output_file": str(out_path)}
 
-    return _run(deps, "data_filter", work, params=params)
+    result = _run(deps, "data_filter", work, params=params)
+    if result.get("status") != "ok":
+        return result
+    identity = _filter_result_identity(deps, out_path, params)
+    if deps.session.auto_confirm_filter_result:
+        deps.session.confirmed_filter_result_path = str(out_path)
+        deps.session.confirmed_filter_result_identity = identity
+        deps.session.confirmed_filter_result_params = deepcopy(params)
+        return result
+    return _filter_confirmation_result(deps, out_path, params, "筛选结果已生成于 ")
 
 
 def _load_event_table(deps: AgentDeps) -> pd.DataFrame:
@@ -1172,12 +1314,16 @@ def _window_coverage_note(coverage: dict[str, str | None], excluded: list[dict[s
 
 
 def _ensure_filter_result(deps: AgentDeps) -> Path:
-    if deps.paths.filter_result.exists():
-        return deps.paths.filter_result
-    flow = io.load_flow(root=deps.paths.root)
-    rain = io.load_rain(root=deps.paths.root)
-    run_data_filter(flow=flow, rain=rain, output_xlsx=deps.paths.filter_result, config=FilterConfig())
-    return deps.paths.filter_result
+    confirmed = _confirmed_filter_result_path(deps)
+    if confirmed is not None:
+        return confirmed
+    result = data_filter_impl(deps)
+    if result.get("status") == "needs_confirmation":
+        raise FilterConfirmationRequired(result, "data_filter", {})
+    if result.get("status") != "ok":
+        raise RuntimeError(result.get("summary") or "data_filter failed")
+    confirmed = _confirmed_filter_result_path(deps)
+    return confirmed or deps.paths.filter_result
 
 
 def _load_filtered_dry_flow(
@@ -1186,7 +1332,7 @@ def _load_filtered_dry_flow(
     time_range: list[str] | None = None,
 ) -> pd.DataFrame:
     filter_result = _ensure_filter_result(deps)
-    return io.load_filtered_flow(points=points, time_range=time_range, root=deps.paths.root)
+    return io.load_flow_by_filter_result(filter_result, points=points, time_range=time_range, root=deps.paths.root)
 
 
 def check_data_impl(

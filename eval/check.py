@@ -351,6 +351,54 @@ def _has_generate_report(case: CaseRecord) -> bool:
     return any(call.tool == "generate_report" for call in case.all_tool_calls) or bool(_manifest_result(case, "generate_report"))
 
 
+def _trace_events(case: CaseRecord) -> list[dict[str, Any]]:
+    if not case.trace or not case.trace.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in case.trace.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            events.append(item)
+    return events
+
+
+def _turn_trace_events(case: CaseRecord, turn: TurnRecord) -> list[dict[str, Any]]:
+    events = _trace_events(case)
+    if not turn.run_id:
+        return []
+    return [event for event in events if event.get("run_id") == turn.run_id]
+
+
+def _has_needs_confirmation(events: list[dict[str, Any]]) -> bool:
+    return any(
+        event.get("event") == "tool_result"
+        and event.get("tool_name") == "data_filter"
+        and event.get("status") == "needs_confirmation"
+        for event in events
+    )
+
+
+def _tool_calls_after_data_filter_confirmation(events: list[dict[str, Any]]) -> list[str]:
+    seen_confirmation = False
+    calls: list[str] = []
+    for event in events:
+        if (
+            event.get("event") == "tool_result"
+            and event.get("tool_name") == "data_filter"
+            and event.get("status") == "needs_confirmation"
+        ):
+            seen_confirmation = True
+            continue
+        if seen_confirmation and event.get("event") == "tool_call":
+            calls.append(str(event.get("tool_name")))
+    return calls
+
+
 def _looks_like_no_coverage_request(text: str) -> bool:
     if "W999" in text or "2030" in text:
         return True
@@ -660,7 +708,49 @@ def check_rainfall_event_ids_contiguous_in_window(case: CaseRecord, ctx: CheckCo
     return [result(case, name, "artifact", "pass", "rainfall event ids are contiguous from 1")]
 
 
+def check_hitl_filter_confirmation(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
+    name = "hitl_filter_confirmation"
+    marked_turns = [turn for turn in case.turns if "hitl_" in turn.expect]
+    if not marked_turns:
+        return [result(case, name, "trace", "skip", "no hitl filter expectation")]
+    if case.error:
+        return [result(case, name, "trace", "fail", f"case has error: {case.error}")]
+    checks: list[CheckResult] = []
+    for turn in marked_turns:
+        events = _turn_trace_events(case, turn)
+        if "hitl_stop_after_filter" in turn.expect:
+            bad_after = _tool_calls_after_data_filter_confirmation(events)
+            if not _has_needs_confirmation(events):
+                checks.append(result(case, name, "trace", "fail", "data_filter did not return needs_confirmation", turn.n))
+            elif bad_after:
+                checks.append(result(case, name, "trace", "fail", f"tool calls after confirmation stop: {bad_after}", turn.n))
+            else:
+                checks.append(result(case, name, "trace", "pass", "data_filter hard-stopped with needs_confirmation", turn.n))
+        if "hitl_resume_without_refilter" in turn.expect:
+            refilter = [call.tool for call in turn.tool_calls if call.tool == "data_filter"]
+            if refilter:
+                checks.append(result(case, name, "trace", "fail", "confirmation turn reran data_filter", turn.n))
+            elif "确认" in turn.output and "筛选结果" in turn.output and not turn.tool_calls:
+                checks.append(result(case, name, "trace", "fail", "confirmation turn appears to stop again without analysis", turn.n))
+            else:
+                checks.append(result(case, name, "trace", "pass", "confirmation resumed without rerunning data_filter", turn.n))
+        if "hitl_confirmed_fresh_no_repeat_stop" in turn.expect:
+            if _has_needs_confirmation(events) or "请确认或修改后告知继续" in turn.output:
+                checks.append(result(case, name, "trace", "fail", "fresh confirmed filter result stopped again", turn.n))
+            else:
+                checks.append(result(case, name, "trace", "pass", "fresh confirmed filter result did not repeat-stop", turn.n))
+        if "hitl_ambiguous_confirmation" in turn.expect:
+            if turn.tool_calls:
+                checks.append(result(case, name, "trace", "fail", f"ambiguous confirmation called tools: {[c.tool for c in turn.tool_calls]}", turn.n))
+            elif "确认用当前筛选结果" not in turn.output:
+                checks.append(result(case, name, "trace", "fail", "ambiguous confirmation did not ask clarification", turn.n))
+            else:
+                checks.append(result(case, name, "trace", "pass", "ambiguous confirmation asked clarification without tools", turn.n))
+    return checks
+
+
 CHECKS: list[CheckFn] = [
+    check_hitl_filter_confirmation,
     check_coverage_guard_no_analysis_without_data,
     check_single_analysis_no_unrelated_tools,
     check_partial_scope_no_combined_xlsx,

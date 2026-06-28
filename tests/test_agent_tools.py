@@ -39,11 +39,13 @@ def _workbook_tables(path: Path) -> dict[str, pd.DataFrame]:
 def make_deps(root: Path) -> AgentDeps:
     paths = Paths.from_root(root)
     ensure_directories(paths)
+    session = SessionState()
+    session.auto_confirm_filter_result = True
     return AgentDeps(
         paths=paths,
         settings=AgentSettings(model="test", base_url=None, api_key=None),
         logger=logging.getLogger("test"),
-        session=SessionState(),
+        session=session,
         project_notes="",
     )
 
@@ -124,6 +126,7 @@ class AgentToolTests(unittest.TestCase):
     def test_data_filter_writes_filter_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
+            deps.session.auto_confirm_filter_result = True
             write_filter_flow(deps)
             result = data_filter_impl(deps)
             self.assertEqual(result["status"], "ok")
@@ -138,6 +141,7 @@ class AgentToolTests(unittest.TestCase):
     def test_patterns_use_filter_result_instead_of_internal_zero_filter(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
+            deps.session.auto_confirm_filter_result = True
             rows = []
             for day_idx, day in enumerate(pd.date_range("2026-01-01", periods=4, freq="D")):
                 for minute, ts in enumerate(pd.date_range(day, periods=1440, freq="min")):

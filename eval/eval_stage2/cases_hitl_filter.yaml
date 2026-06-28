@@ -1,0 +1,25 @@
+- id: HITL001
+  category: hitl-filter-confirmation
+  turns:
+    - prompt: 先筛选数据，然后分析全网旱天排污规律。
+      expect: hitl_stop_after_filter
+      key: true
+    - prompt: 确认继续
+      expect: hitl_resume_without_refilter
+      key: true
+    - prompt: 继续用这份筛选结果，看全网旱天风险。
+      expect: hitl_confirmed_fresh_no_repeat_stop
+      key: true
+
+- id: HITL002
+  category: hitl-filter-confirmation
+  turns:
+    - prompt: 先筛选数据，再看全网旱天风险。
+      expect: hitl_stop_after_filter
+      key: true
+    - prompt: 继续看 W6 风险
+      expect: hitl_ambiguous_confirmation
+      key: true
+    - prompt: 确认继续
+      expect: hitl_resume_without_refilter
+      key: true

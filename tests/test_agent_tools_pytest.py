@@ -39,11 +39,13 @@ from agent.types import ToolStatus, ok
 def make_deps(root: Path) -> AgentDeps:
     paths = Paths.from_root(root)
     ensure_directories(paths)
+    session = SessionState()
+    session.auto_confirm_filter_result = True
     return AgentDeps(
         paths=paths,
         settings=AgentSettings(model="test", base_url=None, api_key=None),
         logger=logging.getLogger("test.agent_tools"),
-        session=SessionState(),
+        session=session,
         project_notes="",
     )
 
@@ -129,7 +131,7 @@ def sample_two_point_pattern_flow() -> pd.DataFrame:
 
 
 def test_tool_status_values_are_v2_only() -> None:
-    assert set(get_args(ToolStatus)) == {"ok", "needs_input", "error"}
+    assert set(get_args(ToolStatus)) == {"ok", "needs_input", "needs_confirmation", "error"}
 
 
 def test_check_data_success(tmp_path: Path) -> None:
@@ -584,6 +586,7 @@ def test_data_filter_writes_pipeline_style_filter_result(tmp_path: Path) -> None
     from openpyxl import load_workbook
 
     deps = make_deps(tmp_path)
+    deps.session.auto_confirm_filter_result = True
     write_filter_sample_data(deps)
     raw_flow = io.load_flow(root=deps.paths.root)
 

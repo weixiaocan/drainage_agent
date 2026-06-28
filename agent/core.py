@@ -19,10 +19,12 @@ from .tools.module_tools import (
     analyze_rdii_impl,
     assess_risk_impl,
     check_data_impl,
+    confirm_pending_filter_result,
     data_filter_impl,
     generate_report_impl,
 )
 from .tools.python_tool import run_python_impl
+from .types import FilterConfirmationRequired
 
 
 REPORT_SCOPE_CONFIRMATION_PROMPT = (
@@ -319,6 +321,60 @@ class _FakeToolMessage:
         self.parts = [_FakeToolCallPart(tool_name, args)]
 
 
+FILTER_CONFIRMATION_CLARIFICATION = "是确认用当前筛选结果继续吗？如果是，请回复“确认继续”；如果要重新筛选或改需求，请直接说明。"
+
+
+def _has_pending_filter_confirmation(deps: AgentDeps) -> bool:
+    return bool(deps.session.pending_filter_result_path)
+
+
+def _is_clear_filter_confirmation(message: str) -> bool:
+    text = message.strip().lower()
+    compact = re.sub(r"\s+", "", text)
+    clear_values = {
+        "确认",
+        "确认继续",
+        "继续",
+        "可以继续",
+        "改好了",
+        "已修改",
+        "修改好了",
+        "已确认",
+        "用这个继续",
+        "按这个继续",
+        "ok",
+        "okay",
+    }
+    return compact in clear_values
+
+
+def _looks_like_ambiguous_filter_confirmation(message: str) -> bool:
+    text = message.strip()
+    if _is_clear_filter_confirmation(text):
+        return False
+    if not any(token in text for token in ("继续", "确认", "改好了", "已修改", "可以")):
+        return False
+    return bool(re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])|风险|分析|报告|RDII|响应|排污|导出|生成", text, re.IGNORECASE))
+
+
+def _filter_confirmation_output(result: dict[str, Any]) -> str:
+    summary = str(result.get("summary") or "")
+    if summary:
+        return summary
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    path = data.get("output_file") or (result.get("artifacts") or [""])[0]
+    return f"筛选结果已生成于 {path}，请确认或修改后告知继续。"
+
+
+def _resume_after_filter_confirmation_message(deps: AgentDeps, confirmed_path: Path) -> str:
+    original = deps.session.pending_filter_result_request or "继续后续分析"
+    return (
+        f"用户已确认使用筛选结果文件 {confirmed_path}。"
+        "继续执行上一轮未完成的请求；必须读取这份现成筛选结果，禁止重新调用 data_filter。"
+        f"\n上一轮请求：{original}"
+    )
+
+
 def _report_sections_from_message(message: str) -> list[str] | None:
     dry_only_markers = (
         "只要旱天",
@@ -405,6 +461,16 @@ class _ReportScopeGuardedAgent:
         prior_user_prompts = list(deps.session.user_prompt_history)
         deps.session.current_user_prompt = message
         try:
+            if _has_pending_filter_confirmation(deps):
+                if _is_clear_filter_confirmation(message):
+                    confirmed_path = confirm_pending_filter_result(deps)
+                    continuation = _resume_after_filter_confirmation_message(deps, confirmed_path)
+                    deps.session.current_user_prompt = continuation
+                    result = self._inner.run_sync(continuation, deps=deps, message_history=history)
+                    deps.session.pending_filter_result_request = None
+                    return result
+                if _looks_like_ambiguous_filter_confirmation(message):
+                    return _PreflightResult(FILTER_CONFIRMATION_CLARIFICATION, history)
             if needs_report_scope_confirmation(message, prior_user_prompts):
                 return _PreflightResult(REPORT_SCOPE_CONFIRMATION_PROMPT, history)
             if needs_pending_report_scope_completion(message, prior_user_prompts):
@@ -418,6 +484,12 @@ class _ReportScopeGuardedAgent:
                     [_FakeToolMessage("generate_report", args)],
                 )
             return self._inner.run_sync(message, deps=deps, message_history=history)
+        except FilterConfirmationRequired as exc:
+            return _PreflightResult(
+                _filter_confirmation_output(exc.result),
+                history,
+                [_FakeToolMessage(exc.tool_name, exc.args)],
+            )
         finally:
             deps.session.user_prompt_history.append(message)
             deps.session.current_user_prompt = None
@@ -496,6 +568,8 @@ def build_agent(deps: AgentDeps) -> Any:
                     **summarize_tool_result(result),
                 },
             )
+            if isinstance(result, dict) and result.get("status") == "needs_confirmation":
+                raise FilterConfirmationRequired(result, tool_name, args)
             return result
 
         @agent.tool

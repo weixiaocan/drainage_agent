@@ -136,7 +136,7 @@ def completed_case_ids(pending_path: Path) -> set[str]:
     completed: set[str] = set()
     if not pending_path.exists():
         return completed
-    for line in pending_path.read_text(encoding="utf-8").splitlines():
+    for line in pending_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         if not line.strip():
             continue
         try:
@@ -153,7 +153,7 @@ def compact_pending_results(pending_path: Path) -> None:
     meta: dict | None = None
     order: list[str] = []
     records: dict[str, dict] = {}
-    for line in pending_path.read_text(encoding="utf-8").splitlines():
+    for line in pending_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         if not line.strip():
             continue
         try:
@@ -189,7 +189,7 @@ def run_objective_check(results_path: Path) -> None:
         print(f"客观项自动判分失败: {exc!r}")
 
 
-def run_case(case: dict) -> dict:
+def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
     """跑一条（已归一化的）用例：在同一个隔离 root、同一条 message_history 上逐轮推进。"""
     rec = {
         "id": case["id"],
@@ -205,6 +205,7 @@ def run_case(case: dict) -> dict:
         try:
             fresh_root(root)
             deps = build_deps(root)
+            deps.session.auto_confirm_filter_result = auto_confirm
             trace = TraceLogger(deps.paths.logs)
             deps.trace = trace
             agent = build_agent(deps)
@@ -216,6 +217,7 @@ def run_case(case: dict) -> dict:
                 message_history = seed_result.all_messages()
             if case["rebuild_after_seed"]:
                 deps = build_deps(root)
+                deps.session.auto_confirm_filter_result = auto_confirm
                 deps.trace = trace
                 agent = build_agent(deps)
                 message_history = []
@@ -255,6 +257,10 @@ def main():
                     help="用例文件，默认 eval/eval_stage2/cases_multiturn.yaml")
     ap.add_argument("-o", "--out", default=None, help="输出 jsonl，默认 eval/eval_stage2/results.jsonl")
     ap.add_argument("--resume", action="store_true", help="从已有 .tmp 结果断点续跑，跳过已完整写入的 case")
+    ap.add_argument("--auto-confirm", dest="auto_confirm", action="store_true", default=True,
+                    help="auto-confirm data_filter results; default for regression eval")
+    ap.add_argument("--no-auto-confirm", dest="auto_confirm", action="store_false",
+                    help="pause after data_filter for HITL hook eval")
     args = ap.parse_args()
 
     load_dotenv(PROJECT / ".env")
@@ -299,7 +305,7 @@ def main():
             if case["id"] in completed:
                 print(f"{case['id']}: 已完成，跳过")
                 continue
-            rec = run_case(case)
+            rec = run_case(case, auto_confirm=args.auto_confirm)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             n_tools = sum(len(t["tool_calls"]) for t in rec["turns"])

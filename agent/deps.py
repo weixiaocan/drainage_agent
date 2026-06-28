@@ -83,6 +83,15 @@ class SessionState:
     window_event_id_map: dict[int, int] = field(default_factory=dict)
     unavailable_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
+    auto_confirm_filter_result: bool = False
+    pending_filter_result_path: str | None = None
+    pending_filter_result_identity: str | None = None
+    pending_filter_result_params: dict[str, Any] = field(default_factory=dict)
+    pending_filter_result_request: str | None = None
+    pending_filter_result_message: str | None = None
+    confirmed_filter_result_path: str | None = None
+    confirmed_filter_result_identity: str | None = None
+    confirmed_filter_result_params: dict[str, Any] = field(default_factory=dict)
     current_run_id: str | None = None
     current_user_prompt: str | None = None
     user_prompt_history: list[str] = field(default_factory=list)
