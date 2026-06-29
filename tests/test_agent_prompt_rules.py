@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "agent" / "prompts" / "system.md"
-CORE_PATH = Path(__file__).resolve().parents[1] / "agent" / "core.py"
+CORE_PATH = Path(__file__).resolve().parents[1] / "agent" / "core" / "__init__.py"
 
 
 def read_prompt() -> str:

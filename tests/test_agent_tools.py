@@ -11,13 +11,13 @@ import pandas as pd
 from docx import Document
 from openpyxl import load_workbook
 
-from analysis.dry_curves import dry_statistics
-from analysis.event_response import analyze_event_response
-from analysis.patterns import analyze_patterns
-from analysis.rainfall import rainfall_events
-from analysis.rdii import analyze_rdii
+from analysis.modules.dry_curves import dry_statistics
+from analysis.modules.event_response import analyze_event_response
+from analysis.modules.patterns import analyze_patterns
+from analysis.modules.rainfall import rainfall_events
+from analysis.modules.rdii import analyze_rdii
 from analysis.reporting import build_report
-from analysis.risk import assess_risk
+from analysis.modules.risk import assess_risk
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.module_tools import (
     _save_pattern_curve_pngs,

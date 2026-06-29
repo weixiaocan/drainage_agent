@@ -4,9 +4,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agent.cli import run_cli
+from agent.core.cli import run_cli
 from agent.deps import build_deps
-from agent.logging_utils import setup_logging
+from agent.core.logging_utils import setup_logging
 
 
 def main() -> int:
@@ -21,4 +21,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -18,7 +18,7 @@ if str(PROJECT) not in sys.path:
 
 from agent.deps import build_deps
 from agent.core import build_agent
-from agent.logging_utils import TraceLogger, trace_event
+from agent.core.logging_utils import TraceLogger, trace_event
 from eval.check import build_context, load_cases, print_summary_report, run_checks
 
 
@@ -47,7 +47,8 @@ def fresh_root(root: Path) -> Path:
     shutil.copytree(PROJECT / "agent" / "prompts", root / "agent" / "prompts")
     for d in ("outputs", "workspace", "logs"):
         (root / d).mkdir()
-    (root / "PROJECT_NOTES.md").write_text("# Project Notes\n\n", "utf-8")
+    (root / "docs").mkdir()
+    (root / "docs" / "PROJECT_NOTES.md").write_text("# Project Notes\n\n", "utf-8")
     return root
 
 
@@ -59,7 +60,7 @@ def preserve_artifacts(root: Path, case_id: str) -> Path:
         source = root / name
         if source.exists():
             shutil.copytree(source, destination / name)
-    notes = root / "PROJECT_NOTES.md"
+    notes = root / "docs" / "PROJECT_NOTES.md"
     if notes.exists():
         shutil.copy2(notes, destination / notes.name)
     return destination

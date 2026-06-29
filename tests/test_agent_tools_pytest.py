@@ -30,8 +30,8 @@ from agent.tools.module_tools import (
     _report_actual_time_range,
     _time_result_prefix,
 )
-from analysis.pipeline_report_assembler.assembler import _scope_period_text
-from analysis.pipeline_report_assembler.template_scanner import scan_template
+from analysis.reporting.pipeline_report_assembler.assembler import _scope_period_text
+from analysis.reporting.pipeline_report_assembler.template_scanner import scan_template
 from agent.tools.python_tool import run_python_impl
 from agent.types import ToolStatus, ok
 

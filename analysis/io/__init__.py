@@ -6,7 +6,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from .schema import normalize_flow_df, normalize_rain_df
+from analysis.schema import normalize_flow_df, normalize_rain_df
 
 
 def project_root() -> Path:

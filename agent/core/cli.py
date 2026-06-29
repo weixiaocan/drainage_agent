@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import uuid
 
-from .core import build_agent
-from .deps import AgentDeps
+from agent.core import build_agent
+from agent.deps import AgentDeps
 from .logging_utils import TraceLogger, trace_event
 
 

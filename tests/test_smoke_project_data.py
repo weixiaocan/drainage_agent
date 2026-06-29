@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from analysis.io import load_flow
-from analysis.stats import check_data
+from analysis.modules.stats import check_data
 
 
 class ProjectDataSmokeTests(unittest.TestCase):

@@ -29,7 +29,7 @@ class Paths:
             workspace=root / "workspace",
             logs=root / "logs",
             templates=root / "templates",
-            notes=root / "PROJECT_NOTES.md",
+            notes=root / "docs" / "PROJECT_NOTES.md",
         )
 
     @property
@@ -112,6 +112,7 @@ class AgentDeps:
 def ensure_directories(paths: Paths) -> None:
     for path in (paths.data, paths.flow_dir, paths.outputs, paths.workspace, paths.logs, paths.templates):
         path.mkdir(parents=True, exist_ok=True)
+    paths.notes.parent.mkdir(parents=True, exist_ok=True)
     if not paths.notes.exists():
         paths.notes.write_text("# Project Notes\n\n", encoding="utf-8")
 

@@ -35,7 +35,7 @@ data/                  演示输入数据
 outputs/               固化工具标准输出
 workspace/             run_python 可写目录
 logs/                  运行 trace
-PROJECT_NOTES.md       项目记忆
+docs/PROJECT_NOTES.md  项目记忆
 ```
 
 ## Tools

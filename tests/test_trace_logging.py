@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent.logging_utils import TraceLogger, summarize_tool_result, trace_event
+from agent.core.logging_utils import TraceLogger, summarize_tool_result, trace_event
 
 
 def test_trace_logger_writes_minimal_tool_events(tmp_path) -> None:

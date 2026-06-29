@@ -16,16 +16,16 @@ from agent.deps import AgentDeps
 from agent.tools.manifest import data_fingerprint, load_manifest, record_result
 from agent.types import FilterConfirmationRequired, ToolResult, error, needs_confirmation, needs_input, ok
 from analysis import io
-from analysis.dry_curves import build_dry_curves, dry_statistics
-from analysis.event_response import analyze_event_response
-from analysis.filtering import FilterConfig, run_data_filter
-from analysis.patterns import analyze_patterns
-from analysis.rainfall import analyze_rainfall
-from analysis.rdii import analyze_rdii
+from analysis.modules.dry_curves import build_dry_curves, dry_statistics
+from analysis.modules.event_response import analyze_event_response
+from analysis.modules.filtering import FilterConfig, run_data_filter
+from analysis.modules.patterns import analyze_patterns
+from analysis.modules.rainfall import analyze_rainfall
+from analysis.modules.rdii import analyze_rdii
 from analysis.reporting import build_report
-from analysis.risk import assess_risk
+from analysis.modules.risk import assess_risk
 from analysis.schema import to_display_columns
-from analysis.stats import check_data
+from analysis.modules.stats import check_data
 
 
 SHEET_TABLE_TYPES = {

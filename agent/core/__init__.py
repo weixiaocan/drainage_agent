@@ -8,11 +8,11 @@ from typing import Any
 from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 
-from .deps import AgentDeps
+from agent.deps import AgentDeps
 from .logging_utils import summarize_tool_result, trace_event
-from .tools.inspect_tools import list_results_impl
-from .tools.memory_tool import record_note_impl
-from .tools.module_tools import (
+from agent.tools.inspect_tools import list_results_impl
+from agent.tools.memory_tool import record_note_impl
+from agent.tools.module_tools import (
     analyze_event_response_impl,
     analyze_patterns_impl,
     analyze_rainfall_impl,
@@ -23,8 +23,8 @@ from .tools.module_tools import (
     data_filter_impl,
     generate_report_impl,
 )
-from .tools.python_tool import run_python_impl
-from .types import FilterConfirmationRequired
+from agent.tools.python_tool import run_python_impl
+from agent.types import FilterConfirmationRequired
 
 
 REPORT_SCOPE_CONFIRMATION_PROMPT = (

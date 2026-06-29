@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
-from agent.logging_utils import TraceLogger, trace_event
+from agent.core.logging_utils import TraceLogger, trace_event
 
 
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
