@@ -72,6 +72,21 @@ def test_chat_maintains_session_history(client: TestClient, fake_agent: FakeAgen
     assert fake_agent.calls[1]["history_len"] == 1
 
 
+def test_index_returns_utf8_html_with_expected_copy(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "charset=utf-8" in response.headers["content-type"].lower()
+    assert "快捷指令" in response.text
+
+
+def test_chat_rejects_empty_message(client: TestClient) -> None:
+    response = client.post("/api/chat", json={"message": "   "})
+
+    assert response.status_code == 400
+
+
 def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tmp_path: Path) -> None:
     manifest = tmp_path / "outputs" / "manifest.json"
     manifest.write_text('{"version": 1, "results": {"old": {}}}', encoding="utf-8")
@@ -130,9 +145,29 @@ def test_results_and_file_download(client: TestClient, tmp_path: Path) -> None:
     assert download.status_code == 200
     assert download.content == b"ok"
 
+    workspace_download = client.get("/files/workspace/scratch.txt")
+    assert workspace_download.status_code == 200
+    assert workspace_download.content == b"scratch"
+
+
+def test_file_download_returns_404_for_missing_allowed_file(client: TestClient) -> None:
+    response = client.get("/files/outputs/missing.txt")
+
+    assert response.status_code == 404
+
 
 def test_file_download_rejects_data_files(client: TestClient, tmp_path: Path) -> None:
     data_file = tmp_path / "data" / "secret.csv"
     data_file.write_text("secret", encoding="utf-8")
     response = client.get("/files/data/secret.csv")
     assert response.status_code == 403
+
+
+def test_file_download_supports_chinese_artifact_name(client: TestClient, tmp_path: Path) -> None:
+    artifact = tmp_path / "outputs" / "综合分析结果.xlsx"
+    artifact.write_bytes(b"xlsx")
+
+    response = client.get("/files/outputs/综合分析结果.xlsx")
+
+    assert response.status_code == 200
+    assert response.content == b"xlsx"
