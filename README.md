@@ -25,6 +25,50 @@ AGENT_BASE_URL=https://api.deepseek.com
 AGENT_MODEL=deepseek-chat
 ```
 
+## Docker
+
+构建镜像：
+
+```powershell
+docker build -t drainage-agent .
+```
+
+默认启动 Web 服务。密钥在运行时通过环境变量文件注入，不会写入镜像：
+
+```powershell
+docker run --rm -p 8000:8000 --env-file .env drainage-agent
+```
+
+浏览器打开 `http://127.0.0.1:8000`。
+
+把产物目录挂载到宿主机，容器删除后仍保留 `outputs/`、`workspace/` 和 `logs/`：
+
+```powershell
+docker run --rm -p 8000:8000 --env-file .env `
+  -v "${PWD}/outputs:/app/outputs" `
+  -v "${PWD}/workspace:/app/workspace" `
+  -v "${PWD}/logs:/app/logs" `
+  drainage-agent
+```
+
+镜像内已经包含脱敏演示数据 `data/` 和报告模板 `templates/`，所以零准备也可以跑通 demo。要使用自己的数据或模板，可以用挂载覆盖镜像内目录：
+
+```powershell
+docker run --rm -p 8000:8000 --env-file .env `
+  -v "${PWD}/data:/app/data" `
+  -v "${PWD}/templates:/app/templates" `
+  -v "${PWD}/outputs:/app/outputs" `
+  drainage-agent
+```
+
+进入 CLI 模式：
+
+```powershell
+docker run --rm -it --env-file .env `
+  -v "${PWD}/outputs:/app/outputs" `
+  drainage-agent python agent_run.py
+```
+
 ## Structure
 
 ```text

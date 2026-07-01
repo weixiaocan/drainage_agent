@@ -141,9 +141,9 @@ def _generate_fallback_charts(df: pd.DataFrame, chart_dir: Path, scope_prefix: s
     plot_df = df.copy()
     plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
     plot_df["daily_rain_mm"] = pd.to_numeric(plot_df["daily_rain_mm"], errors="coerce").fillna(0)
-    plt.rcParams["font.family"] = ["Times New Roman", "SimSun"]
-    plt.rcParams["font.sans-serif"] = ["SimSun", "宋体", "Microsoft YaHei", "DejaVu Sans"]
-    plt.rcParams["font.serif"] = ["Times New Roman", "SimSun"]
+    plt.rcParams["font.family"] = ["Noto Sans CJK SC", "Times New Roman", "SimSun"]
+    plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimSun", "宋体", "Microsoft YaHei", "DejaVu Sans"]
+    plt.rcParams["font.serif"] = ["Noto Serif CJK SC", "Times New Roman", "SimSun"]
     plt.rcParams["axes.unicode_minus"] = False
 
     fig, ax = plt.subplots(figsize=(9.2, 4.8), dpi=180)

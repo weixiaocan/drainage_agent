@@ -8,7 +8,7 @@ python-docx>=1.1.0
 python-dotenv>=1.0.0
 openai>=1.0.0
 PyYAML>=6.0.0
-pydantic-ai>=0.0.40
+pydantic-ai==1.107.0
 pytest>=8.0.0
 fastapi>=0.110.0
 uvicorn>=0.27.0

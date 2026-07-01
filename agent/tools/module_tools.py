@@ -392,7 +392,7 @@ def _save_rainfall_png_charts(
     plot_df = daily.copy()
     plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
     plot_df["rain_mm"] = pd.to_numeric(plot_df["rain_mm"], errors="coerce").fillna(0)
-    plt.rcParams["font.sans-serif"] = ["SimHei", "Microsoft YaHei", "DejaVu Sans"]
+    plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimHei", "Microsoft YaHei", "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
 
     fig, ax = plt.subplots(figsize=(9.2, 4.8), dpi=180)
@@ -457,8 +457,8 @@ def _save_rdii_curve_pngs(
     except Exception:
         return saved
 
-    mpl.rcParams["font.sans-serif"] = ["SimHei"]
-    mpl.rcParams["font.serif"] = ["SimHei"]
+    mpl.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimHei"]
+    mpl.rcParams["font.serif"] = ["Noto Serif CJK SC", "SimHei"]
     mpl.rcParams["axes.unicode_minus"] = False
 
     rain_df = rain.copy()
@@ -664,7 +664,7 @@ def _save_pattern_curve_pngs(
     except Exception:
         return saved
 
-    plt.rcParams["font.sans-serif"] = ["SimSun", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
+    plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimSun", "Microsoft YaHei", "SimHei", "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
     hour_ticks = list(range(0, 1441, 120))
     hour_labels = [f"{hour // 60:02d}:00" for hour in hour_ticks]
