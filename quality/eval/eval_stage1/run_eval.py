@@ -9,7 +9,7 @@ import yaml
 from dotenv import load_dotenv
 
 STAGE_DIR = Path(__file__).resolve().parent
-PROJECT = Path(__file__).resolve().parents[2]
+PROJECT = Path(__file__).resolve().parents[3]
 if str(PROJECT) not in sys.path:
     sys.path.insert(0, str(PROJECT))
 
@@ -20,12 +20,12 @@ from agent.core.logging_utils import TraceLogger, trace_event
 CASES = yaml.safe_load((STAGE_DIR / "cases.yaml").read_text("utf-8"))
 
 def fresh_root(root: Path) -> Path:
-    """每条用例一个隔离 root：只拷只读输入，outputs/记忆全空。"""
-    shutil.copytree(PROJECT / "data", root / "data")
-    shutil.copytree(PROJECT / "templates", root / "templates")
+    """每条用例一个隔离 root：只拷只读输入，var/outputs/记忆全空。"""
+    shutil.copytree(PROJECT / "resources" / "data", root / "resources" / "data")
+    shutil.copytree(PROJECT / "resources" / "templates", root / "resources" / "templates")
     shutil.copytree(PROJECT / "agent" / "prompts", root / "agent" / "prompts")
     for d in ("outputs", "workspace", "logs"):
-        (root / d).mkdir()
+        (root / "var" / d).mkdir(parents=True)
     (root / "docs").mkdir()
     (root / "docs" / "PROJECT_NOTES.md").write_text("# Project Notes\n\n", "utf-8")
     return root
@@ -38,7 +38,7 @@ def preserve_artifacts(root: Path, case_id: str) -> Path:
         shutil.rmtree(destination)
     destination.mkdir(parents=True)
     for name in ("outputs", "workspace", "logs"):
-        source = root / name
+        source = root / "var" / name
         if source.exists():
             shutil.copytree(source, destination / name)
     notes = root / "docs" / "PROJECT_NOTES.md"

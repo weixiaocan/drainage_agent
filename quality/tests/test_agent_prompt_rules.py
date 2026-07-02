@@ -4,8 +4,9 @@ import ast
 from pathlib import Path
 
 
-PROMPT_PATH = Path(__file__).resolve().parents[1] / "agent" / "prompts" / "system.md"
-CORE_PATH = Path(__file__).resolve().parents[1] / "agent" / "core" / "__init__.py"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROMPT_PATH = PROJECT_ROOT / "agent" / "prompts" / "system.md"
+CORE_PATH = PROJECT_ROOT / "agent" / "core" / "__init__.py"
 
 
 def read_prompt() -> str:

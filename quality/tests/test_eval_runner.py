@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from eval.eval_stage2.run_eval import (
+from quality.eval.eval_stage2.run_eval import (
     canonical_case_id,
     compact_pending_results,
     completed_case_ids,
@@ -13,25 +13,25 @@ from eval.eval_stage2.run_eval import (
     preserve_artifacts,
     tool_seq,
 )
-from eval.eval_stage2.view import load_results, render_report
+from quality.eval.eval_stage2.view import load_results, render_report
 
 
 def test_fresh_root_copies_prompt_without_copying_env(tmp_path, monkeypatch) -> None:
     project = tmp_path / "project"
-    (project / "data").mkdir(parents=True)
-    (project / "templates").mkdir()
+    (project / "resources" / "data").mkdir(parents=True)
+    (project / "resources" / "templates").mkdir()
     (project / "agent" / "prompts").mkdir(parents=True)
     (project / "agent" / "prompts" / "system.md").write_text("system prompt", encoding="utf-8")
     (project / ".env").write_text("SECRET=value", encoding="utf-8")
     root = tmp_path / "isolated"
     root.mkdir()
-    monkeypatch.setattr("eval.eval_stage2.run_eval.PROJECT", project)
+    monkeypatch.setattr("quality.eval.eval_stage2.run_eval.PROJECT", project)
 
     fresh_root(root)
 
     assert (root / "agent" / "prompts" / "system.md").read_text(encoding="utf-8") == "system prompt"
     assert not (root / ".env").exists()
-    assert all((root / name).is_dir() for name in ("outputs", "workspace", "logs"))
+    assert all((root / "var" / name).is_dir() for name in ("outputs", "workspace", "logs"))
 
 
 def test_tool_seq_reads_only_supplied_messages() -> None:
@@ -46,12 +46,12 @@ def test_preserve_artifacts_replaces_stale_case_directory(tmp_path, monkeypatch)
     project = tmp_path / "project"
     root = tmp_path / "isolated"
     for name in ("outputs", "workspace", "logs"):
-        (root / name).mkdir(parents=True)
-    (root / "logs" / "trace.jsonl").write_text("trace", encoding="utf-8")
-    stale = project / "eval" / "eval_stage2" / "artifacts" / "E001"
+        (root / "var" / name).mkdir(parents=True)
+    (root / "var" / "logs" / "trace.jsonl").write_text("trace", encoding="utf-8")
+    stale = project / "quality" / "eval" / "eval_stage2" / "artifacts" / "E001"
     stale.mkdir(parents=True)
     (stale / "stale.txt").write_text("stale", encoding="utf-8")
-    monkeypatch.setattr("eval.eval_stage2.run_eval.STAGE_DIR", project / "eval" / "eval_stage2")
+    monkeypatch.setattr("quality.eval.eval_stage2.run_eval.STAGE_DIR", project / "quality" / "eval" / "eval_stage2")
 
     destination = preserve_artifacts(root, "E001")
 
@@ -61,15 +61,15 @@ def test_preserve_artifacts_replaces_stale_case_directory(tmp_path, monkeypatch)
 
 def test_preserve_artifacts_collapses_derived_case_directories(tmp_path, monkeypatch) -> None:
     project = tmp_path / "project"
-    artifacts = project / "eval" / "eval_stage2" / "artifacts"
+    artifacts = project / "quality" / "eval" / "eval_stage2" / "artifacts"
     root = tmp_path / "isolated"
     for name in ("outputs", "workspace", "logs"):
-        (root / name).mkdir(parents=True)
-    (root / "outputs" / "latest.txt").write_text("latest", encoding="utf-8")
+        (root / "var" / name).mkdir(parents=True)
+    (root / "var" / "outputs" / "latest.txt").write_text("latest", encoding="utf-8")
     stale = artifacts / "M003A_SCOPE_GUARD"
     stale.mkdir(parents=True)
     (stale / "stale.txt").write_text("stale", encoding="utf-8")
-    monkeypatch.setattr("eval.eval_stage2.run_eval.STAGE_DIR", project / "eval" / "eval_stage2")
+    monkeypatch.setattr("quality.eval.eval_stage2.run_eval.STAGE_DIR", project / "quality" / "eval" / "eval_stage2")
 
     destination = preserve_artifacts(root, "M003A_SCOPE_RULE2")
 

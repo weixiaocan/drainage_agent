@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p outputs workspace logs
+RUN mkdir -p var/outputs var/workspace var/logs
 
 EXPOSE 8000
 

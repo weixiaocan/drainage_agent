@@ -12,7 +12,7 @@ import pandas as pd
 from docx import Document
 from openpyxl import load_workbook
 
-PROJECT = Path(__file__).resolve().parents[1]
+PROJECT = Path(__file__).resolve().parents[2]
 if str(PROJECT) not in sys.path:
     sys.path.insert(0, str(PROJECT))
 
@@ -86,7 +86,7 @@ class CaseRecord:
 
     @property
     def outputs(self) -> Path:
-        return self.root / "outputs"
+        return self.root / "var" / "outputs"
 
     @property
     def all_tool_calls(self) -> list[ToolCall]:
@@ -197,7 +197,7 @@ def load_cases(results_path: Path, artifacts_root: Path | None = None) -> list[C
                     tool_calls=calls,
                 )
             )
-        manifest = _load_manifest(root / "outputs" / "manifest.json")
+        manifest = _load_manifest(root / "var" / "outputs" / "manifest.json")
         cases.append(
             CaseRecord(
                 stage=stage,
@@ -821,12 +821,12 @@ def print_summary_report(results: list[CheckResult]) -> None:
 
 def default_results_paths(stage: str) -> list[Path]:
     if stage == "stage1":
-        return [PROJECT / "eval" / "eval_stage1" / "results.jsonl"]
+        return [PROJECT / "quality" / "eval" / "eval_stage1" / "results.jsonl"]
     if stage == "stage2":
-        return [PROJECT / "eval" / "eval_stage2" / "results.jsonl"]
+        return [PROJECT / "quality" / "eval" / "eval_stage2" / "results.jsonl"]
     return [
-        PROJECT / "eval" / "eval_stage1" / "results.jsonl",
-        PROJECT / "eval" / "eval_stage2" / "results.jsonl",
+        PROJECT / "quality" / "eval" / "eval_stage1" / "results.jsonl",
+        PROJECT / "quality" / "eval" / "eval_stage2" / "results.jsonl",
     ]
 
 

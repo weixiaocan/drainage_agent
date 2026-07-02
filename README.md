@@ -6,13 +6,13 @@
 
 ```powershell
 pip install -r requirements.txt
-python agent_run.py
+python app/agent_run.py
 ```
 
 Web 版启动：
 
 ```powershell
-python web_run.py
+python app/web_run.py
 ```
 
 浏览器打开 `http://127.0.0.1:8000`。Web 版支持上传流量 CSV、降雨 CSV、点位信息 XLSX 和报告模板 DOCX，并复用同一套 Agent 工具。
@@ -41,23 +41,23 @@ docker run --rm -p 8000:8000 --env-file .env drainage-agent
 
 浏览器打开 `http://127.0.0.1:8000`。
 
-把产物目录挂载到宿主机，容器删除后仍保留 `outputs/`、`workspace/` 和 `logs/`：
+把产物目录挂载到宿主机，容器删除后仍保留 `var/outputs/`、`var/workspace/` 和 `var/logs/`：
 
 ```powershell
 docker run --rm -p 8000:8000 --env-file .env `
-  -v "${PWD}/outputs:/app/outputs" `
-  -v "${PWD}/workspace:/app/workspace" `
-  -v "${PWD}/logs:/app/logs" `
+  -v "${PWD}/var/outputs:/app/var/outputs" `
+  -v "${PWD}/var/workspace:/app/var/workspace" `
+  -v "${PWD}/var/logs:/app/var/logs" `
   drainage-agent
 ```
 
-镜像内已经包含脱敏演示数据 `data/` 和报告模板 `templates/`，所以零准备也可以跑通 demo。要使用自己的数据或模板，可以用挂载覆盖镜像内目录：
+镜像内已经包含脱敏演示数据 `resources/data/` 和报告模板 `resources/templates/`，所以零准备也可以跑通 demo。要使用自己的数据或模板，可以用挂载覆盖镜像内目录：
 
 ```powershell
 docker run --rm -p 8000:8000 --env-file .env `
-  -v "${PWD}/data:/app/data" `
-  -v "${PWD}/templates:/app/templates" `
-  -v "${PWD}/outputs:/app/outputs" `
+  -v "${PWD}/resources/data:/app/resources/data" `
+  -v "${PWD}/resources/templates:/app/resources/templates" `
+  -v "${PWD}/var/outputs:/app/var/outputs" `
   drainage-agent
 ```
 
@@ -65,8 +65,8 @@ docker run --rm -p 8000:8000 --env-file .env `
 
 ```powershell
 docker run --rm -it --env-file .env `
-  -v "${PWD}/outputs:/app/outputs" `
-  drainage-agent python agent_run.py
+  -v "${PWD}/var/outputs:/app/var/outputs" `
+  drainage-agent python app/agent_run.py
 ```
 
 ## Structure
@@ -75,10 +75,14 @@ docker run --rm -it --env-file .env `
 analysis/              领域分析层：schema、数据读取、清洗、统计、降雨、RDII、风险、报告底料
 agent/                 Agent 层：Pydantic AI 注册、CLI、工具薄封装
 web/                   本地网页入口：FastAPI + 原生 HTML/CSS/JS
-data/                  演示输入数据
-outputs/               固化工具标准输出
-workspace/             run_python 可写目录
-logs/                  运行 trace
+app/                   CLI 和 Web 启动入口
+resources/data/        演示输入数据
+resources/templates/   报告模板
+var/outputs/           固化工具标准输出
+var/workspace/         run_python 可写目录
+var/logs/              运行 trace
+quality/tests/         pytest 测试
+quality/eval/          回归评测
 docs/PROJECT_NOTES.md  项目记忆
 ```
 
@@ -104,7 +108,7 @@ docs/PROJECT_NOTES.md  项目记忆
 {
     "status": "ok | needs_input | error",
     "summary": "...",
-    "artifacts": ["outputs/..."],
+    "artifacts": ["var/outputs/..."],
     "data": {},
 }
 ```
@@ -113,7 +117,7 @@ docs/PROJECT_NOTES.md  项目记忆
 
 ## Freshness
 
-固化工具成功后写入 `outputs/manifest.json`，记录输入数据指纹、参数和产物。`list_results` 会标记结果是否 fresh。
+固化工具成功后写入 `var/outputs/manifest.json`，记录输入数据指纹、参数和产物。`list_results` 会标记结果是否 fresh。
 
 ## run_python Boundary
 
@@ -127,4 +131,4 @@ docs/PROJECT_NOTES.md  项目记忆
 - `load_rain`
 - `load_sites`
 
-`load_flow` 只读取并规范化原始字段；`load_filtered_flow` 读取 `data_filter` 生成的有效旱天结果。`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `outputs/`。
+`load_flow` 只读取并规范化原始字段；`load_filtered_flow` 读取 `data_filter` 生成的有效旱天结果。`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `OUTPUTS_DIR`。

@@ -24,11 +24,11 @@ class Paths:
         root = root.resolve()
         return cls(
             root=root,
-            data=root / "data",
-            outputs=root / "outputs",
-            workspace=root / "workspace",
-            logs=root / "logs",
-            templates=root / "templates",
+            data=root / "resources" / "data",
+            outputs=root / "var" / "outputs",
+            workspace=root / "var" / "workspace",
+            logs=root / "var" / "logs",
+            templates=root / "resources" / "templates",
             notes=root / "docs" / "PROJECT_NOTES.md",
         )
 

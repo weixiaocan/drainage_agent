@@ -1,4 +1,4 @@
-# 排水分析 Agent 设计 v2（重新设计定稿）+ 施工方案
+﻿# 排水分析 Agent 设计 v2（重新设计定稿）+ 施工方案
 
 > 取代原 docs/ARCHITECTURE.md 的工具与配置章节；其余原则（文件即状态、对话即配置、
 > needs_input、来历与新鲜度、项目记忆、LLM 边界）继续有效。
@@ -23,7 +23,7 @@
   - 读取流量文件并按点位、时间范围选择
   - 返回前列名/点位名归一到 schema 规范，不执行异常清洗或旱天筛选
 - `load_filtered_flow(points=全部, time_range=全部) -> DataFrame`
-  - 读取 `data_filter` 生成的 `outputs/筛选结果.xlsx`，返回有效旱天数据
+  - 读取 `data_filter` 生成的 `var/outputs/筛选结果.xlsx`，返回有效旱天数据
 - `load_rain(time_range=全部)`、`load_sites()`：同样归一后返回
 - run_python 的执行环境预置 `load_flow`、`load_filtered_flow`、`load_rain`、`load_sites`
 
@@ -48,16 +48,16 @@
 **generate_report 内部规则**：
 - 对每个被选模块做可用性核实：要风险模块时检查有无雨天数据，无则只写旱天风险并在报告中注明
 - 模板没有的模块走临时生成段落，附在对应位置；有模板的模块严格按模板填充
-- 双轨：templates/ 仅有内置模板时走默认轨（占位符填充，质量保证）；用户上传自己的 docx 后走自由生成轨——解析其章节标题结构，逐节由 LLM 基于已计算结果撰写。自由轨三条硬规则：(1) 一切数字只准引用计算结果，LLM 不得自产数值；(2) "按其格式"定义为标题级结构仿写，表格与图用本系统标准格式插入，不承诺版式复刻；(3) 摘要中声明"自由生成模式，版式细节可能与原模板有差异"
+- 双轨：resources/templates/ 仅有内置模板时走默认轨（占位符填充，质量保证）；用户上传自己的 docx 后走自由生成轨——解析其章节标题结构，逐节由 LLM 基于已计算结果撰写。自由轨三条硬规则：(1) 一切数字只准引用计算结果，LLM 不得自产数值；(2) "按其格式"定义为标题级结构仿写，表格与图用本系统标准格式插入，不承诺版式复刻；(3) 摘要中声明"自由生成模式，版式细节可能与原模板有差异"
 - 确定性前置内部补齐；涉及雨天内容且无已选场次时返回 needs_input 附场次清单，并说明可回复"只出旱天报告"
 
 **内部件（不暴露为工具）**：
-- 旱天特征曲线：patterns / rdii / report 的共享底料。算一次，parquet 缓存于 outputs/intermediate/，manifest 指纹判新鲜，过期自动重算
+- 旱天特征曲线：patterns / rdii / report 的共享底料。算一次，parquet 缓存于 var/outputs/intermediate/，manifest 指纹判新鲜，过期自动重算
 - 事件响应计算逻辑：analysis/ 层函数，analyze_event_response 与 assess_risk(rainy)、generate_report 共享调用
 
 ## 4. 交互与状态（沿用既有裁决，汇总备查）
 
-- needs_input 仅两类：event_ids 未选（附场次清单）、内置模板随仓库分发不存在缺失；用户可随时上传自有模板切换到自由生成轨（Web 走上传接口，CLI 放入 templates/）
+- needs_input 仅两类：event_ids 未选（附场次清单）、内置模板随仓库分发不存在缺失；用户可随时上传自有模板切换到自由生成轨（Web 走上传接口，CLI 放入 resources/templates/）
 - 复用：数据与参数未变 → 直接复用并注明来源；数据变 → 提示过期重跑；新参数 → 自动重跑
 - 质量提醒：summary 必含可暴露异常的关键数字（剔除比例、有效天数、场次数），异常时主动提醒
 - "免确认直接跑完" / "每步给我看"：伸缩由对话控制
@@ -84,7 +84,7 @@ agent/
 ├── core.py（11 个 @agent.tool 注册，全部带 docstring 与 RunContext 注解）
 ├── deps.py  types.py（needs_input 替代 blocked）  prompts/system.md
 ├── tools/（薄工具层，每个 ≤60 行：io 读取 → analysis 函数 → 落盘 → manifest → 摘要）
-web/  tests/  docs/
+web/  quality/tests/  docs/
 ```
 
 框架与决策层声明：Agent 框架沿用 Pydantic AI——工具经 @agent.tool 注册、类型注解即 schema、deps 经 RunContext[AgentDeps] 注入、模型接入走 .env（OpenAI 兼容）。本次重构不触碰决策层：core.py 的注册方式、cli.py 与 web 的对话循环、message_history 机制全部原样保留，改动范围严格限于工具层（tools/）与新建的 analysis/ 层。禁止更换或升级 agent 框架。
@@ -117,3 +117,4 @@ web/  tests/  docs/
 | run_rdii_analysis | analyze_rdii |
 | run_risk_analysis | assess_risk |
 | run_report_assembler | generate_report |
+

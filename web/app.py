@@ -82,7 +82,7 @@ def _resolve_download_path(deps: AgentDeps, file_path: str) -> Path:
     requested = (root / file_path).resolve()
     allowed_roots = [deps.paths.outputs.resolve(), deps.paths.workspace.resolve()]
     if not any(requested == allowed or requested.is_relative_to(allowed) for allowed in allowed_roots):
-        raise HTTPException(status_code=403, detail="只能下载 outputs/ 或 workspace/ 下的文件")
+        raise HTTPException(status_code=403, detail="只能下载 var/outputs/ 或 var/workspace/ 下的文件")
     if not requested.exists() or not requested.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     return requested
@@ -142,21 +142,21 @@ def create_app(
 
         for upload in flow_files:
             name = _safe_upload_name(upload, ALLOWED_FLOW_EXTENSIONS)
-            saved.append("data/flow/" + _save_upload(upload, deps.paths.flow_dir / name))
+            saved.append("resources/data/flow/" + _save_upload(upload, deps.paths.flow_dir / name))
 
         if rainfall_file is not None and rainfall_file.filename:
             _safe_upload_name(rainfall_file, ALLOWED_RAINFALL_EXTENSIONS)
-            saved.append("data/" + _save_upload(rainfall_file, deps.paths.rainfall_file))
+            saved.append("resources/data/" + _save_upload(rainfall_file, deps.paths.rainfall_file))
 
         if site_info_file is not None and site_info_file.filename:
             _safe_upload_name(site_info_file, ALLOWED_SITE_EXTENSIONS)
-            saved.append("data/" + _save_upload(site_info_file, deps.paths.site_info_file))
+            saved.append("resources/data/" + _save_upload(site_info_file, deps.paths.site_info_file))
 
         if template_file is not None and template_file.filename:
             name = _safe_upload_name(template_file, ALLOWED_TEMPLATE_EXTENSIONS)
             for old_template in deps.paths.templates.glob("*.docx"):
                 old_template.unlink()
-            saved.append("templates/" + _save_upload(template_file, deps.paths.templates / name))
+            saved.append("resources/templates/" + _save_upload(template_file, deps.paths.templates / name))
 
         if saved:
             _clear_manifest(deps)

@@ -12,14 +12,14 @@ import yaml
 from dotenv import load_dotenv
 
 STAGE_DIR = Path(__file__).resolve().parent
-PROJECT = Path(__file__).resolve().parents[2]
+PROJECT = Path(__file__).resolve().parents[3]
 if str(PROJECT) not in sys.path:
     sys.path.insert(0, str(PROJECT))
 
 from agent.deps import build_deps
 from agent.core import build_agent
 from agent.core.logging_utils import TraceLogger, trace_event
-from eval.check import build_context, load_cases, print_summary_report, run_checks
+from quality.eval.check import build_context, load_cases, print_summary_report, run_checks
 
 
 CASE_ID_PREFIX_RE = re.compile(r"^(M\d{3}[A-Z]?)")
@@ -41,12 +41,12 @@ def cleanup_artifacts_for_case(case_id: str) -> Path:
 
 
 def fresh_root(root: Path) -> Path:
-    """每条用例一个隔离 root：只拷只读输入，outputs/记忆全空。"""
-    shutil.copytree(PROJECT / "data", root / "data")
-    shutil.copytree(PROJECT / "templates", root / "templates")
+    """每条用例一个隔离 root：只拷只读输入，var/outputs/记忆全空。"""
+    shutil.copytree(PROJECT / "resources" / "data", root / "resources" / "data")
+    shutil.copytree(PROJECT / "resources" / "templates", root / "resources" / "templates")
     shutil.copytree(PROJECT / "agent" / "prompts", root / "agent" / "prompts")
     for d in ("outputs", "workspace", "logs"):
-        (root / d).mkdir()
+        (root / "var" / d).mkdir(parents=True)
     (root / "docs").mkdir()
     (root / "docs" / "PROJECT_NOTES.md").write_text("# Project Notes\n\n", "utf-8")
     return root
@@ -57,7 +57,7 @@ def preserve_artifacts(root: Path, case_id: str) -> Path:
     destination = cleanup_artifacts_for_case(case_id)
     destination.mkdir(parents=True)
     for name in ("outputs", "workspace", "logs"):
-        source = root / name
+        source = root / "var" / name
         if source.exists():
             shutil.copytree(source, destination / name)
     notes = root / "docs" / "PROJECT_NOTES.md"
@@ -255,8 +255,8 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
 def main():
     ap = argparse.ArgumentParser(description="排水 agent eval runner（单轮/多轮）")
     ap.add_argument("cases_file", nargs="?", default=str(STAGE_DIR / "cases_multiturn.yaml"),
-                    help="用例文件，默认 eval/eval_stage2/cases_multiturn.yaml")
-    ap.add_argument("-o", "--out", default=None, help="输出 jsonl，默认 eval/eval_stage2/results.jsonl")
+                    help="用例文件，默认 quality/eval/eval_stage2/cases_multiturn.yaml")
+    ap.add_argument("-o", "--out", default=None, help="输出 jsonl，默认 quality/eval/eval_stage2/results.jsonl")
     ap.add_argument("--resume", action="store_true", help="从已有 .tmp 结果断点续跑，跳过已完整写入的 case")
     ap.add_argument("--auto-confirm", dest="auto_confirm", action="store_true", default=True,
                     help="auto-confirm data_filter results; default for regression eval")

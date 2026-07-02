@@ -13,7 +13,7 @@ Provide a conversational drainage-monitoring analysis agent that can inspect upl
 - Rainfall daily/event analysis through `analyze_rainfall`.
 - Rain-event response, RDII, pattern, and risk analysis through dedicated tools.
 - Report generation from computed results only.
-- Result reuse and freshness tracking through `outputs/manifest.json`.
+- Result reuse and freshness tracking through `var/outputs/manifest.json`.
 
 ## Interaction Rules
 

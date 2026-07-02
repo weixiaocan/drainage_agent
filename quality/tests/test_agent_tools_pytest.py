@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import logging
@@ -182,14 +182,14 @@ def test_partial_analysis_with_export_writes_csv_not_combined(tmp_path: Path) ->
     assert result["status"] == "ok"
     assert destination == {
         "kind": "csv",
-        "path": "outputs/W1_全时段_数据收集率统计.csv",
+        "path": "var/outputs/W1_全时段_数据收集率统计.csv",
         "sheet": None,
     }
     assert (deps.paths.outputs / "W1_全时段_数据收集率统计.csv").exists()
     assert not deps.paths.combined_xlsx.exists()
     assert "已导出 CSV" in result["summary"]
     assert "综合分析结果.xlsx" not in result["summary"]
-    assert result["artifacts"] == ["outputs/W1_全时段_数据收集率统计.csv"]
+    assert result["artifacts"] == ["var/outputs/W1_全时段_数据收集率统计.csv"]
 
 
 def test_partial_analysis_does_not_replace_existing_full_network_sheet(tmp_path: Path) -> None:
@@ -219,7 +219,7 @@ def test_full_network_partial_time_does_not_write_combined_and_exports_range_csv
     assert without_export["data"]["result_destinations"][0]["kind"] == "not_persisted"
     assert with_export["data"]["result_destinations"][0] == {
         "kind": "csv",
-            "path": "outputs/全网_2026-01-01_00-10-00_2026-01-01_00-19-00_数据收集率统计.csv",
+            "path": "var/outputs/全网_2026-01-01_00-10-00_2026-01-01_00-19-00_数据收集率统计.csv",
         "sheet": None,
     }
     assert (deps.paths.outputs / "全网_2026-01-01_00-10-00_2026-01-01_00-19-00_数据收集率统计.csv").exists()
@@ -925,7 +925,7 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     combined = deps.paths.outputs / "全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
     assert combined.exists()
     assert not deps.paths.combined_xlsx.exists()
-    assert result["data"]["result_destinations"][0]["path"] == "outputs/全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
+    assert result["data"]["result_destinations"][0]["path"] == "var/outputs/全网_2026-03-07_2026-03-10_综合分析结果.xlsx"
 
 
 def test_report_actual_time_range_uses_raw_flow_even_for_dry_reports(
@@ -1162,7 +1162,7 @@ def _word_text(document: Document) -> str:
 
 
 def test_fixed_template_report_uses_in_memory_tables_and_fills_rainy_section(tmp_path: Path) -> None:
-    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    template = next((Path(__file__).parents[2] / "resources" / "templates").glob("*.docx"))
     site_info = tmp_path / "点位信息.xlsx"
     pd.DataFrame([{
         "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
@@ -1205,7 +1205,7 @@ def test_fixed_template_report_uses_in_memory_tables_and_fills_rainy_section(tmp
 
 
 def test_fixed_template_selected_sections_remove_unselected_chapters(tmp_path: Path) -> None:
-    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    template = next((Path(__file__).parents[2] / "resources" / "templates").glob("*.docx"))
     site_info = tmp_path / "点位信息.xlsx"
     pd.DataFrame([{
         "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
@@ -1231,7 +1231,7 @@ def test_fixed_template_selected_sections_remove_unselected_chapters(tmp_path: P
 
 
 def test_fixed_template_dry_report_keeps_overview_and_removes_only_rain_sections(tmp_path: Path) -> None:
-    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    template = next((Path(__file__).parents[2] / "resources" / "templates").glob("*.docx"))
     site_info = tmp_path / "点位信息.xlsx"
     pd.DataFrame([{
         "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
@@ -1272,7 +1272,7 @@ def test_fixed_template_dry_report_keeps_overview_and_removes_only_rain_sections
 
 
 def test_fixed_template_dry_risk_only_removes_rain_and_exactly_sizes_table(tmp_path: Path) -> None:
-    template = next((Path(__file__).parents[1] / "templates").glob("*.docx"))
+    template = next((Path(__file__).parents[2] / "resources" / "templates").glob("*.docx"))
     site_info = tmp_path / "点位信息.xlsx"
     pd.DataFrame([{
         "点位编号": "W1", "设备类型": "流量计", "形状": "圆管", "管径(m)": 1.0,
@@ -1494,3 +1494,5 @@ def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.Monkey
     assert result["status"] == "error"
     assert elapsed < 10
     assert result["data"]["script"]
+
+

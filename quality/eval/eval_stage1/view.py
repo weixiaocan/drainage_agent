@@ -1,8 +1,8 @@
 """把一次 eval 的 results.jsonl 渲染成一个可扫读、可判分、可导出的 open-coding 网页。
 
 用法:
-    python eval/view.py                      # 默认读 eval/results.jsonl，写 eval/report.html
-    python eval/view.py path/to/results.jsonl  out.html
+    python quality/eval/eval_stage1/view.py  # 默认读 quality/eval/results.jsonl，写 quality/eval/report.html
+    python quality/eval/eval_stage1/view.py path/to/results.jsonl  out.html
 
 设计取向：Swiss/极简。工具调用序列是每张卡的主角——open coding 判断的就是
 "agent 选的路径对不对"。run_python 单独标出（你已知的失败模式），但只作提示，
@@ -336,7 +336,7 @@ document.getElementById("impfile").onchange=e=>{ const f=e.target.files[0]; if(!
 
 def main():
     args = sys.argv[1:]
-    src = Path(args[0]) if args else Path("eval/results.jsonl")
+    src = Path(args[0]) if args else Path("quality/eval/results.jsonl")
     out = Path(args[1]) if len(args) > 1 else src.with_name("report.html")
     rows = load_results(src)
     html = HTML.replace("__DATA__", json.dumps(rows, ensure_ascii=False))

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -15,9 +15,19 @@ def project_root() -> Path:
         return Path(env_root).resolve()
     current = Path.cwd().resolve()
     for candidate in [current, *current.parents]:
-        if (candidate / "data").exists() and (candidate / "agent").exists():
+        if ((candidate / "resources" / "data").exists() or (candidate / "data").exists()) and (candidate / "agent").exists():
             return candidate
     return current
+
+
+def _data_dir(base: Path) -> Path:
+    current = base / "resources" / "data"
+    return current if current.exists() else base / "data"
+
+
+def _outputs_dir(base: Path) -> Path:
+    current = base / "var" / "outputs"
+    return current if current.exists() else base / "outputs"
 
 
 def _read_csv(path: Path) -> pd.DataFrame:
@@ -54,7 +64,7 @@ def _apply_time_range(df: pd.DataFrame, time_range: tuple[str, str] | list[str] 
 
 def load_rain(time_range: tuple[str, str] | list[str] | None = None, root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
-    path = base / "data" / "降雨数据.csv"
+    path = _data_dir(base) / "降雨数据.csv"
     if not path.exists():
         return pd.DataFrame(columns=["timestamp", "rain_mm"])
     rain = normalize_rain_df(_read_csv(path))
@@ -67,7 +77,7 @@ def load_flow(
     root: Path | None = None,
 ) -> pd.DataFrame:
     base = root or project_root()
-    flow_dir = base / "data" / "flow"
+    flow_dir = _data_dir(base) / "flow"
     selected_points = _normalize_points(points)
     frames: list[pd.DataFrame] = []
     for csv_path in sorted(flow_dir.glob("*.csv")):
@@ -158,7 +168,7 @@ def load_filtered_flow(
     """读取 data_filter 标准产物中选定的有效旱天数据。"""
     base = root or project_root()
     return load_flow_by_filter_result(
-        base / "outputs" / "筛选结果.xlsx",
+        _outputs_dir(base) / "筛选结果.xlsx",
         points=points,
         time_range=time_range,
         root=base,
@@ -167,10 +177,11 @@ def load_filtered_flow(
 
 def load_sites(root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
-    path = base / "data" / "点位信息.xlsx"
+    path = _data_dir(base) / "点位信息.xlsx"
     if not path.exists():
         return pd.DataFrame()
     try:
         return pd.read_excel(path)
     except Exception:
         return pd.DataFrame()
+

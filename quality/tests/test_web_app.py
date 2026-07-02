@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -88,7 +88,7 @@ def test_chat_rejects_empty_message(client: TestClient) -> None:
 
 
 def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tmp_path: Path) -> None:
-    manifest = tmp_path / "outputs" / "manifest.json"
+    manifest = tmp_path / "var" / "outputs" / "manifest.json"
     manifest.write_text('{"version": 1, "results": {"old": {}}}', encoding="utf-8")
 
     response = client.post(
@@ -103,11 +103,11 @@ def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tm
     )
 
     assert response.status_code == 200
-    assert (tmp_path / "data" / "flow" / "100_W1.csv").exists()
-    assert (tmp_path / "data" / "flow" / "101_W2.csv").exists()
-    assert (tmp_path / "data" / "降雨数据.csv").exists()
-    assert (tmp_path / "data" / "点位信息.xlsx").exists()
-    assert (tmp_path / "templates" / "template.docx").exists()
+    assert (tmp_path / "resources" / "data" / "flow" / "100_W1.csv").exists()
+    assert (tmp_path / "resources" / "data" / "flow" / "101_W2.csv").exists()
+    assert (tmp_path / "resources" / "data" / "降雨数据.csv").exists()
+    assert (tmp_path / "resources" / "data" / "点位信息.xlsx").exists()
+    assert (tmp_path / "resources" / "templates" / "template.docx").exists()
     assert '"results": {}' in manifest.read_text(encoding="utf-8")
 
 
@@ -130,44 +130,45 @@ def test_upload_rejects_path_traversal_filename(client: TestClient) -> None:
 
 
 def test_results_and_file_download(client: TestClient, tmp_path: Path) -> None:
-    output = tmp_path / "outputs" / "result.txt"
+    output = tmp_path / "var" / "outputs" / "result.txt"
     output.write_text("ok", encoding="utf-8")
-    workspace = tmp_path / "workspace" / "scratch.txt"
+    workspace = tmp_path / "var" / "workspace" / "scratch.txt"
     workspace.write_text("scratch", encoding="utf-8")
 
     results = client.get("/api/results")
     assert results.status_code == 200
     paths = {item["path"] for group in results.json().values() for item in group}
-    assert "outputs/result.txt" in paths
-    assert "workspace/scratch.txt" in paths
+    assert "var/outputs/result.txt" in paths
+    assert "var/workspace/scratch.txt" in paths
 
-    download = client.get("/files/outputs/result.txt")
+    download = client.get("/files/var/outputs/result.txt")
     assert download.status_code == 200
     assert download.content == b"ok"
 
-    workspace_download = client.get("/files/workspace/scratch.txt")
+    workspace_download = client.get("/files/var/workspace/scratch.txt")
     assert workspace_download.status_code == 200
     assert workspace_download.content == b"scratch"
 
 
 def test_file_download_returns_404_for_missing_allowed_file(client: TestClient) -> None:
-    response = client.get("/files/outputs/missing.txt")
+    response = client.get("/files/var/outputs/missing.txt")
 
     assert response.status_code == 404
 
 
 def test_file_download_rejects_data_files(client: TestClient, tmp_path: Path) -> None:
-    data_file = tmp_path / "data" / "secret.csv"
+    data_file = tmp_path / "resources" / "data" / "secret.csv"
     data_file.write_text("secret", encoding="utf-8")
-    response = client.get("/files/data/secret.csv")
+    response = client.get("/files/resources/data/secret.csv")
     assert response.status_code == 403
 
 
 def test_file_download_supports_chinese_artifact_name(client: TestClient, tmp_path: Path) -> None:
-    artifact = tmp_path / "outputs" / "综合分析结果.xlsx"
+    artifact = tmp_path / "var" / "outputs" / "综合分析结果.xlsx"
     artifact.write_bytes(b"xlsx")
 
-    response = client.get("/files/outputs/综合分析结果.xlsx")
+    response = client.get("/files/var/outputs/综合分析结果.xlsx")
 
     assert response.status_code == 200
     assert response.content == b"xlsx"
+
