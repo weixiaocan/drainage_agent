@@ -86,7 +86,10 @@ class CaseRecord:
 
     @property
     def outputs(self) -> Path:
-        return self.root / "var" / "outputs"
+        standard = self.root / "var" / "outputs"
+        if standard.exists():
+            return standard
+        return self.root / "outputs"
 
     @property
     def all_tool_calls(self) -> list[ToolCall]:
@@ -197,7 +200,7 @@ def load_cases(results_path: Path, artifacts_root: Path | None = None) -> list[C
                     tool_calls=calls,
                 )
             )
-        manifest = _load_manifest(root / "var" / "outputs" / "manifest.json")
+        manifest = _load_manifest(_outputs_root(root) / "manifest.json")
         cases.append(
             CaseRecord(
                 stage=stage,
@@ -210,6 +213,13 @@ def load_cases(results_path: Path, artifacts_root: Path | None = None) -> list[C
             )
         )
     return cases
+
+
+def _outputs_root(root: Path) -> Path:
+    standard = root / "var" / "outputs"
+    if standard.exists():
+        return standard
+    return root / "outputs"
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:

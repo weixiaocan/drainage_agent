@@ -1,0 +1,20 @@
+- id: CI001
+  category: ci-smoke-data-quality
+  turns:
+    - prompt: 检查 W1 的数据质量，说明收集率和缺失情况。
+      expect: check_data,points=[W1],不编造不存在的指标
+      key: true
+
+- id: CI002
+  category: ci-smoke-no-coverage-guard
+  turns:
+    - prompt: 分析 W1 在 2026 年 1 月 1 日到 1 月 10 日的排污规律。
+      expect: 识别该时间窗无流量数据覆盖,不调用分析产出,不编造排污规律
+      key: true
+
+- id: CI003
+  category: ci-smoke-dry-report
+  turns:
+    - prompt: 只要W1的旱天报告，雨天和降雨分析都不要。
+      expect: generate_report,points=[W1],sections 只包含监测概况和旱天相关内容,产出 docx 报告
+      key: true

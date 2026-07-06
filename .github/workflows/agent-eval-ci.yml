@@ -1,0 +1,62 @@
+name: Agent Eval CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  agent-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      AGENT_BASE_URL: ${{ secrets.AGENT_BASE_URL }}
+      AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Verify model secrets
+        run: |
+          if [ -z "$AGENT_API_KEY" ]; then
+            echo "::error::AGENT_API_KEY secret is required for per-commit Agent eval."
+            exit 1
+          fi
+          if [ -z "$AGENT_MODEL" ]; then
+            echo "AGENT_MODEL is empty; the application default will be used."
+          fi
+
+      - name: Run unit tests
+        run: python -m pytest
+
+      - name: Run CI Agent eval cases
+        run: >
+          python quality/eval/eval_stage2/run_eval.py
+          quality/eval/eval_stage2/cases_ci.yaml
+          -o quality/eval/eval_stage2/results_ci.jsonl
+          --auto-confirm
+
+      - name: Run objective eval checker
+        run: >
+          python quality/eval/check.py
+          --results quality/eval/eval_stage2/results_ci.jsonl
+          --format text
+
+      - name: Build Docker image
+        run: docker build -t drainage-agent .
