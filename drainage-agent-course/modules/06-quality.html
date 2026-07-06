@@ -1,0 +1,94 @@
+<section class="module" id="module-6" style="background: var(--color-bg-warm)">
+  <div class="module-content">
+    <header class="module-header animate-in">
+      <span class="module-number">06</span>
+      <h1 class="module-title">工程质量：能上线也能解释</h1>
+      <p class="module-subtitle">最后用这一页收束：这个项目有测试、日志、缓存、容器化和边界控制。</p>
+    </header>
+
+    <div class="module-body">
+      <section class="screen animate-in">
+        <h2 class="screen-heading">可追溯：每次结果都有指纹</h2>
+        <p><span class="term" data-definition="fingerprint 是输入数据的摘要值。只要文件内容变了，摘要也会变，系统就知道旧结果可能过期。">fingerprint</span> 和 manifest 让系统知道结果是否还可信。这是数据分析 Agent 很重要的工程能力。</p>
+
+        <div class="translation-block animate-in">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-line">def record_result(deps: AgentDeps, tool_name: str, artifacts: list[str], params: dict[str, Any] | None = None) -> None:</span>
+<span class="code-line">    manifest = load_manifest(deps)</span>
+<span class="code-line">    manifest.setdefault("version", 1)</span>
+<span class="code-line">    manifest.setdefault("results", {})</span>
+<span class="code-line">    manifest["results"][tool_name] = {</span>
+<span class="code-line">        "generated_at": datetime.now().isoformat(timespec="seconds"),</span>
+<span class="code-line">        "data_fingerprint": data_fingerprint(deps)["digest"],</span>
+<span class="code-line">        "params": params or {},</span>
+<span class="code-line">        "artifacts": artifacts,</span>
+<span class="code-line">    }</span></code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">PLAIN ENGLISH</span>
+            <div class="translation-lines">
+              <p class="tl">每个工具跑完后，都更新 manifest。</p>
+              <p class="tl">记录生成时间，方便追踪。</p>
+              <p class="tl">记录输入数据指纹，判断结果是否过期。</p>
+              <p class="tl">记录参数，区分不同范围或阈值的结果。</p>
+              <p class="tl">记录产物路径，让 Web 可以列出和下载。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">长尾需求：受控 Python 沙箱</h2>
+        <p>`run_python` 给现场临时分析留了出口，但它预置路径和数据函数，避免用户到处猜文件。这里可以讲成“灵活性和边界一起设计”。</p>
+
+        <div class="translation-block animate-in">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-line">PROJECT_ROOT = Path({str(deps.paths.root)!r})</span>
+<span class="code-line">PACKAGE_ROOT = Path({str(package_root)!r})</span>
+<span class="code-line">DATA_DIR = Path({str(deps.paths.data)!r})</span>
+<span class="code-line">OUTPUTS_DIR = Path({str(deps.paths.outputs)!r})</span>
+<span class="code-line">WORKSPACE_DIR = Path({str(deps.paths.workspace)!r})</span>
+<span class="code-line">if str(PROJECT_ROOT) not in sys.path:</span>
+<span class="code-line">    sys.path.insert(0, str(PROJECT_ROOT))</span>
+<span class="code-line">from analysis.io import load_filtered_flow, load_flow, load_rain, load_sites</span></code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">PLAIN ENGLISH</span>
+            <div class="translation-lines">
+              <p class="tl">临时代码知道项目根目录在哪里。</p>
+              <p class="tl">输入、输出、工作区路径都被明确注入。</p>
+              <p class="tl">把项目包加入 Python 搜索路径。</p>
+              <p class="tl">直接提供标准数据读取函数。</p>
+              <p class="tl">用户可以做临时统计，但仍站在统一数据层上。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">测试与部署：面试收尾</h2>
+        <div class="icon-rows">
+          <div class="icon-row"><div class="icon-circle" style="background: var(--color-actor-1)">T</div><div><strong>pytest</strong><p>覆盖 Web 会话、上传安全、工具成功路径、报告范围守卫、trace 日志。</p></div></div>
+          <div class="icon-row"><div class="icon-circle" style="background: var(--color-actor-2)">L</div><div><strong>Trace 日志</strong><p>每轮对话、工具调用、工具结果都有 run_id 和 call_id。</p></div></div>
+          <div class="icon-row"><div class="icon-circle" style="background: var(--color-actor-5)">D</div><div><strong>Docker</strong><p>容器内安装中文字体，默认启动 Web 服务，适合演示部署。</p></div></div>
+        </div>
+
+        <div class="quiz-container" id="quiz-module6">
+          <div class="quiz-question-block" data-correct="option-b" data-explanation-right="对。先用 trace 还原工具调用链，再定位是路由、数据、算法还是报告层问题。" data-explanation-wrong="直接改算法风险很大。先复现和追踪，再判断是哪一层。">
+            <h3 class="quiz-question">用户说“报告里的雨天风险不对”，你作为维护者第一步做什么？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="option-a" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>马上重写风险算法</span></button>
+              <button class="quiz-option" data-value="option-b" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>查 trace 和 manifest，确认调用参数、event_ids、输入指纹</span></button>
+              <button class="quiz-option" data-value="option-c" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>告诉用户这是模型随机性</span></button>
+            </div>
+            <div class="quiz-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-module6')">Check Answer</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-module6')">Try Again</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>

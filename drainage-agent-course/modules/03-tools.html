@@ -1,0 +1,77 @@
+<section class="module" id="module-3" style="background: var(--color-bg)">
+  <div class="module-content">
+    <header class="module-header animate-in">
+      <span class="module-number">03</span>
+      <h1 class="module-title">工具系统：把自然语言变成动作</h1>
+      <p class="module-subtitle">项目的可展示亮点：LLM 只选工具，工具返回统一结构。</p>
+    </header>
+
+    <div class="module-body">
+      <section class="screen animate-in">
+        <h2 class="screen-heading">工具像一排专业仪器</h2>
+        <p>Agent 手里不是一把万能锤，而是一组命名清晰的 <span class="term" data-definition="工具是 Agent 可以调用的函数。每个工具都有参数、返回值和职责边界，类似仪器面板上的一个按钮。">工具</span>。每个工具只做一类业务动作。</p>
+
+        <div class="pattern-cards stagger-children">
+          <div class="pattern-card animate-in" style="border-top: 3px solid var(--color-actor-1)"><div class="pattern-icon" style="background: var(--color-actor-1)">01</div><h4 class="pattern-title">data_filter</h4><p class="pattern-desc">统一旱天筛选入口，后续分析的地基。</p></div>
+          <div class="pattern-card animate-in" style="border-top: 3px solid var(--color-actor-2)"><div class="pattern-icon" style="background: var(--color-actor-2)">02</div><h4 class="pattern-title">analyze_rainfall</h4><p class="pattern-desc">日降雨、场次划分、降雨图表。</p></div>
+          <div class="pattern-card animate-in" style="border-top: 3px solid var(--color-actor-3)"><div class="pattern-icon" style="background: var(--color-actor-3)">03</div><h4 class="pattern-title">assess_risk</h4><p class="pattern-desc">旱天和雨天运行风险评估。</p></div>
+          <div class="pattern-card animate-in" style="border-top: 3px solid var(--color-actor-5)"><div class="pattern-icon" style="background: var(--color-actor-5)">04</div><h4 class="pattern-title">generate_report</h4><p class="pattern-desc">把已计算结果装配成 DOCX 报告。</p></div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">真实注册：data_filter 是一个 Agent 工具</h2>
+        <p><span class="term" data-definition="装饰器是 Python 里放在函数上方的 @xxx 标记，用来给函数附加能力。这里 @agent.tool 表示这个函数可以被 Agent 调用。">装饰器</span> `@agent.tool` 把普通 Python 函数暴露给 Agent。</p>
+
+        <div class="translation-block animate-in">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-line">@agent.tool</span>
+<span class="code-line">def data_filter(</span>
+<span class="code-line">    ctx: RunContext[AgentDeps],</span>
+<span class="code-line">    missing_rate_threshold: float = 0.1,</span>
+<span class="code-line">    expected_rows_per_day: int = 1440,</span>
+<span class="code-line">    rain_day_filter_threshold: float = 2.0,</span>
+<span class="code-line">    zero_like_threshold: float = 0.02,</span>
+<span class="code-line">    high_zero_ratio_threshold: float = 0.5,</span>
+<span class="code-line">    high_zero_ratio_normal_days_threshold: int = 5,</span></code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">PLAIN ENGLISH</span>
+            <div class="translation-lines">
+              <p class="tl">把 data_filter 注册成 Agent 可调用工具。</p>
+              <p class="tl">ctx 里带着路径、日志、session 等依赖。</p>
+              <p class="tl">默认参数就是业务规则的默认阈值。</p>
+              <p class="tl">用户明确要求时，Agent 才会覆盖这些参数。</p>
+              <p class="tl">这让工具既稳定，又能被自然语言配置。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">工具返回协议</h2>
+        <div class="badge-list">
+          <div class="badge-item"><code class="badge-code">status</code><span class="badge-desc">ok / needs_input / error，告诉 Agent 下一步该继续还是追问。</span></div>
+          <div class="badge-item"><code class="badge-code">summary</code><span class="badge-desc">给用户看的业务摘要，要包含关键数字和异常提醒。</span></div>
+          <div class="badge-item"><code class="badge-code">artifacts</code><span class="badge-desc">本次生成的 Excel、PNG、DOCX 文件路径。</span></div>
+          <div class="badge-item"><code class="badge-code">data</code><span class="badge-desc">结构化数据，供报告生成或后续工具复用。</span></div>
+        </div>
+
+        <div class="quiz-container" id="quiz-module3">
+          <div class="quiz-question-block" data-correct="option-a" data-explanation-right="对。needs_input 是系统可控追问点，避免 Agent 瞎选降雨场次。" data-explanation-wrong="看返回协议：只有需要人类选择 event_ids 这类信息时才应该停下来问。">
+            <h3 class="quiz-question">用户要求雨天风险，但没有指定降雨场次，工具最合适的返回是什么？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="option-a" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>needs_input，并列出可选 event_ids</span></button>
+              <button class="quiz-option" data-value="option-b" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>随便选第一个场次继续跑</span></button>
+              <button class="quiz-option" data-value="option-c" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>直接让 LLM 估算风险</span></button>
+            </div>
+            <div class="quiz-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-module3')">Check Answer</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-module3')">Try Again</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>

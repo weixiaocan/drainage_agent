@@ -1,0 +1,78 @@
+<section class="module" id="module-5" style="background: var(--color-bg)">
+  <div class="module-content">
+    <header class="module-header animate-in">
+      <span class="module-number">05</span>
+      <h1 class="module-title">报告流水线：从表格到 DOCX</h1>
+      <p class="module-subtitle">这是项目的业务闭环：分析不只停在表格，而是交付客户能看的报告。</p>
+    </header>
+
+    <div class="module-body">
+      <section class="screen animate-in">
+        <h2 class="screen-heading">报告生成像组装资料包</h2>
+        <p>`generate_report` 会按章节需要补齐上游分析，再把表格、图和摘要装进模板。这里的关键是 <span class="term" data-definition="流水线是把多个处理步骤串起来。前一步的结果变成后一步的输入，最后形成完整产物。">流水线</span>，不是单个函数。</p>
+
+        <div class="flow-steps animate-in">
+          <div class="flow-step"><div class="flow-step-num">1</div><p>确认点位、时间、章节</p></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="flow-step-num">2</div><p>补齐数据体检、降雨、规律、风险</p></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="flow-step-num">3</div><p>写 DOCX 和综合 Excel</p></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="flow-step-num">4</div><p>记录产物路径和摘要</p></div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">真实代码：报告先解析请求范围</h2>
+        <p>这段逻辑体现了“不要盲目生成报告”：先识别章节，再决定需要哪些计算结果。</p>
+
+        <div class="translation-block animate-in">
+          <div class="translation-code">
+            <span class="translation-label">CODE</span>
+            <pre><code><span class="code-line">points = _normalize_point_scope(points, deps)</span>
+<span class="code-line">sections = sections or list(DEFAULT_REPORT_SECTIONS)</span>
+<span class="code-line">selected_event_ids = list(event_ids or deps.session.selected_event_ids)</span>
+<span class="code-line">unavailable = sorted(set(selected_event_ids).intersection(deps.session.unavailable_event_ids))</span>
+<span class="code-line">if unavailable:</span>
+<span class="code-line">    return error(</span>
+<span class="code-line">        f"鏃犳硶鐢熸垚鍙潬鎶ュ憡锛氬満娆?{unavailable} 涓庣洃娴嬫暟鎹棤鏃堕棿閲嶅彔锛岀己灏戜簨浠跺搷搴斻€丷DII 鍜岄洦澶╅闄╀緷鎹€?</span>
+<span class="code-line">    )</span></code></pre>
+          </div>
+          <div class="translation-english">
+            <span class="translation-label">PLAIN ENGLISH</span>
+            <div class="translation-lines">
+              <p class="tl">先把“全网”和“部分点位”统一成内部表示。</p>
+              <p class="tl">用户不指定章节时，使用默认完整报告章节。</p>
+              <p class="tl">降雨事件可以来自本轮参数，也可以来自 session。</p>
+              <p class="tl">如果某些场次和监测数据没有重叠，就拒绝生成不可靠报告。</p>
+              <p class="tl">这体现了质量守门：宁可报错，也不交付空依据章节。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen animate-in">
+        <h2 class="screen-heading">面试要强调的交付价值</h2>
+        <div class="pattern-cards">
+          <div class="pattern-card" style="border-top: 3px solid var(--color-actor-1)"><div class="pattern-icon" style="background: var(--color-actor-1)">D</div><h4 class="pattern-title">DOCX 报告</h4><p class="pattern-desc">对业务方友好，不要求他们看代码或数据库。</p></div>
+          <div class="pattern-card" style="border-top: 3px solid var(--color-actor-2)"><div class="pattern-icon" style="background: var(--color-actor-2)">X</div><h4 class="pattern-title">综合 Excel</h4><p class="pattern-desc">保留计算表格，方便复核和二次加工。</p></div>
+          <div class="pattern-card" style="border-top: 3px solid var(--color-actor-5)"><div class="pattern-icon" style="background: var(--color-actor-5)">P</div><h4 class="pattern-title">PNG 图表</h4><p class="pattern-desc">降雨、RDII、旱天曲线都可以嵌入报告。</p></div>
+        </div>
+
+        <div class="quiz-container" id="quiz-module5">
+          <div class="quiz-question-block" data-correct="option-c" data-explanation-right="对。报告层应该补齐或复用上游结果，并把没有依据的章节拦住。" data-explanation-wrong="报告不是单纯排版。它需要确认数据依据、章节范围和上游产物。">
+            <h3 class="quiz-question">为什么报告生成不能只是“把 LLM 文字写进 Word”？</h3>
+            <div class="quiz-options">
+              <button class="quiz-option" data-value="option-a" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>因为 Word 文件不支持中文</span></button>
+              <button class="quiz-option" data-value="option-b" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>因为 Excel 已经足够，不需要报告</span></button>
+              <button class="quiz-option" data-value="option-c" onclick="selectOption(this)"><div class="quiz-option-radio"></div><span>因为数字、图表、章节依据必须来自已计算结果</span></button>
+            </div>
+            <div class="quiz-feedback"></div>
+          </div>
+          <button class="quiz-check-btn" onclick="checkQuiz('quiz-module5')">Check Answer</button>
+          <button class="quiz-reset-btn" onclick="resetQuiz('quiz-module5')">Try Again</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</section>
