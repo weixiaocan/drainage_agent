@@ -2,7 +2,19 @@ name: Agent Eval CI
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "analysis/**"
+      - "quality/eval/**"
+      - ".github/workflows/agent-eval-ci.yml"
   pull_request:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - "analysis/**"
+      - "quality/eval/**"
+      - ".github/workflows/agent-eval-ci.yml"
   workflow_dispatch:
 
 jobs:
