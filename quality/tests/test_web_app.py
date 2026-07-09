@@ -90,6 +90,16 @@ def test_index_renders_agent_markdown(client: TestClient) -> None:
     assert "div.appendChild(renderMarkdown(text));" in response.text
 
 
+def test_index_sends_message_on_enter(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'message.addEventListener("keydown"' in response.text
+    assert 'event.key === "Enter" && !event.shiftKey' in response.text
+    assert "event.preventDefault();" in response.text
+    assert "send(message.value);" in response.text
+
+
 def test_chat_rejects_empty_message(client: TestClient) -> None:
     response = client.post("/api/chat", json={"message": "   "})
 
