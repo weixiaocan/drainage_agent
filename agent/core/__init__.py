@@ -382,8 +382,10 @@ def _report_sections_from_message(message: str) -> list[str] | None:
         "不要雨天",
         "雨天的不要",
         "降雨分析都不要",
+        "不用分析降雨",
         "不含降雨",
         "所有关于旱天",
+        "所有旱天",
     )
     if any(marker in message for marker in dry_only_markers):
         return ["监测概况", "旱天排污规律统计分析", "旱天风险"]
@@ -463,7 +465,17 @@ class _ReportScopeGuardedAgent:
         try:
             if _has_pending_filter_confirmation(deps):
                 if _is_clear_filter_confirmation(message):
+                    original_request = deps.session.pending_filter_result_request or ""
                     confirmed_path = confirm_pending_filter_result(deps)
+                    if original_request and _should_direct_generate_report(original_request, prior_user_prompts):
+                        args = _report_args_from_message(original_request)
+                        result = generate_report_impl(deps, **args)
+                        deps.session.pending_filter_result_request = None
+                        return _PreflightResult(
+                            _report_tool_output(result),
+                            history,
+                            [_FakeToolMessage("generate_report", args)],
+                        )
                     continuation = _resume_after_filter_confirmation_message(deps, confirmed_path)
                     deps.session.current_user_prompt = continuation
                     result = self._inner.run_sync(continuation, deps=deps, message_history=history)

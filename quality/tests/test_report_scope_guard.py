@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import logging
+from pathlib import Path
+
+import pytest
+
 from agent.core import (
+    _ReportScopeGuardedAgent,
     _report_args_from_message,
     _should_direct_generate_report,
     needs_pending_report_scope_completion,
     needs_report_scope_confirmation,
 )
+from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 
 
 def test_generic_report_request_asks_when_history_has_mixed_scopes() -> None:
@@ -111,3 +118,59 @@ def test_report_args_parse_full_month_without_month_name() -> None:
     assert args["start"] == "2026-03-01"
     assert args["end"] == "2026-03-31"
     assert args["event_ids"] == [6]
+
+
+class _FailingInnerAgent:
+    def run_sync(self, *_args, **_kwargs):
+        raise AssertionError("confirmed report scope should not be delegated back to the inner agent")
+
+
+def _make_deps(root: Path) -> AgentDeps:
+    paths = Paths.from_root(root)
+    ensure_directories(paths)
+    return AgentDeps(
+        paths=paths,
+        settings=AgentSettings(model="test", base_url=None, api_key=None),
+        logger=logging.getLogger("test.report_scope_guard"),
+        session=SessionState(),
+        project_notes="",
+    )
+
+
+def test_confirmed_filter_resume_generates_report_without_reasking_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = _make_deps(tmp_path)
+    filter_path = deps.paths.filter_result
+    filter_path.write_bytes(b"confirmed-filter")
+    deps.session.pending_filter_result_path = str(filter_path)
+    deps.session.pending_filter_result_params = {}
+    deps.session.pending_filter_result_request = "所有点位和时段，所有旱天分析模块，不用分析降雨"
+    deps.session.user_prompt_history = [
+        "出一份完整的分析报告",
+        "所有点位和时段，所有旱天分析模块，不用分析降雨",
+    ]
+    captured: dict = {}
+
+    def fake_generate_report(_deps: AgentDeps, **kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "ok",
+            "summary": "报告生成完成",
+            "artifacts": ["var/outputs/全网_全时段_分析报告.docx"],
+            "data": {"result_destinations": []},
+        }
+
+    monkeypatch.setattr("agent.core.generate_report_impl", fake_generate_report)
+
+    result = _ReportScopeGuardedAgent(_FailingInnerAgent()).run_sync("确认", deps=deps, message_history=[])
+
+    assert result.output.startswith("报告已生成。")
+    assert captured == {
+        "points": None,
+        "start": None,
+        "end": None,
+        "sections": ["监测概况", "旱天排污规律统计分析", "旱天风险"],
+        "event_ids": None,
+    }
+    assert deps.session.pending_filter_result_request is None
