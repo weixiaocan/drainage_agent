@@ -81,6 +81,15 @@ def test_index_returns_utf8_html_with_expected_copy(client: TestClient) -> None:
     assert "快捷指令" in response.text
 
 
+def test_index_renders_agent_markdown(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "function renderMarkdown(text)" in response.text
+    assert 'role === "agent"' in response.text
+    assert "div.appendChild(renderMarkdown(text));" in response.text
+
+
 def test_chat_rejects_empty_message(client: TestClient) -> None:
     response = client.post("/api/chat", json={"message": "   "})
 

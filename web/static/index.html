@@ -105,7 +105,6 @@
       margin: 0 0 14px;
       padding: 12px 14px;
       border-radius: 8px;
-      white-space: pre-wrap;
       line-height: 1.55;
       border: 1px solid var(--border);
     }
@@ -113,9 +112,61 @@
       margin-left: auto;
       background: #eaf3f7;
       border-color: #c8e2eb;
+      white-space: pre-wrap;
     }
     .msg.agent {
       background: var(--panel);
+    }
+    .msg.agent > *:first-child { margin-top: 0; }
+    .msg.agent > *:last-child { margin-bottom: 0; }
+    .msg.agent h1,
+    .msg.agent h2,
+    .msg.agent h3,
+    .msg.agent h4,
+    .msg.agent h5,
+    .msg.agent h6 {
+      margin: 14px 0 8px;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+    .msg.agent p {
+      margin: 8px 0;
+    }
+    .msg.agent ul {
+      margin: 8px 0;
+      padding-left: 22px;
+    }
+    .msg.agent li {
+      margin: 3px 0;
+    }
+    .msg.agent table {
+      width: 100%;
+      margin: 10px 0;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    .msg.agent th,
+    .msg.agent td {
+      border: 1px solid var(--border);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .msg.agent th {
+      background: var(--soft);
+      font-weight: 650;
+    }
+    .msg.agent code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #eef1f5;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92em;
+    }
+    .msg.agent hr {
+      border: 0;
+      border-top: 1px solid var(--border);
+      margin: 14px 0;
     }
     .composer {
       display: grid;
@@ -216,10 +267,131 @@
     const uploadStatus = document.getElementById("uploadStatus");
     const files = document.getElementById("files");
 
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function renderInlineMarkdown(text) {
+      return escapeHtml(text)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    }
+
+    function splitTableRow(line) {
+      return line
+        .trim()
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split("|")
+        .map((cell) => cell.trim());
+    }
+
+    function isTableSeparator(line) {
+      const cells = splitTableRow(line);
+      return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+    }
+
+    function isBlockStart(line, nextLine = "") {
+      const trimmed = line.trim();
+      return (
+        !trimmed ||
+        /^#{1,6}\s+/.test(trimmed) ||
+        /^-{3,}$/.test(trimmed) ||
+        /^-\s+/.test(trimmed) ||
+        (trimmed.startsWith("|") && isTableSeparator(nextLine))
+      );
+    }
+
+    function appendHtml(parent, tagName, html) {
+      const element = document.createElement(tagName);
+      element.innerHTML = html;
+      parent.appendChild(element);
+      return element;
+    }
+
+    function renderMarkdown(text) {
+      const fragment = document.createDocumentFragment();
+      const lines = text.split(/\r?\n/);
+      let index = 0;
+
+      while (index < lines.length) {
+        const line = lines[index];
+        const trimmed = line.trim();
+        const nextLine = lines[index + 1] || "";
+
+        if (!trimmed) {
+          index += 1;
+          continue;
+        }
+
+        const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+          appendHtml(fragment, `h${Math.min(heading[1].length, 6)}`, renderInlineMarkdown(heading[2]));
+          index += 1;
+          continue;
+        }
+
+        if (/^-{3,}$/.test(trimmed)) {
+          fragment.appendChild(document.createElement("hr"));
+          index += 1;
+          continue;
+        }
+
+        if (trimmed.startsWith("|") && isTableSeparator(nextLine)) {
+          const table = document.createElement("table");
+          const thead = document.createElement("thead");
+          const headerRow = document.createElement("tr");
+          splitTableRow(line).forEach((cell) => appendHtml(headerRow, "th", renderInlineMarkdown(cell)));
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement("tbody");
+          index += 2;
+          while (index < lines.length && lines[index].trim().startsWith("|")) {
+            const row = document.createElement("tr");
+            splitTableRow(lines[index]).forEach((cell) => appendHtml(row, "td", renderInlineMarkdown(cell)));
+            tbody.appendChild(row);
+            index += 1;
+          }
+          table.appendChild(tbody);
+          fragment.appendChild(table);
+          continue;
+        }
+
+        if (/^-\s+/.test(trimmed)) {
+          const list = document.createElement("ul");
+          while (index < lines.length && /^-\s+/.test(lines[index].trim())) {
+            appendHtml(list, "li", renderInlineMarkdown(lines[index].trim().replace(/^-\s+/, "")));
+            index += 1;
+          }
+          fragment.appendChild(list);
+          continue;
+        }
+
+        const paragraph = [];
+        while (index < lines.length && !isBlockStart(lines[index], lines[index + 1] || "")) {
+          paragraph.push(lines[index].trim());
+          index += 1;
+        }
+        appendHtml(fragment, "p", paragraph.map(renderInlineMarkdown).join("<br>"));
+      }
+
+      return fragment;
+    }
+
     function addMessage(text, role) {
       const div = document.createElement("div");
       div.className = `msg ${role}`;
-      div.textContent = text;
+      if (role === "agent") {
+        div.appendChild(renderMarkdown(text));
+      } else {
+        div.textContent = text;
+      }
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
     }
@@ -298,4 +470,3 @@
   </script>
 </body>
 </html>
-
