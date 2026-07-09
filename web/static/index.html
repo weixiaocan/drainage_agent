@@ -266,6 +266,36 @@
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
     const files = document.getElementById("files");
+    const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
+
+    function createSessionId() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID().replaceAll("-", "");
+      }
+      return `${Date.now()}${Math.random().toString(16).slice(2)}`;
+    }
+
+    function chatStorageKey() {
+      return sessionId ? `drainage-agent-chat-${sessionId}` : "";
+    }
+
+    function loadTranscript() {
+      const key = chatStorageKey();
+      if (!key) return [];
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || "[]");
+        return Array.isArray(value) ? value : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveTranscript(messages) {
+      const key = chatStorageKey();
+      if (key) {
+        localStorage.setItem(key, JSON.stringify(messages));
+      }
+    }
 
     function escapeHtml(value) {
       return value
@@ -384,7 +414,7 @@
       return fragment;
     }
 
-    function addMessage(text, role) {
+    function addMessage(text, role, persist = true) {
       const div = document.createElement("div");
       div.className = `msg ${role}`;
       if (role === "agent") {
@@ -394,11 +424,34 @@
       }
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
+      if (persist) {
+        const transcript = loadTranscript();
+        transcript.push({role, text});
+        saveTranscript(transcript);
+      }
+    }
+
+    function restoreTranscript() {
+      const transcript = loadTranscript();
+      chat.innerHTML = "";
+      if (transcript.length === 0) {
+        addMessage(welcomeMessage, "agent", false);
+        return;
+      }
+      transcript.forEach((item) => {
+        if (item && typeof item.text === "string" && ["user", "agent"].includes(item.role)) {
+          addMessage(item.text, item.role, false);
+        }
+      });
     }
 
     async function send(text) {
       const trimmed = text.trim();
       if (!trimmed) return;
+      if (!sessionId) {
+        sessionId = createSessionId();
+        localStorage.setItem("drainage-agent-session", sessionId);
+      }
       addMessage(trimmed, "user");
       message.value = "";
       document.getElementById("sendBtn").disabled = true;
@@ -410,7 +463,9 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "请求失败");
-        sessionId = data.session_id;
+        if (data.session_id !== sessionId) {
+          sessionId = data.session_id;
+        }
         localStorage.setItem("drainage-agent-session", sessionId);
         addMessage(data.reply, "agent");
         refreshResults();
@@ -473,6 +528,7 @@
     }
 
     document.getElementById("refreshResults").addEventListener("click", refreshResults);
+    restoreTranscript();
     refreshResults();
   </script>
 </body>

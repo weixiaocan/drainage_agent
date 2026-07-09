@@ -100,6 +100,16 @@ def test_index_sends_message_on_enter(client: TestClient) -> None:
     assert "send(message.value);" in response.text
 
 
+def test_index_persists_chat_transcript_across_refresh(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "function restoreTranscript()" in response.text
+    assert "`drainage-agent-chat-${sessionId}`" in response.text
+    assert "saveTranscript(transcript);" in response.text
+    assert "restoreTranscript();" in response.text
+
+
 def test_chat_rejects_empty_message(client: TestClient) -> None:
     response = client.post("/api/chat", json={"message": "   "})
 
