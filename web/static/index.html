@@ -261,7 +261,9 @@
   </div>
 
   <script>
-    let sessionId = localStorage.getItem("drainage-agent-session") || "";
+    const sessionStorageKey = "drainage-agent-session";
+    const latestChatStorageKey = "drainage-agent-chat-latest";
+    let sessionId = localStorage.getItem(sessionStorageKey) || "";
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
@@ -279,22 +281,46 @@
       return sessionId ? `drainage-agent-chat-${sessionId}` : "";
     }
 
+    function parseStoredTranscript(raw) {
+      try {
+        const value = JSON.parse(raw || "[]");
+        if (Array.isArray(value)) {
+          return {session_id: "", messages: value};
+        }
+        if (value && Array.isArray(value.messages)) {
+          return {
+            session_id: typeof value.session_id === "string" ? value.session_id : "",
+            messages: value.messages,
+          };
+        }
+      } catch {
+        return {session_id: "", messages: []};
+      }
+      return {session_id: "", messages: []};
+    }
+
     function loadTranscript() {
       const key = chatStorageKey();
-      if (!key) return [];
-      try {
-        const value = JSON.parse(localStorage.getItem(key) || "[]");
-        return Array.isArray(value) ? value : [];
-      } catch {
-        return [];
+      const sessionTranscript = key ? parseStoredTranscript(localStorage.getItem(key)).messages : [];
+      if (sessionTranscript.length > 0) {
+        return sessionTranscript;
       }
+
+      const latest = parseStoredTranscript(localStorage.getItem(latestChatStorageKey));
+      if (latest.session_id && !sessionId) {
+        sessionId = latest.session_id;
+        localStorage.setItem(sessionStorageKey, sessionId);
+      }
+      return latest.messages;
     }
 
     function saveTranscript(messages) {
+      const payload = JSON.stringify({session_id: sessionId, messages});
       const key = chatStorageKey();
       if (key) {
-        localStorage.setItem(key, JSON.stringify(messages));
+        localStorage.setItem(key, payload);
       }
+      localStorage.setItem(latestChatStorageKey, payload);
     }
 
     function escapeHtml(value) {
@@ -450,7 +476,7 @@
       if (!trimmed) return;
       if (!sessionId) {
         sessionId = createSessionId();
-        localStorage.setItem("drainage-agent-session", sessionId);
+        localStorage.setItem(sessionStorageKey, sessionId);
       }
       addMessage(trimmed, "user");
       message.value = "";
@@ -465,8 +491,9 @@
         if (!res.ok) throw new Error(data.detail || "请求失败");
         if (data.session_id !== sessionId) {
           sessionId = data.session_id;
+          saveTranscript(loadTranscript());
         }
-        localStorage.setItem("drainage-agent-session", sessionId);
+        localStorage.setItem(sessionStorageKey, sessionId);
         addMessage(data.reply, "agent");
         refreshResults();
       } catch (err) {

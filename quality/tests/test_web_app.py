@@ -106,6 +106,8 @@ def test_index_persists_chat_transcript_across_refresh(client: TestClient) -> No
     assert response.status_code == 200
     assert "function restoreTranscript()" in response.text
     assert "`drainage-agent-chat-${sessionId}`" in response.text
+    assert '"drainage-agent-chat-latest"' in response.text
+    assert "parseStoredTranscript" in response.text
     assert "saveTranscript(transcript);" in response.text
     assert "restoreTranscript();" in response.text
 
