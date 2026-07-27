@@ -620,9 +620,16 @@ def build_agent(deps: AgentDeps) -> Any:
             export: bool = False,
             start: str | None = None,
             end: str | None = None,
+            force_rerun: bool = False,
         ) -> dict:
             """检查数据收集率、缺失、异常概况与格式问题。"""
-            args = {"points": points, "export": export, "start": start, "end": end}
+            args = {
+                "points": points,
+                "export": export,
+                "start": start,
+                "end": end,
+                "force_rerun": force_rerun,
+            }
             return traced_tool(ctx, "check_data", args, lambda: check_data_impl(ctx.deps, **args))
 
         @agent.tool

@@ -12,6 +12,11 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from analysis.io import StandardDataUnavailable
+from analysis.runs import (
+    AnalysisPreconditionError,
+    AnalysisRequest,
+    AnalysisRunner,
+)
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
 from agent.core.logging_utils import TraceLogger, trace_event
@@ -54,6 +59,13 @@ class AnalysisBatchCreateRequest(BaseModel):
 class ImportMappingRequest(BaseModel):
     mapping: dict[str, str]
     units: dict[str, str]
+
+
+class AnalysisRunRequest(BaseModel):
+    points: list[str] = Field(default_factory=list)
+    start: str | None = None
+    end: str | None = None
+    force_rerun: bool = False
 
 
 class ConflictResolution(BaseModel):
@@ -163,6 +175,11 @@ def create_app(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
     )
+    app.state.analysis_runner = AnalysisRunner(
+        app.state.root / "var" / "drainage.sqlite3",
+        app.state.root / "var" / "projects",
+    )
+    app.state.deps.analysis_runner = app.state.analysis_runner
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -205,6 +222,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="监测项目不存在")
         app.state.current_project_id = project.id
         app.state.current_batch_id = None
+        app.state.deps.current_project_id = project.id
+        app.state.deps.current_batch_id = None
         return {"current_project": _project_data(project)}
 
     @app.post("/api/projects/{project_id}/batches", status_code=201)
@@ -342,6 +361,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="分析批次不存在")
         app.state.current_project_id = project_id
         app.state.current_batch_id = batch.id
+        app.state.deps.current_project_id = project_id
+        app.state.deps.current_batch_id = batch.id
         return {"current_batch": _batch_data(batch)}
 
     @app.post(
@@ -413,6 +434,36 @@ def create_app(
         if preview is None:
             raise HTTPException(status_code=409, detail="标准数据尚未确认生成")
         return preview
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/analysis-runs/{algorithm}"
+    )
+    def run_batch_analysis(
+        project_id: str,
+        batch_id: str,
+        algorithm: str,
+        request: AnalysisRunRequest,
+    ) -> dict[str, object]:
+        try:
+            result = app.state.analysis_runner.run(
+                AnalysisRequest(
+                    project_id=project_id,
+                    batch_id=batch_id,
+                    algorithm=algorithm,
+                    points=request.points,
+                    start=request.start,
+                    end=request.end,
+                    force_rerun=request.force_rerun,
+                )
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except AnalysisPreconditionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(result)
 
     @app.post("/api/projects/{project_id}/files")
     def upload_project_files(
