@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from analysis.io import StandardDataUnavailable
+from analysis.io.standard import STANDARD_FLOW_COLUMNS
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
 from agent.core.logging_utils import TraceLogger, trace_event
@@ -24,6 +25,11 @@ from web.derived_batches import (
     write_derived_standard_flow,
 )
 from web.projects import AnalysisBatch, Project, ProjectRepository
+from web.import_profiles import (
+    ImportProfileRepository,
+    MappingSuggester,
+    NoMappingSuggester,
+)
 from web.standard_data import BatchDataImporter
 
 
@@ -54,6 +60,14 @@ class AnalysisBatchCreateRequest(BaseModel):
 class ImportMappingRequest(BaseModel):
     mapping: dict[str, str]
     units: dict[str, str]
+
+
+class ImportProfileCreateRequest(BaseModel):
+    name: str
+    source_identifier: str
+    mapping: dict[str, str]
+    source_units: dict[str, str]
+    parsing_rules: dict[str, str]
 
 
 class ConflictResolution(BaseModel):
@@ -147,6 +161,7 @@ def create_app(
     deps_factory: Callable[[Path], AgentDeps] = build_deps,
     agent_factory: Callable[[AgentDeps], Any] = build_agent,
     batch_record_reader: BatchRecordReader = standard_batch_record_reader,
+    mapping_suggester: MappingSuggester | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Drainage Agent", docs_url="/docs")
     app.state.root = (root or Path.cwd()).resolve()
@@ -163,6 +178,10 @@ def create_app(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
     )
+    app.state.import_profiles = ImportProfileRepository(
+        str(app.state.root / "var" / "drainage.sqlite3")
+    )
+    app.state.mapping_suggester = mapping_suggester or NoMappingSuggester()
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -206,6 +225,51 @@ def create_app(
         app.state.current_project_id = project.id
         app.state.current_batch_id = None
         return {"current_project": _project_data(project)}
+
+    @app.post("/api/projects/{project_id}/import-profiles", status_code=201)
+    def create_import_profile(
+        project_id: str,
+        request: ImportProfileCreateRequest,
+    ) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        if not request.name.strip():
+            raise HTTPException(status_code=400, detail="导入配置名称不能为空")
+        if not request.source_identifier.strip():
+            raise HTTPException(status_code=400, detail="数据来源标识不能为空")
+        try:
+            profile = app.state.import_profiles.create(
+                project_id,
+                request.name.strip(),
+                request.source_identifier.strip(),
+                request.mapping,
+                request.source_units,
+                request.parsing_rules,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return profile.as_dict()
+
+    @app.get("/api/projects/{project_id}/import-profiles")
+    def list_import_profiles(project_id: str) -> list[dict[str, object]]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        return [
+            profile.as_dict()
+            for profile in app.state.import_profiles.list(project_id)
+        ]
+
+    @app.get("/api/projects/{project_id}/import-profiles/{profile_id}")
+    def get_import_profile(
+        project_id: str,
+        profile_id: str,
+    ) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        profile = app.state.import_profiles.get(project_id, profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="导入配置不存在")
+        return profile.as_dict()
 
     @app.post("/api/projects/{project_id}/batches", status_code=201)
     def create_analysis_batch(
@@ -352,19 +416,77 @@ def create_app(
         project_id: str,
         batch_id: str,
         file: UploadFile = File(...),
+        profile_id: str | None = None,
+        source_identifier: str | None = None,
     ) -> dict[str, object]:
         if app.state.projects.get_batch(project_id, batch_id) is None:
             raise HTTPException(status_code=404, detail="分析批次不存在")
+        profile = None
+        if profile_id:
+            profile = app.state.import_profiles.get(project_id, profile_id)
+            if profile is None:
+                raise HTTPException(status_code=404, detail="导入配置不存在")
         try:
             inspection = app.state.data_importer.inspect_upload(
                 project_id,
                 batch_id,
                 file.filename or "",
                 await file.read(),
+                profile_id=profile.id if profile else None,
+                source_identifier=(
+                    profile.source_identifier if profile else source_identifier
+                ),
+                profile_mapping=profile.mapping if profile else None,
+                profile_units=profile.source_units if profile else None,
+                parsing_rules=profile.parsing_rules if profile else None,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return inspection.as_dict()
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/imports/{import_id}/mapping-suggestions"
+    )
+    def suggest_import_mapping(
+        project_id: str,
+        batch_id: str,
+        import_id: str,
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        inspection = app.state.data_importer.inspection(
+            project_id, batch_id, import_id
+        )
+        if inspection is None:
+            raise HTTPException(status_code=404, detail="导入记录不存在")
+        unresolved = [
+            {"source": column["source"], "type": column["type"]}
+            for column in inspection["columns"]
+            if column["field"] is None
+        ]
+        candidates: list[dict[str, object]] = []
+        if unresolved:
+            suggested = app.state.mapping_suggester.suggest(
+                source_identifier=inspection.get("source_identifier"),
+                columns=unresolved,
+            )
+            candidates = [
+                item if isinstance(item, dict) else asdict(item)
+                for item in suggested
+                if (
+                    item.get("source") if isinstance(item, dict) else item.source
+                )
+                in {column["source"] for column in unresolved}
+                and (
+                    item.get("field") if isinstance(item, dict) else item.field
+                )
+                in STANDARD_FLOW_COLUMNS
+            ]
+        return {
+            "status": "awaiting_engineer_confirmation",
+            "candidates": candidates,
+        }
 
     @app.get(
         "/api/projects/{project_id}/batches/{batch_id}/imports/{import_id}/raw"

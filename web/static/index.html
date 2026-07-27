@@ -275,7 +275,16 @@
       <div id="batchList" class="batch-list"></div>
 
       <h2>批次标准数据</h2>
+      <form id="importProfileForm">
+        <label for="importProfileName">导入配置名称</label>
+        <input id="importProfileName" type="text" maxlength="120">
+        <label for="importSourceIdentifier">数据来源标识</label>
+        <input id="importSourceIdentifier" type="text" maxlength="120">
+        <button id="saveImportProfile" type="button" disabled>保存当前映射配置</button>
+      </form>
       <form id="batchImportForm">
+        <label for="importProfileSelect">复用导入配置</label>
+        <select id="importProfileSelect"><option value="">不使用配置</option></select>
         <label for="batchImportFile">原始监测 CSV</label>
         <input id="batchImportFile" name="file" type="file" accept=".csv" required>
         <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并识别</button>
@@ -357,6 +366,7 @@
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importInspection = document.getElementById("importInspection");
     const standardPreview = document.getElementById("standardPreview");
+    const importProfileSelect = document.getElementById("importProfileSelect");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
@@ -628,6 +638,7 @@
       batchImportButton.disabled = true;
       currentInspection = null;
       await refreshProjects();
+      await loadImportProfiles();
       await refreshBatches();
     }
 
@@ -859,8 +870,29 @@
         : "<p>异常：无</p>";
       importInspection.innerHTML = `<p>编码：${escapeHtml(inspection.encoding)}；数据行：${inspection.row_count}</p>
         ${inspectionTable(inspection.columns)}${anomalies}
+        <button id="suggestImportMapping" type="button">获取 LLM 候选映射</button>
         <button id="confirmImportMapping" type="button">确认映射并生成标准数据</button>`;
+      document.getElementById("suggestImportMapping").addEventListener("click", suggestImportMapping);
       document.getElementById("confirmImportMapping").addEventListener("click", confirmImportMapping);
+      document.getElementById("saveImportProfile").disabled = false;
+      if (inspection.standard_preview) renderStandardPreview(inspection.standard_preview);
+    }
+
+    async function suggestImportMapping() {
+      const res = await fetch(
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${currentInspection.id}/mapping-suggestions`,
+        {method: "POST"},
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "获取候选映射失败");
+      data.candidates.forEach((candidate) => {
+        const row = [...importInspection.querySelectorAll("tbody tr")]
+          .find((item) => item.dataset.source === candidate.source);
+        if (row) row.querySelector('[data-role="field"]').value = candidate.field;
+      });
+      batchImportStatus.textContent = data.candidates.length
+        ? "候选映射已填入，尚未确认；请工程师检查字段和单位。"
+        : "确定性规则已覆盖字段，无需 LLM 候选。";
     }
 
     async function confirmImportMapping() {
@@ -902,6 +934,10 @@
         return;
       }
       if (!res.ok) throw new Error(data.detail || "读取标准数据失败");
+      renderStandardPreview(data);
+    }
+
+    function renderStandardPreview(data) {
       const header = data.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
       const rows = data.rows.map((row) =>
         `<tr>${data.columns.map((column) => `<td>${escapeHtml(String(row[column] ?? ""))}</td>`).join("")}</tr>`
@@ -910,14 +946,64 @@
         <table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
+    async function loadImportProfiles() {
+      importProfileSelect.innerHTML = '<option value="">不使用配置</option>';
+      if (!currentProjectId) return;
+      const res = await fetch(`/api/projects/${currentProjectId}/import-profiles`);
+      if (!res.ok) return;
+      const profiles = await res.json();
+      profiles.forEach((profile) => {
+        const option = document.createElement("option");
+        option.value = profile.id;
+        option.textContent = `${profile.name}（${profile.source_identifier}）`;
+        importProfileSelect.appendChild(option);
+      });
+    }
+
+    document.getElementById("saveImportProfile").addEventListener("click", async () => {
+      const name = document.getElementById("importProfileName").value.trim();
+      const sourceIdentifier = document.getElementById("importSourceIdentifier").value.trim();
+      if (!currentProjectId || !currentInspection || !name || !sourceIdentifier) {
+        batchImportStatus.textContent = "请填写配置名称和数据来源标识。";
+        return;
+      }
+      const mapping = {};
+      const source_units = {};
+      importInspection.querySelectorAll("tbody tr").forEach((row) => {
+        const field = row.querySelector('[data-role="field"]').value;
+        const unit = row.querySelector('[data-role="unit"]').value.trim();
+        if (field) mapping[row.dataset.source] = field;
+        if (unit) source_units[row.dataset.source] = unit;
+      });
+      const res = await fetch(`/api/projects/${currentProjectId}/import-profiles`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          name,
+          source_identifier: sourceIdentifier,
+          mapping,
+          source_units,
+          parsing_rules: {delimiter: ",", decimal: "."},
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "保存导入配置失败");
+      await loadImportProfiles();
+      importProfileSelect.value = data.id;
+      batchImportStatus.textContent = "导入配置已保存，可在当前项目后续批次复用。";
+    });
+
     document.getElementById("batchImportForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       batchImportStatus.className = "status";
       try {
         if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
         batchImportStatus.textContent = "正在上传并识别...";
+        const profileQuery = importProfileSelect.value
+          ? `?profile_id=${encodeURIComponent(importProfileSelect.value)}`
+          : "";
         const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports`,
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports${profileQuery}`,
           {method: "POST", body: new FormData(event.target)},
         );
         const data = await res.json();
