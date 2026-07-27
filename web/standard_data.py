@@ -30,6 +30,12 @@ class ImportInspection:
     row_count: int
     columns: list[InspectedColumn]
     anomalies: list[str]
+    mapping: dict[str, str] | None = None
+    source_units: dict[str, str] | None = None
+    source_identifier: str | None = None
+    profile_id: str | None = None
+    parsing_rules: dict[str, str] | None = None
+    standard_preview: dict[str, object] | None = None
 
     def as_dict(self) -> dict[str, object]:
         value = asdict(self)
@@ -108,12 +114,21 @@ class BatchDataImporter:
         batch_id: str,
         filename: str,
         content: bytes,
+        *,
+        profile_id: str | None = None,
+        source_identifier: str | None = None,
+        profile_mapping: dict[str, str] | None = None,
+        profile_units: dict[str, str] | None = None,
+        parsing_rules: dict[str, str] | None = None,
     ) -> ImportInspection:
         safe_name = PurePath(filename).name
         if not safe_name or safe_name != filename or Path(safe_name).suffix.lower() != ".csv":
             raise ValueError("原始监测数据必须是安全命名的 CSV 文件")
         encoding, text = self._decode(content)
-        rows = list(csv.DictReader(io.StringIO(text)))
+        delimiter = (parsing_rules or {}).get("delimiter", ",")
+        if len(delimiter) != 1:
+            raise ValueError("解析规则 delimiter 必须是单个字符")
+        rows = list(csv.DictReader(io.StringIO(text), delimiter=delimiter))
         if not rows:
             raise ValueError("文件不包含数据行，请上传至少一行监测数据")
         columns = []
@@ -121,12 +136,14 @@ class BatchDataImporter:
             if source in self.IGNORED_COLUMNS:
                 continue
             rule = self.COLUMN_RULES.get(source)
+            profile_field = (profile_mapping or {}).get(source)
+            profile_unit = (profile_units or {}).get(source)
             columns.append(
                 InspectedColumn(
                     source=source,
-                    field=rule[0] if rule else None,
+                    field=rule[0] if rule else profile_field,
                     type=rule[1] if rule else self._infer_type(rows, source),
-                    unit=rule[2] if rule else None,
+                    unit=rule[2] if rule and rule[2] else profile_unit,
                 )
             )
         anomalies = [
@@ -152,13 +169,38 @@ class BatchDataImporter:
                 + ", ".join(missing)
                 + "；请修正字段映射"
             )
+        effective_mapping = {
+            column.source: column.field
+            for column in columns
+            if column.field is not None
+        }
+        effective_units = {
+            column.source: column.unit
+            for column in columns
+            if column.unit is not None
+        }
+        preview = None
+        if profile_id and not anomalies:
+            preview = self._mapped_preview(
+                rows,
+                effective_mapping,
+                effective_units,
+                safe_name,
+                decimal=(parsing_rules or {}).get("decimal", "."),
+            )
         inspection = ImportInspection(
             id=uuid.uuid4().hex,
-            status="pending_confirmation" if anomalies else "ready",
+            status="pending_confirmation" if anomalies or profile_id else "ready",
             encoding=encoding,
             row_count=len(rows),
             columns=columns,
             anomalies=anomalies,
+            mapping=effective_mapping if profile_id else None,
+            source_units=effective_units if profile_id else None,
+            source_identifier=source_identifier,
+            profile_id=profile_id,
+            parsing_rules=dict(parsing_rules or {}) if profile_id else None,
+            standard_preview=preview,
         )
         raw_path = self._raw_path(project_id, batch_id, inspection.id, safe_name)
         raw_path.parent.mkdir(parents=True, exist_ok=False)
@@ -182,6 +224,69 @@ class BatchDataImporter:
                 ),
             )
         return inspection
+
+    def inspection(
+        self,
+        project_id: str,
+        batch_id: str,
+        import_id: str,
+    ) -> dict[str, object] | None:
+        with sqlite3.connect(self.database) as connection:
+            row = connection.execute(
+                """
+                SELECT inspection_json FROM data_imports
+                WHERE id = ? AND project_id = ? AND batch_id = ?
+                """,
+                (import_id, project_id, batch_id),
+            ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def _mapped_preview(
+        self,
+        rows: list[dict[str, str]],
+        mapping: dict[str, str],
+        units: dict[str, str],
+        filename: str,
+        decimal: str = ".",
+        limit: int = 20,
+    ) -> dict[str, object]:
+        raw = pd.DataFrame(rows[:limit])
+        canonical = pd.DataFrame(index=raw.index)
+        for field in STANDARD_FLOW_COLUMNS:
+            source = next(
+                (name for name, target in mapping.items() if target == field),
+                None,
+            )
+            canonical[field] = raw[source] if source else None
+        if "point_id" not in mapping.values():
+            canonical["point_id"] = self._point_id_from_filename(filename)
+        canonical["timestamp"] = pd.to_datetime(
+            canonical["timestamp"], errors="coerce"
+        )
+        for field in ("flow_lps", "level_m", "velocity_mps"):
+            if decimal != ".":
+                canonical[field] = canonical[field].str.replace(
+                    decimal, ".", regex=False
+                )
+            canonical[field] = pd.to_numeric(canonical[field], errors="coerce")
+            source = next(
+                (name for name, target in mapping.items() if target == field),
+                None,
+            )
+            if source:
+                canonical[field] = self._convert(
+                    canonical[field], field, units[source]
+                )
+        canonical["timestamp"] = canonical["timestamp"].map(
+            lambda value: value.isoformat() if pd.notna(value) else None
+        )
+        return {
+            "columns": list(STANDARD_FLOW_COLUMNS),
+            "units": STANDARD_FLOW_UNITS,
+            "rows": canonical.where(pd.notna(canonical), None).to_dict(
+                orient="records"
+            ),
+        }
 
     def confirm_mapping(
         self,
@@ -209,7 +314,12 @@ class BatchDataImporter:
         inspection = json.loads(row[0])
         source_sha256 = row[1]
         text = source.read_bytes().decode(inspection["encoding"])
-        raw = pd.read_csv(io.StringIO(text), dtype=str)
+        parsing_rules = inspection.get("parsing_rules") or {}
+        raw = pd.read_csv(
+            io.StringIO(text),
+            dtype=str,
+            sep=parsing_rules.get("delimiter", ","),
+        )
         unknown_sources = sorted(set(mapping) - set(raw.columns))
         if unknown_sources:
             raise ValueError(
@@ -249,6 +359,11 @@ class BatchDataImporter:
         if canonical["timestamp"].isna().any():
             raise ValueError("时间字段包含无效值，请修正后重新确认")
         for field in ("flow_lps", "level_m", "velocity_mps"):
+            decimal = parsing_rules.get("decimal", ".")
+            if decimal != ".":
+                canonical[field] = canonical[field].str.replace(
+                    decimal, ".", regex=False
+                )
             canonical[field] = pd.to_numeric(canonical[field], errors="coerce")
             source_name = next(
                 (name for name, target in mapping.items() if target == field),
