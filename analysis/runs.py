@@ -223,6 +223,23 @@ class AnalysisRunner:
             ).fetchone()
         return self._deserialize(row[0]) if row is not None else None
 
+    def get(
+        self,
+        project_id: str,
+        batch_id: str,
+        run_id: str,
+    ) -> AnalysisResult | None:
+        """Return one historical result without crossing project/batch scope."""
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT result_json FROM analysis_runs
+                WHERE run_id = ? AND project_id = ? AND batch_id = ?
+                """,
+                (run_id, project_id, batch_id),
+            ).fetchone()
+        return self._deserialize(row[0]) if row is not None else None
+
     def _successful_with_identity(
         self,
         project_id: str,

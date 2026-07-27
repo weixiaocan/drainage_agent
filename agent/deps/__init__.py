@@ -108,6 +108,7 @@ class AgentDeps:
     project_notes: str = ""
     trace: Any | None = None
     analysis_runner: Any | None = None
+    background_jobs: Any | None = None
     current_project_id: str | None = None
     current_batch_id: str | None = None
 

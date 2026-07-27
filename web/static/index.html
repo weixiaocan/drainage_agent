@@ -304,6 +304,7 @@
         运行数据质量检查
       </button>
       <div id="dataQualityResult" class="inspection">请先选择已有标准数据的分析批次。</div>
+      <div id="analysisJobHistory" class="inspection">当前批次暂无后台作业。</div>
 
       <h2>派生分析批次</h2>
       <form id="derivedBatchForm">
@@ -380,6 +381,7 @@
     const runDataQualityButton = document.getElementById("runDataQualityButton");
     const forceDataQualityRerun = document.getElementById("forceDataQualityRerun");
     const dataQualityResult = document.getElementById("dataQualityResult");
+    const analysisJobHistory = document.getElementById("analysisJobHistory");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
@@ -689,6 +691,7 @@
       runDataQualityButton.disabled = false;
       batchImportStatus.textContent = "可上传原始监测 CSV。";
       loadStandardPreview();
+      await loadAnalysisJobs();
       await refreshBatches();
     }
 
@@ -1034,14 +1037,59 @@
       }
     });
 
+    function jobStatusText(job) {
+      if (job.status === "queued") return `排队中：${job.step}（${job.progress}%）`;
+      if (job.status === "running") return `运行中：${job.step}（${job.progress}%）`;
+      if (job.status === "succeeded") return "已成功：可以查看分析结果";
+      return `失败：${job.error_summary || "未提供失败原因"}`;
+    }
+
+    async function loadAnalysisJobs() {
+      if (!currentProjectId || !currentBatchId) return;
+      const res = await fetch(
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs`
+      );
+      if (!res.ok) return;
+      const jobs = await res.json();
+      analysisJobHistory.innerHTML = jobs.length
+        ? jobs.map((job) =>
+            `<p><code>${escapeHtml(job.job_id)}</code> · ${escapeHtml(jobStatusText(job))}` +
+            (job.result_url
+              ? ` · <a href="${escapeHtml(job.result_url)}" target="_blank">打开结果</a>`
+              : "") +
+            "</p>"
+          ).join("")
+        : "当前批次暂无后台作业。";
+    }
+
+    async function waitForAnalysisJob(job) {
+      const endpoint =
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs/${job.job_id}`;
+      while (job.status === "queued" || job.status === "running") {
+        dataQualityResult.textContent = jobStatusText(job);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const res = await fetch(endpoint);
+        job = await res.json();
+        if (!res.ok) throw new Error(job.detail || "后台作业查询失败");
+      }
+      await loadAnalysisJobs();
+      if (job.status === "failed") {
+        throw new Error(job.error_summary || "数据质量检查失败");
+      }
+      const resultRes = await fetch(job.result_url);
+      const result = await resultRes.json();
+      if (!resultRes.ok) throw new Error(result.detail || "分析结果读取失败");
+      return result;
+    }
+
     runDataQualityButton.addEventListener("click", async () => {
       dataQualityResult.className = "inspection";
       try {
         if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
         runDataQualityButton.disabled = true;
-        dataQualityResult.textContent = "正在运行数据质量检查...";
+        dataQualityResult.textContent = "正在提交后台数据质量检查...";
         const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-runs/data_quality`,
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs/data_quality`,
           {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -1051,8 +1099,9 @@
             }),
           },
         );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "数据质量检查失败");
+        const submitted = await res.json();
+        if (!res.ok) throw new Error(submitted.detail || "数据质量检查提交失败");
+        const data = await waitForAnalysisJob(submitted);
         const rows = data.data.table.map((row) =>
           `<tr><td>${escapeHtml(String(row.point_id))}</td>` +
           `<td>${row.record_count}</td><td>${row.monitoring_days}</td>` +

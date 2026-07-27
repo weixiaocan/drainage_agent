@@ -42,6 +42,23 @@ Web 使用
 Agent 的 `check_data` 工具在具有当前项目和批次上下文时通过
 `agent.tools.analysis_runs.run_data_quality_analysis` 调用同一个 Runner。
 
+## 本地后台作业
+
+耗时调用通过 `analysis.jobs.BackgroundJobService` 提交完整
+`AnalysisRequest`。Web 与 Agent 共用该服务；服务只负责排队、有限并发执行和
+状态持久化，所有前置条件、分析身份、结果复用、版本和产物落盘仍由
+`AnalysisRunner` 负责。同步 `AnalysisRunner.run()` 接口继续保留。
+
+SQLite 的 `background_jobs` 表保存 `job_id`、项目、批次、完整请求 JSON、
+状态、当前步骤、进度、错误摘要、结果 run_id/产物索引和创建、开始、完成时间。
+状态为 `queued → running → succeeded|failed`。默认本地执行器最多并发执行
+两个作业，可通过应用构造参数调低，但不得小于一。
+
+进程重启不会自动重放作业：初始化服务时，遗留的 `queued` 或 `running`
+统一转为 `failed`，步骤标记为“应用重启后停止”，并提示用户重新提交。
+既有 `succeeded` 和 `failed` 记录保持不变。该策略避免重复执行具有外部产物
+副作用的分析，也不会把未完成作业误报为成功。
+
 ## Ticket 05 集成边界
 
 导入配置和 LLM 映射建议不得进入分析身份或 Runner。Ticket 05 只需继续生成
