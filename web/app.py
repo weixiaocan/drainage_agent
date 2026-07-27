@@ -15,6 +15,7 @@ from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
 from agent.core.logging_utils import TraceLogger, trace_event
 from web.projects import AnalysisBatch, Project, ProjectRepository
+from web.standard_data import BatchDataImporter
 
 
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
@@ -39,6 +40,11 @@ class ProjectCreateRequest(BaseModel):
 
 class AnalysisBatchCreateRequest(BaseModel):
     name: str
+
+
+class ImportMappingRequest(BaseModel):
+    mapping: dict[str, str]
+    units: dict[str, str]
 
 
 def _project_data(project: Project) -> dict[str, str]:
@@ -128,6 +134,10 @@ def create_app(
     app.state.agent = agent_factory(app.state.deps)
     app.state.histories: dict[str, list[Any]] = {}
     app.state.projects = ProjectRepository(
+        app.state.root / "var" / "drainage.sqlite3",
+        app.state.root / "var" / "projects",
+    )
+    app.state.data_importer = BatchDataImporter(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
     )
@@ -225,6 +235,76 @@ def create_app(
         app.state.current_project_id = project_id
         app.state.current_batch_id = batch.id
         return {"current_batch": _batch_data(batch)}
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/imports",
+        status_code=201,
+    )
+    async def import_batch_data(
+        project_id: str,
+        batch_id: str,
+        file: UploadFile = File(...),
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        try:
+            inspection = app.state.data_importer.inspect_upload(
+                project_id,
+                batch_id,
+                file.filename or "",
+                await file.read(),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return inspection.as_dict()
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/imports/{import_id}/raw"
+    )
+    def download_raw_batch_data(
+        project_id: str,
+        batch_id: str,
+        import_id: str,
+    ) -> FileResponse:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        path = app.state.data_importer.raw_file(project_id, batch_id, import_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="原始监测数据不存在")
+        return FileResponse(path, filename=path.name)
+
+    @app.put(
+        "/api/projects/{project_id}/batches/{batch_id}/imports/{import_id}/mapping"
+    )
+    def confirm_import_mapping(
+        project_id: str,
+        batch_id: str,
+        import_id: str,
+        request: ImportMappingRequest,
+    ) -> dict[str, str]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        try:
+            return app.state.data_importer.confirm_mapping(
+                project_id,
+                batch_id,
+                import_id,
+                request.mapping,
+                request.units,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/standard/flow")
+    def get_standard_flow(project_id: str, batch_id: str) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        preview = app.state.data_importer.standard_preview(project_id, batch_id)
+        if preview is None:
+            raise HTTPException(status_code=409, detail="标准数据尚未确认生成")
+        return preview
 
     @app.post("/api/projects/{project_id}/files")
     def upload_project_files(

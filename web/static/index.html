@@ -223,6 +223,26 @@
       overflow-wrap: anywhere;
     }
     .files a:hover { text-decoration: underline; }
+    .inspection {
+      margin-top: 10px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    .inspection table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .inspection th,
+    .inspection td {
+      border: 1px solid var(--border);
+      padding: 6px;
+      text-align: left;
+    }
+    .inspection select,
+    .inspection input {
+      width: 100%;
+      min-width: 90px;
+    }
     @media (max-width: 860px) {
       .app { grid-template-columns: 1fr; }
       aside { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -253,6 +273,18 @@
       </form>
       <div id="batchStatus" class="status">当前批次：未选择</div>
       <div id="batchList" class="batch-list"></div>
+
+      <h2>批次标准数据</h2>
+      <form id="batchImportForm">
+        <label for="batchImportFile">原始监测 CSV</label>
+        <input id="batchImportFile" name="file" type="file" accept=".csv" required>
+        <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并识别</button>
+      </form>
+      <div id="batchImportStatus" class="status">请先选择分析批次。</div>
+      <div id="importInspection" class="inspection">
+        编码、字段、类型、单位和异常将在上传后显示。
+      </div>
+      <div id="standardPreview" class="inspection">标准数据预览尚未生成。</div>
 
       <h2>上传数据</h2>
       <form id="uploadForm">
@@ -310,9 +342,14 @@
     const batchStatus = document.getElementById("batchStatus");
     const batchList = document.getElementById("batchList");
     const createBatchButton = document.getElementById("createBatchButton");
+    const batchImportButton = document.getElementById("batchImportButton");
+    const batchImportStatus = document.getElementById("batchImportStatus");
+    const importInspection = document.getElementById("importInspection");
+    const standardPreview = document.getElementById("standardPreview");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
+    let currentInspection = null;
 
     function createSessionId() {
       if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -572,6 +609,8 @@
       projectStatus.textContent = `当前项目：${data.current_project.name}`;
       batchStatus.textContent = "当前批次：未选择";
       createBatchButton.disabled = false;
+      batchImportButton.disabled = true;
+      currentInspection = null;
       await refreshProjects();
       await refreshBatches();
     }
@@ -604,6 +643,9 @@
       if (!res.ok) throw new Error(data.detail || "切换分析批次失败");
       currentBatchId = data.current_batch.id;
       batchStatus.textContent = `当前批次：${data.current_batch.name}`;
+      batchImportButton.disabled = false;
+      batchImportStatus.textContent = "可上传原始监测 CSV。";
+      loadStandardPreview();
       await refreshBatches();
     }
 
@@ -669,6 +711,106 @@
       } catch (err) {
         projectStatus.className = "status error";
         projectStatus.textContent = err.message;
+      }
+    });
+
+    function inspectionTable(columns) {
+      const fields = ["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"];
+      const rows = columns.map((column) => {
+        const options = [
+          `<option value="" ${column.field ? "" : "selected"}>未映射 / 忽略</option>`,
+          ...fields.map((field) =>
+          `<option value="${field}" ${field === column.field ? "selected" : ""}>${field}</option>`
+          ),
+        ].join("");
+        return `<tr data-source="${escapeHtml(column.source)}">
+          <td>${escapeHtml(column.source)}</td>
+          <td><select data-role="field">${options}</select></td>
+          <td>${escapeHtml(column.type)}</td>
+          <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="确认源单位"></td>
+        </tr>`;
+      }).join("");
+      return `<table><thead><tr><th>字段</th><th>规范字段</th><th>类型</th><th>单位</th></tr></thead>
+        <tbody>${rows}</tbody></table>`;
+    }
+
+    function renderInspection(inspection) {
+      currentInspection = inspection;
+      const anomalies = inspection.anomalies.length
+        ? `<p><strong>异常：</strong>${inspection.anomalies.map(escapeHtml).join("；")}</p>`
+        : "<p>异常：无</p>";
+      importInspection.innerHTML = `<p>编码：${escapeHtml(inspection.encoding)}；数据行：${inspection.row_count}</p>
+        ${inspectionTable(inspection.columns)}${anomalies}
+        <button id="confirmImportMapping" type="button">确认映射并生成标准数据</button>`;
+      document.getElementById("confirmImportMapping").addEventListener("click", confirmImportMapping);
+    }
+
+    async function confirmImportMapping() {
+      batchImportStatus.className = "status";
+      try {
+        const mapping = {};
+        const units = {};
+        importInspection.querySelectorAll("tbody tr").forEach((row) => {
+          const source = row.dataset.source;
+          const field = row.querySelector('[data-role="field"]').value;
+          if (field) mapping[source] = field;
+          const unit = row.querySelector('[data-role="unit"]').value.trim();
+          if (unit) units[source] = unit;
+        });
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${currentInspection.id}/mapping`,
+          {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({mapping, units}),
+          },
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "确认映射失败");
+        batchImportStatus.textContent = "映射已确认，标准数据已生成。";
+        await loadStandardPreview();
+      } catch (err) {
+        batchImportStatus.className = "status error";
+        batchImportStatus.textContent = err.message;
+      }
+    }
+
+    async function loadStandardPreview() {
+      if (!currentProjectId || !currentBatchId) return;
+      const res = await fetch(`/api/projects/${currentProjectId}/batches/${currentBatchId}/standard/flow`);
+      const data = await res.json();
+      if (res.status === 409) {
+        standardPreview.textContent = "标准数据预览尚未生成。";
+        return;
+      }
+      if (!res.ok) throw new Error(data.detail || "读取标准数据失败");
+      const header = data.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
+      const rows = data.rows.map((row) =>
+        `<tr>${data.columns.map((column) => `<td>${escapeHtml(String(row[column] ?? ""))}</td>`).join("")}</tr>`
+      ).join("");
+      standardPreview.innerHTML = `<p><strong>标准数据预览</strong></p>
+        <table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    document.getElementById("batchImportForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      batchImportStatus.className = "status";
+      try {
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        batchImportStatus.textContent = "正在上传并识别...";
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports`,
+          {method: "POST", body: new FormData(event.target)},
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "批次数据上传失败");
+        renderInspection(data);
+        batchImportStatus.textContent = data.status === "pending_confirmation"
+          ? "存在不确定项，请确认或修正映射。"
+          : "识别完成，请确认映射。";
+      } catch (err) {
+        batchImportStatus.className = "status error";
+        batchImportStatus.textContent = err.message;
       }
     });
 

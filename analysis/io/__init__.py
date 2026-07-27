@@ -7,6 +7,7 @@ from typing import Iterable
 import pandas as pd
 
 from analysis.schema import normalize_flow_df, normalize_rain_df
+from analysis.io.standard import StandardDataStore, StandardDataUnavailable
 
 
 def project_root() -> Path:

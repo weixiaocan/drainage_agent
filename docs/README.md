@@ -7,6 +7,7 @@
 - `adr/`：已经确认且需要长期保留原因的架构决策。
 - `ARCHITECTURE_AUDIT.md`：现有代码到目标架构的模块、接缝与增量重构方案。
 - `EVALUATION.md`：当前评测策略和发布门槛。
+- `STANDARD_DATA_CONTRACT.md`：批次标准流量数据的 v1 文件格式、manifest 和公开读取契约。
 - `../.scratch/mature-drainage-agent/issues/`：按依赖顺序执行的本地实施票据。
 
 ## 运行文档
