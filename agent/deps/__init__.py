@@ -107,6 +107,9 @@ class AgentDeps:
     session: SessionState = field(default_factory=SessionState)
     project_notes: str = ""
     trace: Any | None = None
+    analysis_runner: Any | None = None
+    current_project_id: str | None = None
+    current_batch_id: str | None = None
 
 
 def ensure_directories(paths: Paths) -> None:

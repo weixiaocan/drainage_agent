@@ -295,6 +295,16 @@
       </div>
       <div id="standardPreview" class="inspection">标准数据预览尚未生成。</div>
 
+      <h2>数据质量检查</h2>
+      <label class="check">
+        <input id="forceDataQualityRerun" type="checkbox">
+        明确重新运行并创建新版本
+      </label>
+      <button id="runDataQualityButton" class="upload-btn" type="button" disabled>
+        运行数据质量检查
+      </button>
+      <div id="dataQualityResult" class="inspection">请先选择已有标准数据的分析批次。</div>
+
       <h2>派生分析批次</h2>
       <form id="derivedBatchForm">
         <label for="derivedBatchName">派生批次名称</label>
@@ -367,6 +377,9 @@
     const importInspection = document.getElementById("importInspection");
     const standardPreview = document.getElementById("standardPreview");
     const importProfileSelect = document.getElementById("importProfileSelect");
+    const runDataQualityButton = document.getElementById("runDataQualityButton");
+    const forceDataQualityRerun = document.getElementById("forceDataQualityRerun");
+    const dataQualityResult = document.getElementById("dataQualityResult");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
@@ -636,6 +649,8 @@
       batchStatus.textContent = "当前批次：未选择";
       createBatchButton.disabled = false;
       batchImportButton.disabled = true;
+      runDataQualityButton.disabled = true;
+      dataQualityResult.textContent = "请先选择已有标准数据的分析批次。";
       currentInspection = null;
       await refreshProjects();
       await loadImportProfiles();
@@ -671,6 +686,7 @@
       currentBatchId = data.current_batch.id;
       batchStatus.textContent = `当前批次：${data.current_batch.name}`;
       batchImportButton.disabled = false;
+      runDataQualityButton.disabled = false;
       batchImportStatus.textContent = "可上传原始监测 CSV。";
       loadStandardPreview();
       await refreshBatches();
@@ -1015,6 +1031,44 @@
       } catch (err) {
         batchImportStatus.className = "status error";
         batchImportStatus.textContent = err.message;
+      }
+    });
+
+    runDataQualityButton.addEventListener("click", async () => {
+      dataQualityResult.className = "inspection";
+      try {
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        runDataQualityButton.disabled = true;
+        dataQualityResult.textContent = "正在运行数据质量检查...";
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-runs/data_quality`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              points: [],
+              force_rerun: forceDataQualityRerun.checked,
+            }),
+          },
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "数据质量检查失败");
+        const rows = data.data.table.map((row) =>
+          `<tr><td>${escapeHtml(String(row.point_id))}</td>` +
+          `<td>${row.record_count}</td><td>${row.monitoring_days}</td>` +
+          `<td>${row.theoretical_count}</td>` +
+          `<td>${(row.collection_rate * 100).toFixed(1)}%</td></tr>`
+        ).join("");
+        const source = data.reused ? "复用已有结果" : "生成新结果";
+        dataQualityResult.innerHTML =
+          `<p><strong>第 ${data.version} 版</strong>（${source}）</p>` +
+          "<table><thead><tr><th>点位</th><th>记录数</th><th>监测天数</th>" +
+          `<th>理论记录数</th><th>收集率</th></tr></thead><tbody>${rows}</tbody></table>`;
+      } catch (err) {
+        dataQualityResult.className = "inspection status error";
+        dataQualityResult.textContent = err.message;
+      } finally {
+        runDataQualityButton.disabled = !currentBatchId;
       }
     });
 

@@ -1341,7 +1341,24 @@ def check_data_impl(
     export: bool = False,
     start: str | None = None,
     end: str | None = None,
+    force_rerun: bool = False,
 ) -> ToolResult:
+    if (
+        deps.analysis_runner is not None
+        and deps.current_project_id is not None
+        and deps.current_batch_id is not None
+    ):
+        from agent.tools.analysis_runs import run_data_quality_analysis
+
+        return run_data_quality_analysis(
+            deps.analysis_runner,
+            project_id=deps.current_project_id,
+            batch_id=deps.current_batch_id,
+            points=points,
+            start=start,
+            end=end,
+            force_rerun=force_rerun,
+        )
     windowed = start is not None or end is not None
 
     def work() -> tuple[str, dict[str, Any]]:
