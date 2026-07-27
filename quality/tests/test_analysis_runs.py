@@ -326,7 +326,8 @@ def test_web_workbench_exposes_data_quality_run_controls(tmp_path: Path) -> None
     assert 'id="runDataQualityButton"' in response.text
     assert 'id="forceDataQualityRerun"' in response.text
     assert 'id="dataQualityResult"' in response.text
-    assert "/analysis-runs/data_quality" in response.text
+    assert "/analysis-jobs/data_quality" in response.text
+    assert 'id="analysisJobHistory"' in response.text
 
 
 def test_agent_adapter_uses_the_same_analysis_runner_result(tmp_path: Path) -> None:

@@ -1423,14 +1423,14 @@ def check_data_impl(
     force_rerun: bool = False,
 ) -> ToolResult:
     if (
-        deps.analysis_runner is not None
+        deps.background_jobs is not None
         and deps.current_project_id is not None
         and deps.current_batch_id is not None
     ):
-        from agent.tools.analysis_runs import run_data_quality_analysis
+        from agent.tools.analysis_runs import submit_data_quality_analysis
 
-        return run_data_quality_analysis(
-            deps.analysis_runner,
+        return submit_data_quality_analysis(
+            deps.background_jobs,
             project_id=deps.current_project_id,
             batch_id=deps.current_batch_id,
             points=points,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path, PurePath
 from typing import Any, Callable
@@ -17,6 +18,7 @@ from analysis.baselines import (
     BaselinePreconditionError,
     FilterRequest,
 )
+from analysis.jobs import BackgroundJob, BackgroundJobService
 from analysis.runs import (
     AnalysisPreconditionError,
     AnalysisRequest,
@@ -194,8 +196,18 @@ def create_app(
     agent_factory: Callable[[AgentDeps], Any] = build_agent,
     batch_record_reader: BatchRecordReader = standard_batch_record_reader,
     mapping_suggester: MappingSuggester | None = None,
+    background_job_workers: int = 2,
 ) -> FastAPI:
-    app = FastAPI(title="Drainage Agent", docs_url="/docs")
+    @asynccontextmanager
+    async def lifespan(lifespan_app: FastAPI):
+        yield
+        lifespan_app.state.background_jobs.shutdown()
+
+    app = FastAPI(
+        title="Drainage Agent",
+        docs_url="/docs",
+        lifespan=lifespan,
+    )
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
     app.state.trace = TraceLogger(app.state.deps.paths.logs)
@@ -220,7 +232,13 @@ def create_app(
     )
     app.state.filter_baselines = app.state.analysis_runner.baselines
     app.state.deps.filter_baselines = app.state.filter_baselines
+    app.state.background_jobs = BackgroundJobService(
+        app.state.root / "var" / "drainage.sqlite3",
+        app.state.analysis_runner,
+        max_workers=background_job_workers,
+    )
     app.state.deps.analysis_runner = app.state.analysis_runner
+    app.state.deps.background_jobs = app.state.background_jobs
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -750,6 +768,88 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(result)
+
+    def job_data(job: BackgroundJob) -> dict[str, object]:
+        data = asdict(job)
+        data["result_url"] = (
+            f"/api/projects/{job.project_id}/batches/{job.batch_id}"
+            f"/analysis-results/{job.result_run_id}"
+            if job.result_run_id
+            else None
+        )
+        return data
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/analysis-jobs/{algorithm}",
+        status_code=202,
+    )
+    def submit_analysis_job(
+        project_id: str,
+        batch_id: str,
+        algorithm: str,
+        request: AnalysisRunRequest,
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        job = app.state.background_jobs.submit(
+            AnalysisRequest(
+                project_id=project_id,
+                batch_id=batch_id,
+                algorithm=algorithm,
+                points=request.points,
+                start=request.start,
+                end=request.end,
+                force_rerun=request.force_rerun,
+            )
+        )
+        return job_data(job)
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/analysis-jobs"
+    )
+    def list_analysis_jobs(
+        project_id: str,
+        batch_id: str,
+    ) -> list[dict[str, object]]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        return [
+            job_data(job)
+            for job in app.state.background_jobs.list_for_batch(
+                project_id, batch_id
+            )
+        ]
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/analysis-jobs/{job_id}"
+    )
+    def get_analysis_job(
+        project_id: str,
+        batch_id: str,
+        job_id: str,
+    ) -> dict[str, object]:
+        job = app.state.background_jobs.get(project_id, batch_id, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="后台作业不存在")
+        return job_data(job)
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/analysis-results/{run_id}"
+    )
+    def get_analysis_result(
+        project_id: str,
+        batch_id: str,
+        run_id: str,
+    ) -> dict[str, object]:
+        result = app.state.analysis_runner.get(
+            project_id, batch_id, run_id
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail="分析结果不存在")
         return asdict(result)
 
     @app.post("/api/projects/{project_id}/files")

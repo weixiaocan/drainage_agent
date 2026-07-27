@@ -110,6 +110,7 @@ class AgentDeps:
     trace: Any | None = None
     analysis_runner: Any | None = None
     filter_baselines: Any | None = None
+    background_jobs: Any | None = None
     current_project_id: str | None = None
     current_batch_id: str | None = None
 
