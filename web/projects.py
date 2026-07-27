@@ -14,7 +14,24 @@ class Project:
     created_at: str
 
 
+@dataclass(frozen=True)
+class AnalysisBatch:
+    id: str
+    project_id: str
+    name: str
+    created_at: str
+
+
 class ProjectRepository:
+    BATCH_DIRECTORIES = (
+        "inputs",
+        "standard",
+        "baseline",
+        "results",
+        "sessions",
+        "jobs",
+    )
+
     def __init__(self, database: Path, files_root: Path) -> None:
         self.database = database
         self.files_root = files_root
@@ -27,6 +44,17 @@ class ProjectRepository:
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     created_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS analysis_batches (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects (id)
                 )
                 """
             )
@@ -60,8 +88,56 @@ class ProjectRepository:
             ).fetchall()
         return [Project(*row) for row in rows]
 
+    def create_batch(self, project_id: str, name: str) -> AnalysisBatch:
+        batch = AnalysisBatch(
+            id=uuid.uuid4().hex,
+            project_id=project_id,
+            name=name,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO analysis_batches (id, project_id, name, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (batch.id, batch.project_id, batch.name, batch.created_at),
+            )
+        batch_workspace = self.batch_workspace(project_id, batch.id)
+        for directory in self.BATCH_DIRECTORIES:
+            (batch_workspace / directory).mkdir(parents=True, exist_ok=True)
+        return batch
+
+    def get_batch(self, project_id: str, batch_id: str) -> AnalysisBatch | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, project_id, name, created_at
+                FROM analysis_batches
+                WHERE project_id = ? AND id = ?
+                """,
+                (project_id, batch_id),
+            ).fetchone()
+        return AnalysisBatch(*row) if row is not None else None
+
+    def list_batches(self, project_id: str) -> list[AnalysisBatch]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, project_id, name, created_at
+                FROM analysis_batches
+                WHERE project_id = ?
+                ORDER BY created_at, id
+                """,
+                (project_id,),
+            ).fetchall()
+        return [AnalysisBatch(*row) for row in rows]
+
     def workspace(self, project_id: str) -> Path:
         return self.files_root / project_id
+
+    def batch_workspace(self, project_id: str, batch_id: str) -> Path:
+        return self.workspace(project_id) / "batches" / batch_id
 
     def resolve_file(self, project_id: str, file_path: str) -> Path:
         workspace = self.workspace(project_id).resolve()

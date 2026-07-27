@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
 from agent.core.logging_utils import TraceLogger, trace_event
-from web.projects import Project, ProjectRepository
+from web.projects import AnalysisBatch, Project, ProjectRepository
 
 
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
@@ -37,8 +37,16 @@ class ProjectCreateRequest(BaseModel):
     name: str
 
 
+class AnalysisBatchCreateRequest(BaseModel):
+    name: str
+
+
 def _project_data(project: Project) -> dict[str, str]:
     return asdict(project)
+
+
+def _batch_data(batch: AnalysisBatch) -> dict[str, str]:
+    return asdict(batch)
 
 
 def _result_text(result: Any) -> str:
@@ -124,6 +132,7 @@ def create_app(
         app.state.root / "var" / "projects",
     )
     app.state.current_project_id: str | None = None
+    app.state.current_batch_id: str | None = None
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
@@ -163,7 +172,59 @@ def create_app(
         if project is None:
             raise HTTPException(status_code=404, detail="监测项目不存在")
         app.state.current_project_id = project.id
+        app.state.current_batch_id = None
         return {"current_project": _project_data(project)}
+
+    @app.post("/api/projects/{project_id}/batches", status_code=201)
+    def create_analysis_batch(
+        project_id: str,
+        request: AnalysisBatchCreateRequest,
+    ) -> dict[str, str]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        name = request.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="分析批次名称不能为空")
+        return _batch_data(app.state.projects.create_batch(project_id, name))
+
+    @app.get("/api/projects/{project_id}/batches")
+    def list_analysis_batches(project_id: str) -> list[dict[str, str]]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        return [
+            _batch_data(batch)
+            for batch in app.state.projects.list_batches(project_id)
+        ]
+
+    @app.get("/api/projects/{project_id}/batches/selection")
+    def get_analysis_batch_selection(
+        project_id: str,
+    ) -> dict[str, dict[str, str] | None]:
+        batch = (
+            app.state.projects.get_batch(project_id, app.state.current_batch_id)
+            if app.state.current_batch_id
+            else None
+        )
+        return {"current_batch": _batch_data(batch) if batch else None}
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}")
+    def get_analysis_batch(project_id: str, batch_id: str) -> dict[str, str]:
+        batch = app.state.projects.get_batch(project_id, batch_id)
+        if batch is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        return _batch_data(batch)
+
+    @app.put("/api/projects/{project_id}/batches/{batch_id}/selection")
+    def select_analysis_batch(
+        project_id: str,
+        batch_id: str,
+    ) -> dict[str, dict[str, str]]:
+        batch = app.state.projects.get_batch(project_id, batch_id)
+        if batch is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        app.state.current_project_id = project_id
+        app.state.current_batch_id = batch.id
+        return {"current_batch": _batch_data(batch)}
 
     @app.post("/api/projects/{project_id}/files")
     def upload_project_files(
