@@ -286,6 +286,17 @@
       </div>
       <div id="standardPreview" class="inspection">标准数据预览尚未生成。</div>
 
+      <h2>派生分析批次</h2>
+      <form id="derivedBatchForm">
+        <label for="derivedBatchName">派生批次名称</label>
+        <input id="derivedBatchName" name="name" type="text" required maxlength="120">
+        <label>选择至少两个来源批次</label>
+        <div id="derivedBatchSources" class="batch-list">请先选择监测项目。</div>
+        <button class="upload-btn" type="submit">创建派生批次</button>
+      </form>
+      <div id="derivedBatchStatus" class="status"></div>
+      <div id="derivedConflictPanel" class="status" hidden></div>
+
       <h2>上传数据</h2>
       <form id="uploadForm">
         <label>流量 CSV（可多选）</label>
@@ -350,6 +361,11 @@
     let currentProjectId = "";
     let currentBatchId = "";
     let currentInspection = null;
+    const derivedBatchSources = document.getElementById("derivedBatchSources");
+    const derivedBatchStatus = document.getElementById("derivedBatchStatus");
+    const derivedConflictPanel = document.getElementById("derivedConflictPanel");
+    let availableBatches = [];
+    let pendingDerivedRequest = null;
 
     function createSessionId() {
       if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -651,15 +667,19 @@
 
     async function refreshBatches() {
       batchList.innerHTML = "";
+      derivedBatchSources.innerHTML = "";
       if (!currentProjectId) {
         batchList.textContent = "请先选择监测项目。";
+        derivedBatchSources.textContent = "请先选择监测项目。";
         return;
       }
       const res = await fetch(`/api/projects/${currentProjectId}/batches`);
       const batches = await res.json();
       if (!res.ok) throw new Error(batches.detail || "读取分析批次失败");
+      availableBatches = batches;
       if (batches.length === 0) {
         batchList.textContent = "暂无分析批次。";
+        derivedBatchSources.textContent = "暂无可选来源批次。";
         return;
       }
       batches.forEach((batch) => {
@@ -670,8 +690,106 @@
         button.title = "查看并切换到此分析批次";
         button.addEventListener("click", () => selectBatch(batch));
         batchList.appendChild(button);
+
+        const sourceLabel = document.createElement("label");
+        const sourceCheckbox = document.createElement("input");
+        sourceCheckbox.type = "checkbox";
+        sourceCheckbox.name = "source_batch_ids";
+        sourceCheckbox.value = batch.id;
+        sourceLabel.append(sourceCheckbox, ` ${batch.name}`);
+        derivedBatchSources.appendChild(sourceLabel);
       });
     }
+
+    function showDerivedConflicts(payload) {
+      const summary = payload.conflicts;
+      derivedBatchStatus.className = "status error";
+      derivedBatchStatus.textContent =
+        `发现 ${summary.count} 处冲突，点位 ${summary.point_ids.join("、")}，` +
+        `时间范围 ${summary.time_start} 至 ${summary.time_end}。请选择每处冲突的来源。`;
+      derivedConflictPanel.hidden = false;
+      derivedConflictPanel.innerHTML = "";
+      payload.conflict_items.forEach((item, index) => {
+        const label = document.createElement("label");
+        label.textContent = `${item.point_id} / ${item.timestamp}（${item.kind}）`;
+        const select = document.createElement("select");
+        select.dataset.pointId = item.point_id;
+        select.dataset.timestamp = item.timestamp;
+        item.source_batch_ids.forEach((sourceId) => {
+          const option = document.createElement("option");
+          option.value = sourceId;
+          option.textContent =
+            availableBatches.find((batch) => batch.id === sourceId)?.name || sourceId;
+          select.appendChild(option);
+        });
+        label.appendChild(select);
+        derivedConflictPanel.appendChild(label);
+      });
+      const completeButton = document.createElement("button");
+      completeButton.type = "button";
+      completeButton.textContent = "按所选来源完成合并";
+      completeButton.addEventListener("click", completeDerivedConflictMerge);
+      derivedConflictPanel.appendChild(completeButton);
+    }
+
+    async function submitDerivedBatch(request) {
+      const res = await fetch(`/api/projects/${currentProjectId}/derived-batches`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(request),
+      });
+      const data = await res.json();
+      if (res.status === 409) {
+        pendingDerivedRequest = request;
+        showDerivedConflicts(data);
+        return;
+      }
+      if (!res.ok) throw new Error(data.detail || "创建派生分析批次失败");
+      pendingDerivedRequest = null;
+      derivedConflictPanel.hidden = true;
+      derivedBatchStatus.className = "status";
+      derivedBatchStatus.textContent = `已创建派生批次：${data.name}`;
+      document.getElementById("derivedBatchForm").reset();
+      await refreshBatches();
+    }
+
+    async function completeDerivedConflictMerge() {
+      if (!pendingDerivedRequest) return;
+      const conflict_resolutions = Array.from(
+        derivedConflictPanel.querySelectorAll("select"),
+      ).map((select) => ({
+        point_id: select.dataset.pointId,
+        timestamp: select.dataset.timestamp,
+        source_batch_id: select.value,
+      }));
+      try {
+        await submitDerivedBatch({...pendingDerivedRequest, conflict_resolutions});
+      } catch (err) {
+        derivedBatchStatus.className = "status error";
+        derivedBatchStatus.textContent = err.message;
+      }
+    }
+
+    document.getElementById("derivedBatchForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      derivedBatchStatus.className = "status";
+      try {
+        if (!currentProjectId) throw new Error("请先选择监测项目");
+        const source_batch_ids = Array.from(
+          event.target.querySelectorAll('input[name="source_batch_ids"]:checked'),
+        ).map((input) => input.value);
+        if (source_batch_ids.length < 2) throw new Error("请选择至少两个来源批次");
+        derivedConflictPanel.hidden = true;
+        await submitDerivedBatch({
+          name: event.target.elements.name.value.trim(),
+          source_batch_ids,
+          conflict_resolutions: [],
+        });
+      } catch (err) {
+        derivedBatchStatus.className = "status error";
+        derivedBatchStatus.textContent = err.message;
+      }
+    });
 
     document.getElementById("batchForm").addEventListener("submit", async (event) => {
       event.preventDefault();

@@ -35,7 +35,7 @@ CSV 使用 UTF-8 编码，首行为以下固定顺序的字段：
 
 ## `manifest.json`
 
-manifest 至少包含：
+导入批次的 manifest 至少包含：
 
 ```json
 {
@@ -65,6 +65,13 @@ manifest 至少包含：
 
 映射或单位缺失、冲突、不确定时不得写入 `standard/`。工程师确认后才生成 manifest 和 CSV；已生成的标准数据不得由同一确认操作覆盖。
 
+派生批次沿用相同的 `contract_version`、`kind`、`columns`、`units` 和
+`file`，并使用 `source_batch_ids` 记录全部来源批次、使用
+`conflict_resolutions` 记录工程师的冲突选源。派生批次不伪造
+`source_import_id`、原始文件哈希或字段映射。
+
 ## Ticket 03 集成
 
-派生批次应把每个来源批次当作一个 v1 标准数据集，通过 `StandardDataStore.load_flow` 读取。Ticket 03 负责来源合并和冲突选择，不应解析 `inputs/`、演示 CSV 表头或重新执行单位换算，也不应发明第二套批次文件格式。
+派生批次把每个来源批次当作一个 v1 标准数据集，通过
+`StandardDataStore.load_flow` 读取，并将结果写回同一 v1 契约。来源缺少已确认标准数据时停止创建。派生逻辑负责来源合并和冲突选择，不解析
+`inputs/`、演示 CSV 表头或重新执行单位换算，也不使用第二套批次文件格式。
