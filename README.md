@@ -100,20 +100,28 @@ docs/PROJECT_NOTES.md  项目记忆
 - `run_python`
 - `record_note`
 
+## Documentation
+
+- `docs/PRD.md`: 成熟开源版本的目标规格。
+- `CONTEXT.md`: 领域词汇。
+- `docs/adr/`: 已接受的架构决策。
+- `docs/EVALUATION.md`: 当前评测策略与发布门槛。
+- `docs/README.md`: 文档索引及优先级。
+
 ## Tool Result Protocol
 
 工具统一返回：
 
 ```python
 {
-    "status": "ok | needs_input | error",
+    "status": "ok | needs_input | needs_confirmation | error",
     "summary": "...",
     "artifacts": ["var/outputs/..."],
     "data": {},
 }
 ```
 
-`needs_input` 只用于缺少降雨 `event_ids`，并附带可选场次列表。
+`needs_input` 用于缺少必须输入，`needs_confirmation` 用于筛选结果等待工程师确认。
 
 ## Freshness
 
