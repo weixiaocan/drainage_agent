@@ -85,6 +85,7 @@ class SessionState:
     skip_confirmations: bool = False
     auto_confirm_filter_result: bool = False
     pending_filter_result_path: str | None = None
+    pending_filter_id: str | None = None
     pending_filter_result_identity: str | None = None
     pending_filter_result_params: dict[str, Any] = field(default_factory=dict)
     pending_filter_result_request: str | None = None
@@ -108,6 +109,7 @@ class AgentDeps:
     project_notes: str = ""
     trace: Any | None = None
     analysis_runner: Any | None = None
+    filter_baselines: Any | None = None
     current_project_id: str | None = None
     current_batch_id: str | None = None
 

@@ -11,6 +11,7 @@ from typing import Any
 
 from analysis.io import StandardDataStore, StandardDataUnavailable
 from analysis.modules.stats import check_data
+from analysis.baselines import FilterBaselineService
 
 
 DATA_QUALITY_ALGORITHM_VERSION = "1"
@@ -49,10 +50,19 @@ class AnalysisResult:
 class AnalysisRunner:
     """Run deterministic analyses against confirmed standard batch data."""
 
-    def __init__(self, database: Path, files_root: Path) -> None:
+    def __init__(
+        self,
+        database: Path,
+        files_root: Path,
+        *,
+        baseline_service: FilterBaselineService | None = None,
+    ) -> None:
         self.database = database
         self.files_root = files_root.resolve()
         self.standard_data = StandardDataStore(self.files_root)
+        self.baselines = baseline_service or FilterBaselineService(
+            database, self.files_root
+        )
         self.database.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute(
@@ -113,7 +123,9 @@ class AnalysisRunner:
                     request.batch_id,
                 ),
             },
-            "baseline": {"kind": "none", "identity": None},
+            "baseline": self._baseline_identity(
+                request.project_id, request.batch_id, request.algorithm
+            ),
             "parameters": {
                 "points": parameters["points"],
                 "start": self._identity_timestamp(parameters["start"]),
@@ -268,6 +280,16 @@ class AnalysisRunner:
     def _standard_digest(self, project_id: str, batch_id: str) -> str:
         path = self._batch_root(project_id, batch_id) / "standard" / "flow.csv"
         return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def _baseline_identity(
+        self, project_id: str, batch_id: str, algorithm: str
+    ) -> dict[str, Any]:
+        if algorithm == "data_quality":
+            return {"kind": "none", "identity": None}
+        baseline = self.baselines.current_baseline(project_id, batch_id)
+        if baseline is None:
+            raise AnalysisPreconditionError("请先确认当前分析批次的筛选结果")
+        return baseline.identity
 
     def _batch_root(self, project_id: str, batch_id: str) -> Path:
         root = (self.files_root / project_id / "batches" / batch_id).resolve()

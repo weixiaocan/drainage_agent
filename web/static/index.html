@@ -295,6 +295,20 @@
       </div>
       <div id="standardPreview" class="inspection">标准数据预览尚未生成。</div>
 
+      <h2>筛选确认与分析基线</h2>
+      <button id="runFilterButton" class="upload-btn" type="button" disabled>
+        运行自动筛选
+      </button>
+      <div id="filterSummary" class="inspection">请先生成并确认标准数据。</div>
+      <label for="filterRevisionFile">修改后的筛选文件</label>
+      <input id="filterRevisionFile" type="file" accept=".xlsx" disabled>
+      <button id="uploadFilterRevisionButton" type="button" disabled>
+        上传修改版本并校验
+      </button>
+      <button id="confirmFilterButton" class="upload-btn" type="button" disabled>
+        明确确认当前筛选文件
+      </button>
+
       <h2>数据质量检查</h2>
       <label class="check">
         <input id="forceDataQualityRerun" type="checkbox">
@@ -380,10 +394,16 @@
     const runDataQualityButton = document.getElementById("runDataQualityButton");
     const forceDataQualityRerun = document.getElementById("forceDataQualityRerun");
     const dataQualityResult = document.getElementById("dataQualityResult");
+    const runFilterButton = document.getElementById("runFilterButton");
+    const filterSummary = document.getElementById("filterSummary");
+    const filterRevisionFile = document.getElementById("filterRevisionFile");
+    const uploadFilterRevisionButton = document.getElementById("uploadFilterRevisionButton");
+    const confirmFilterButton = document.getElementById("confirmFilterButton");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
     let currentInspection = null;
+    let currentFilterId = "";
     const derivedBatchSources = document.getElementById("derivedBatchSources");
     const derivedBatchStatus = document.getElementById("derivedBatchStatus");
     const derivedConflictPanel = document.getElementById("derivedConflictPanel");
@@ -650,6 +670,12 @@
       createBatchButton.disabled = false;
       batchImportButton.disabled = true;
       runDataQualityButton.disabled = true;
+      runFilterButton.disabled = true;
+      filterRevisionFile.disabled = true;
+      uploadFilterRevisionButton.disabled = true;
+      confirmFilterButton.disabled = true;
+      currentFilterId = "";
+      filterSummary.textContent = "请先生成并确认标准数据。";
       dataQualityResult.textContent = "请先选择已有标准数据的分析批次。";
       currentInspection = null;
       await refreshProjects();
@@ -687,6 +713,12 @@
       batchStatus.textContent = `当前批次：${data.current_batch.name}`;
       batchImportButton.disabled = false;
       runDataQualityButton.disabled = false;
+      runFilterButton.disabled = false;
+      currentFilterId = "";
+      filterRevisionFile.disabled = true;
+      uploadFilterRevisionButton.disabled = true;
+      confirmFilterButton.disabled = true;
+      filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
       batchImportStatus.textContent = "可上传原始监测 CSV。";
       loadStandardPreview();
       await refreshBatches();
@@ -1069,6 +1101,86 @@
         dataQualityResult.textContent = err.message;
       } finally {
         runDataQualityButton.disabled = !currentBatchId;
+      }
+    });
+
+    function renderFilterResult(data) {
+      currentFilterId = data.filter_id;
+      const reasons = Object.entries(data.summary.exclusion_reasons)
+        .map(([point, items]) => `${escapeHtml(point)}：${escapeHtml(items.join("；"))}`)
+        .join("<br>");
+      const download =
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
+        `/filters/${data.filter_id}/download`;
+      filterSummary.innerHTML =
+        `<p><strong>第 ${data.version} 版，等待确认</strong></p>` +
+        `<p>点位 ${data.summary.point_count} 个；保留点位日 ` +
+        `${data.summary.selected_point_days} 个。</p>` +
+        `<p>${reasons}</p><p><a href="${download}">下载筛选文件</a></p>`;
+      filterRevisionFile.disabled = false;
+      uploadFilterRevisionButton.disabled = false;
+      confirmFilterButton.disabled = false;
+    }
+
+    runFilterButton.addEventListener("click", async () => {
+      try {
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        filterSummary.textContent = "正在运行确定性筛选...";
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/filters`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({}),
+          },
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "自动筛选失败");
+        renderFilterResult(data);
+      } catch (err) {
+        filterSummary.textContent = err.message;
+      }
+    });
+
+    uploadFilterRevisionButton.addEventListener("click", async () => {
+      try {
+        const file = filterRevisionFile.files[0];
+        if (!currentFilterId || !file) throw new Error("请选择修改后的 xlsx 文件");
+        const form = new FormData();
+        form.append("file", file);
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
+          `/filters/${currentFilterId}/revisions`,
+          {method: "POST", body: form},
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "筛选文件校验失败");
+        renderFilterResult(data);
+      } catch (err) {
+        filterSummary.textContent = err.message;
+      }
+    });
+
+    confirmFilterButton.addEventListener("click", async () => {
+      try {
+        if (!currentFilterId) throw new Error("没有可确认的筛选文件");
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
+          `/filters/${currentFilterId}/confirmation`,
+          {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({confirm: true}),
+          },
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "确认分析基线失败");
+        filterSummary.innerHTML =
+          `<p><strong>已确认第 ${data.version} 版分析基线</strong></p>` +
+          `<p>后续依赖基线的分析将复用该不可变文件。</p>`;
+        confirmFilterButton.disabled = true;
+      } catch (err) {
+        filterSummary.textContent = err.message;
       }
     });
 

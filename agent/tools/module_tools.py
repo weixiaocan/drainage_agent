@@ -993,6 +993,17 @@ def _filter_confirmation_result(
 
 
 def _confirmed_filter_result_path(deps: AgentDeps) -> Path | None:
+    if (
+        deps.filter_baselines is not None
+        and deps.current_project_id is not None
+        and deps.current_batch_id is not None
+    ):
+        try:
+            return deps.filter_baselines.baseline_artifact_path(
+                deps.current_project_id, deps.current_batch_id
+            )
+        except ValueError:
+            return None
     path_text = deps.session.confirmed_filter_result_path
     if not path_text:
         return None
@@ -1006,6 +1017,23 @@ def _confirmed_filter_result_path(deps: AgentDeps) -> Path | None:
 
 
 def confirm_pending_filter_result(deps: AgentDeps) -> Path:
+    if (
+        deps.session.pending_filter_id
+        and deps.filter_baselines is not None
+        and deps.current_project_id is not None
+        and deps.current_batch_id is not None
+    ):
+        baseline = deps.filter_baselines.confirm(
+            deps.current_project_id,
+            deps.current_batch_id,
+            deps.session.pending_filter_id,
+        )
+        deps.session.pending_filter_id = None
+        deps.session.pending_filter_result_request = None
+        deps.session.pending_filter_result_message = None
+        return deps.filter_baselines.baseline_artifact_path(
+            baseline.project_id, baseline.batch_id
+        )
     path_text = deps.session.pending_filter_result_path
     if not path_text:
         raise ValueError("no pending filter result")
@@ -1083,6 +1111,40 @@ def data_filter_impl(
         "mean_upper_ratio": mean_upper_ratio,
         "output_file": output_file or "",
     }
+    if (
+        deps.filter_baselines is not None
+        and deps.current_project_id is not None
+        and deps.current_batch_id is not None
+    ):
+        from agent.tools.filter_baselines import run_filter_analysis
+
+        shared_parameters = dict(params)
+        shared_parameters.pop("output_file")
+        result = run_filter_analysis(
+            deps.filter_baselines,
+            project_id=deps.current_project_id,
+            batch_id=deps.current_batch_id,
+            **shared_parameters,
+        )
+        filter_id = str(result.get("data", {}).get("filter_id") or "")
+        if deps.session.auto_confirm_filter_result and filter_id:
+            baseline = deps.filter_baselines.confirm(
+                deps.current_project_id,
+                deps.current_batch_id,
+                filter_id,
+            )
+            return ok(
+                "自动筛选已完成并确认为分析基线。",
+                artifacts=[baseline.artifact],
+                baseline_id=baseline.baseline_id,
+                identity=baseline.identity,
+            )
+        deps.session.pending_filter_id = filter_id or None
+        deps.session.pending_filter_result_request = (
+            deps.session.current_user_prompt
+        )
+        deps.session.pending_filter_result_message = result.get("summary")
+        return result
     out_path = _resolve_filter_output_path(deps, output_file)
 
     fresh_path = _fresh_manifest_filter_path(deps, params, out_path)
@@ -1331,6 +1393,23 @@ def _load_filtered_dry_flow(
     points: list[str] | None = None,
     time_range: list[str] | None = None,
 ) -> pd.DataFrame:
+    if (
+        deps.filter_baselines is not None
+        and deps.current_project_id is not None
+        and deps.current_batch_id is not None
+    ):
+        flow = deps.filter_baselines.load_flow(
+            deps.current_project_id, deps.current_batch_id
+        )
+        if points:
+            wanted = {str(point) for point in points}
+            flow = flow[flow["point_id"].astype(str).isin(wanted)]
+        if time_range:
+            start, end = map(pd.to_datetime, time_range)
+            flow = flow[
+                (flow["timestamp"] >= start) & (flow["timestamp"] <= end)
+            ]
+        return flow.reset_index(drop=True)
     filter_result = _ensure_filter_result(deps)
     return io.load_flow_by_filter_result(filter_result, points=points, time_range=time_range, root=deps.paths.root)
 

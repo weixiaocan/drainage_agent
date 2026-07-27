@@ -13,6 +13,10 @@ from pydantic import BaseModel, Field
 
 from analysis.io import StandardDataUnavailable
 from analysis.io.standard import STANDARD_FLOW_COLUMNS
+from analysis.baselines import (
+    BaselinePreconditionError,
+    FilterRequest,
+)
 from analysis.runs import (
     AnalysisPreconditionError,
     AnalysisRequest,
@@ -80,6 +84,22 @@ class AnalysisRunRequest(BaseModel):
     start: str | None = None
     end: str | None = None
     force_rerun: bool = False
+
+
+class FilterRunRequest(BaseModel):
+    missing_rate_threshold: float = 0.1
+    expected_rows_per_day: int = 1440
+    rain_day_filter_threshold: float = 2.0
+    zero_like_threshold: float = 0.02
+    high_zero_ratio_threshold: float = 0.5
+    high_zero_ratio_normal_days_threshold: int = 5
+    zero_day_drop_min_nonzero_keep_days: int = 3
+    mean_lower_ratio: float = 0.5
+    mean_upper_ratio: float = 2.0
+
+
+class FilterConfirmationRequest(BaseModel):
+    confirm: bool
 
 
 class ConflictResolution(BaseModel):
@@ -198,6 +218,8 @@ def create_app(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
     )
+    app.state.filter_baselines = app.state.analysis_runner.baselines
+    app.state.deps.filter_baselines = app.state.filter_baselines
     app.state.deps.analysis_runner = app.state.analysis_runner
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
@@ -556,6 +578,149 @@ def create_app(
         if preview is None:
             raise HTTPException(status_code=409, detail="标准数据尚未确认生成")
         return preview
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/filters",
+        status_code=201,
+    )
+    def run_batch_filter(
+        project_id: str,
+        batch_id: str,
+        request: FilterRunRequest,
+    ) -> dict[str, object]:
+        try:
+            result = app.state.filter_baselines.run_filter(
+                FilterRequest(
+                    project_id=project_id,
+                    batch_id=batch_id,
+                    **request.model_dump(),
+                )
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except BaselinePreconditionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(result)
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/filters")
+    def list_batch_filters(
+        project_id: str, batch_id: str
+    ) -> list[dict[str, object]]:
+        try:
+            return [
+                asdict(item)
+                for item in app.state.filter_baselines.list_filters(
+                    project_id, batch_id
+                )
+            ]
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/filters/{filter_id}"
+    )
+    def get_batch_filter(
+        project_id: str,
+        batch_id: str,
+        filter_id: str,
+    ) -> dict[str, object]:
+        try:
+            result = app.state.filter_baselines.get_filter(
+                project_id, batch_id, filter_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail="筛选结果不存在")
+        return asdict(result)
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/filters/{filter_id}/download"
+    )
+    def download_filter_result(
+        project_id: str,
+        batch_id: str,
+        filter_id: str,
+    ) -> FileResponse:
+        try:
+            path = app.state.filter_baselines.artifact_path(
+                project_id, batch_id, filter_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="筛选文件不存在") from exc
+        return FileResponse(path, filename="filter_result.xlsx")
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/filters/{filter_id}/revisions",
+        status_code=201,
+    )
+    async def upload_filter_revision(
+        project_id: str,
+        batch_id: str,
+        filter_id: str,
+        file: UploadFile = File(...),
+    ) -> dict[str, object]:
+        try:
+            result = app.state.filter_baselines.upload_revision(
+                project_id,
+                batch_id,
+                filter_id,
+                file.filename or "",
+                await file.read(),
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except BaselinePreconditionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(result)
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}"
+        "/filters/{filter_id}/confirmation"
+    )
+    def confirm_filter_result(
+        project_id: str,
+        batch_id: str,
+        filter_id: str,
+        request: FilterConfirmationRequest,
+    ) -> dict[str, object]:
+        if not request.confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="必须明确确认筛选结果才能建立分析基线",
+            )
+        try:
+            return asdict(
+                app.state.filter_baselines.confirm(
+                    project_id, batch_id, filter_id
+                )
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except BaselinePreconditionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/baseline")
+    def get_current_baseline(
+        project_id: str, batch_id: str
+    ) -> dict[str, object]:
+        try:
+            baseline = app.state.filter_baselines.current_baseline(
+                project_id, batch_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if baseline is None:
+            raise HTTPException(status_code=409, detail="当前无有效分析基线")
+        return asdict(baseline)
 
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}"
