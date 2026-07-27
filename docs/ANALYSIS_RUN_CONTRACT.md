@@ -1,66 +1,70 @@
-# 分析运行契约 v1
+# 分析运行契约 v2
 
-`analysis.runs.AnalysisRunner` 是 Web 和 Agent 执行确定性分析的共同入口。
-第一版只迁移 `data_quality`，后续分析应通过同一接口逐项迁移，不在 Web
-路由或 Agent 工具中重复实现前置条件、身份、复用、版本或落盘逻辑。
+`analysis.runs.AnalysisRunner` 是 Web 与 Agent 执行确定性分析的唯一公共入口。
+它负责前置条件、分析身份、结果复用、算法版本和产物落盘；调用方不得复制这些逻辑。
 
-## 请求与前置条件
+## 支持的分析
 
-`AnalysisRequest` 包含监测项目、分析批次、算法、点位、起止时间和是否明确
-重跑。Runner 会校验批次属于指定项目，并且只通过
-`StandardDataStore.load_flow(project_id, batch_id)` 读取当前批次的 v1 标准
-数据。缺少已确认标准数据时返回可操作的前置条件错误，不读取 `inputs/` 或
-`resources/data`。
+`AnalysisRequest` 支持：
 
-## 完整分析身份
+- `data_quality`
+- `patterns`
+- `rainfall`
+- `event_response`
+- `rdii`
+- `risk`
 
-每次运行保存以下身份：
+请求必须绑定 `project_id` 和 `batch_id`。可选参数包括点位、ISO 8601
+起止时间、`event_ids`、风险 `scope` 和 `force_rerun`。事件响应和 RDII
+必须提供 `event_ids`；缺少时抛出带 `field=event_ids` 的
+`AnalysisInputRequired`，Agent 可据此返回结构化 `needs_input`。
 
-- `standard_input`：标准数据契约版本和 `flow.csv` 内容 SHA-256；
-- `baseline`：分析基线身份；尚无基线时固定为
-  `{"kind": "none", "identity": null}`；
-- `parameters`：去重排序后的点位和规范 ISO 8601 起止时间；
-- `algorithm`：算法名称和显式版本。
-
-只有完整身份一致且 `force_rerun=false` 时复用已有成功结果。明确重跑，或
-标准输入、基线、规范参数、算法版本任一变化时创建新版本，并把新版本更新为
-当前结果；历史产物不覆盖。
-
-## 持久化与产物
-
-SQLite 的 `analysis_runs` 保存运行元数据和序列化结果，
-`current_analysis_results` 保存每个项目、批次和算法的当前成功结果索引。
-版本化产物位于：
+Runner 仅从批次的已确认标准数据读取输入：
 
 ```text
-var/projects/{project_id}/batches/{batch_id}/
-└── results/{algorithm}/{run_id}/result.json
+var/projects/{project_id}/batches/{batch_id}/standard/
+├── flow.csv
+├── rainfall.csv
+└── sites.csv
 ```
 
-Web 使用
-`POST /api/projects/{project_id}/batches/{batch_id}/analysis-runs/{algorithm}`；
-Agent 的 `check_data` 工具在具有当前项目和批次上下文时通过
-`agent.tools.analysis_runs.run_data_quality_analysis` 调用同一个 Runner。
+`flow.csv` 和筛选基线沿用 Ticket 07 的公共接口。降雨、事件响应、RDII
+读取 `rainfall.csv`；风险分析按范围读取所需输入。Web 和 Agent 只传递
+`AnalysisRequest`，不自行计算基线身份或绕过前置条件。
 
-## 本地后台作业
+## 身份、版本和复用
 
-耗时调用通过 `analysis.jobs.BackgroundJobService` 提交完整
-`AnalysisRequest`。Web 与 Agent 共用该服务；服务只负责排队、有限并发执行和
-状态持久化，所有前置条件、分析身份、结果复用、版本和产物落盘仍由
-`AnalysisRunner` 负责。同步 `AnalysisRunner.run()` 接口继续保留。
+完整分析身份包含：
 
-SQLite 的 `background_jobs` 表保存 `job_id`、项目、批次、完整请求 JSON、
-状态、当前步骤、进度、错误摘要、结果 run_id/产物索引和创建、开始、完成时间。
-状态为 `queued → running → succeeded|failed`。默认本地执行器最多并发执行
-两个作业，可通过应用构造参数调低，但不得小于一。
+- 标准输入契约版本及所用文件的 SHA-256；
+- 已确认筛选基线身份；
+- 规范化点位、时间范围、事件 ID 和风险范围；
+- 算法名称及显式算法版本。
 
-进程重启不会自动重放作业：初始化服务时，遗留的 `queued` 或 `running`
-统一转为 `failed`，步骤标记为“应用重启后停止”，并提示用户重新提交。
-既有 `succeeded` 和 `failed` 记录保持不变。该策略避免重复执行具有外部产物
-副作用的分析，也不会把未完成作业误报为成功。
+身份完全一致且 `force_rerun=false` 时复用已有成功结果。输入、基线、
+参数或算法版本任一变化均创建新版本；历史运行和产物不覆盖。
 
-## Ticket 05 集成边界
+SQLite 的 `analysis_runs` 保存不可变运行记录，`current_analysis_results`
+保存项目、批次和算法的当前成功结果索引。产物位于：
 
-导入配置和 LLM 映射建议不得进入分析身份或 Runner。Ticket 05 只需继续生成
-符合 v1 契约且经确认的标准数据；一旦标准数据内容变化，Runner 的输入内容
-哈希会自然生成新的当前分析结果。
+```text
+var/projects/{project_id}/batches/{batch_id}/results/{algorithm}/{run_id}/result.json
+```
+
+## 同步和后台接口
+
+同步调用保留为 `AnalysisRunner.run(request)`。耗时 Web/Agent 调用通过
+`analysis.jobs.BackgroundJobService.submit(request)` 提交同一个请求，
+并立即获得持久化 `job_id`。后台服务只负责排队、有限并发、状态和进度；
+实际分析仍调用 Runner。
+
+作业状态机为 `queued → running → succeeded|failed`。SQLite
+`background_jobs` 保存完整请求、步骤、进度、错误摘要、结果 run ID、
+产物索引和时间。进程重启时不自动重放遗留 `queued/running` 作业，而是
+将其转为明确的 `failed` 并提示重新提交；既有终态不变。
+
+## 集成边界
+
+Ticket 05 的导入画像和映射建议不属于分析身份。Ticket 09 只迁移上述核心
+分析，不引入外部队列或通用工作流引擎。后续分析必须通过扩展 Runner 的
+请求验证、算法版本及处理器接入，不得在 Web 或 Agent 新建第二套状态机。

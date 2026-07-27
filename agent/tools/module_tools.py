@@ -1518,6 +1518,26 @@ def analyze_rainfall_impl(
     rainfall_gap_hours: int = 12,
     export: bool = False,
 ) -> ToolResult:
+    if (
+        deps.background_jobs is not None
+        and deps.analysis_runner is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        from analysis.runs import AnalysisRequest
+        from agent.tools.core_analysis import submit_core_analysis
+
+        return submit_core_analysis(
+            deps.background_jobs,
+            deps.analysis_runner,
+            AnalysisRequest(
+                deps.current_project_id,
+                deps.current_batch_id,
+                "rainfall",
+                start=time_range[0] if time_range else None,
+                end=time_range[1] if time_range else None,
+            ),
+        )
     params = {
         "time_range": time_range or [],
         "output": output,
@@ -1601,6 +1621,27 @@ def analyze_patterns_impl(
     end: str | None = None,
     report_charts: bool = False,
 ) -> ToolResult:
+    if (
+        deps.background_jobs is not None
+        and deps.analysis_runner is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        from analysis.runs import AnalysisRequest
+        from agent.tools.core_analysis import submit_core_analysis
+
+        return submit_core_analysis(
+            deps.background_jobs,
+            deps.analysis_runner,
+            AnalysisRequest(
+                deps.current_project_id,
+                deps.current_batch_id,
+                "patterns",
+                points=points,
+                start=start,
+                end=end,
+            ),
+        )
     params = {
         "points": points or [],
         "start": start,
@@ -1674,6 +1715,26 @@ def analyze_event_response_impl(
     points: list[str] | None = None,
     export: bool = False,
 ) -> ToolResult:
+    if (
+        deps.background_jobs is not None
+        and deps.analysis_runner is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        from analysis.runs import AnalysisRequest
+        from agent.tools.core_analysis import submit_core_analysis
+
+        return submit_core_analysis(
+            deps.background_jobs,
+            deps.analysis_runner,
+            AnalysisRequest(
+                deps.current_project_id,
+                deps.current_batch_id,
+                "event_response",
+                points=points,
+                event_ids=event_ids,
+            ),
+        )
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
@@ -1726,6 +1787,26 @@ def analyze_rdii_impl(
     output: str = "all",
     export: bool = False,
 ) -> ToolResult:
+    if (
+        deps.background_jobs is not None
+        and deps.analysis_runner is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        from analysis.runs import AnalysisRequest
+        from agent.tools.core_analysis import submit_core_analysis
+
+        return submit_core_analysis(
+            deps.background_jobs,
+            deps.analysis_runner,
+            AnalysisRequest(
+                deps.current_project_id,
+                deps.current_batch_id,
+                "rdii",
+                points=points,
+                event_ids=event_ids,
+            ),
+        )
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
@@ -1803,6 +1884,29 @@ def assess_risk_impl(
     end: str | None = None,
 ) -> ToolResult:
     scope = {"旱天": "dry", "雨天": "rainy", "全部": "all"}.get(scope, scope)
+    if (
+        deps.background_jobs is not None
+        and deps.analysis_runner is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        from analysis.runs import AnalysisRequest
+        from agent.tools.core_analysis import submit_core_analysis
+
+        return submit_core_analysis(
+            deps.background_jobs,
+            deps.analysis_runner,
+            AnalysisRequest(
+                deps.current_project_id,
+                deps.current_batch_id,
+                "risk",
+                points=points,
+                start=start,
+                end=end,
+                event_ids=event_ids,
+                scope=scope,
+            ),
+        )
     if scope in {"rainy", "all"}:
         precheck = _require_event_ids(deps, event_ids)
         if precheck:
@@ -1968,6 +2072,22 @@ def generate_report_impl(
     sections: list[str] | None = None,
     event_ids: list[int] | None = None,
 ) -> ToolResult:
+    if (
+        deps.report_templates is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        draft = deps.report_templates.create_draft(
+            deps.current_project_id,
+            deps.current_batch_id,
+            "builtin",
+        )
+        return ok(
+            f"报告初稿第 {draft.version} 版已生成，需由排水监测分析人员审核。",
+            artifacts=[draft.docx, draft.workbook],
+            report_id=draft.report_id,
+            version=draft.version,
+        )
     points = _normalize_point_scope(points, deps)
     sections = sections or list(DEFAULT_REPORT_SECTIONS)
     selected_event_ids = list(event_ids or deps.session.selected_event_ids)

@@ -57,6 +57,7 @@ class BackgroundJobService:
         self._initialize()
 
     def submit(self, request: AnalysisRequest) -> BackgroundJob:
+        self.runner.validate(request)
         job = BackgroundJob(
             job_id=uuid.uuid4().hex,
             project_id=request.project_id,

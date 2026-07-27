@@ -63,6 +63,35 @@ class StandardDataStore:
             raise StandardDataUnavailable("标准流量文件包含无效时间")
         return frame.astype(object).where(pd.notna(frame), None)
 
+    def load_rainfall(self, project_id: str, batch_id: str) -> pd.DataFrame:
+        path = self._batch_root(project_id, batch_id) / "standard" / "rainfall.csv"
+        if not path.is_file():
+            raise StandardDataUnavailable("当前分析批次缺少标准降雨数据")
+        frame = pd.read_csv(path)
+        if list(frame.columns) != ["timestamp", "rain_mm"]:
+            raise StandardDataUnavailable("标准降雨文件字段必须为 timestamp,rain_mm")
+        frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        frame["rain_mm"] = pd.to_numeric(frame["rain_mm"], errors="coerce")
+        if frame.empty or frame.isna().any().any():
+            raise StandardDataUnavailable("标准降雨文件包含空值或无效数据")
+        return frame
+
+    def load_sites(self, project_id: str, batch_id: str) -> pd.DataFrame:
+        path = self._batch_root(project_id, batch_id) / "standard" / "sites.csv"
+        if not path.is_file():
+            raise StandardDataUnavailable("当前分析批次缺少标准点位资料")
+        frame = pd.read_csv(path, dtype={"point_id": "string"})
+        required = ["point_id", "diameter_m", "well_depth_m", "pipe_type"]
+        if list(frame.columns) != required:
+            raise StandardDataUnavailable(
+                "标准点位资料字段必须为 point_id,diameter_m,well_depth_m,pipe_type"
+            )
+        for column in ("diameter_m", "well_depth_m"):
+            frame[column] = pd.to_numeric(frame[column], errors="coerce")
+        if frame.empty or frame[required[:3]].isna().any().any():
+            raise StandardDataUnavailable("标准点位资料包含空值或无效数据")
+        return frame
+
     def _batch_root(self, project_id: str, batch_id: str) -> Path:
         batch_root = (
             self.files_root / project_id / "batches" / batch_id

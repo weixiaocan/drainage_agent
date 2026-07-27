@@ -10,15 +10,36 @@ from pathlib import Path
 from typing import Any
 
 from analysis.io import StandardDataStore, StandardDataUnavailable
+from analysis.modules.event_response import analyze_event_response
+from analysis.modules.dry_curves import build_dry_curves, dry_statistics
+from analysis.modules.patterns import analyze_patterns
+from analysis.modules.rainfall import analyze_rainfall
+from analysis.modules.rdii import analyze_rdii
+from analysis.modules.risk import assess_risk
 from analysis.modules.stats import check_data
 from analysis.baselines import FilterBaselineService
 
 
-DATA_QUALITY_ALGORITHM_VERSION = "1"
+ALGORITHM_VERSIONS = {
+    "data_quality": "1",
+    "patterns": "1",
+    "rainfall": "1",
+    "event_response": "1",
+    "rdii": "1",
+    "risk": "1",
+}
 
 
 class AnalysisPreconditionError(ValueError):
     """Raised when an analysis cannot run until the batch is prepared."""
+
+
+class AnalysisInputRequired(AnalysisPreconditionError):
+    """Raised when a caller must provide a structured analysis input."""
+
+    def __init__(self, field: str, message: str) -> None:
+        self.field = field
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -29,6 +50,8 @@ class AnalysisRequest:
     points: list[str] | None = None
     start: str | None = None
     end: str | None = None
+    event_ids: list[int] | None = None
+    scope: str = "all"
     force_rerun: bool = False
 
 
@@ -95,9 +118,9 @@ class AnalysisRunner:
             )
 
     def run(self, request: AnalysisRequest) -> AnalysisResult:
-        if request.algorithm != "data_quality":
-            raise ValueError(f"不支持的分析算法: {request.algorithm}")
+        self.validate(request)
         self._require_batch(request.project_id, request.batch_id)
+
         try:
             flow = self.standard_data.load_flow(
                 request.project_id,
@@ -107,7 +130,29 @@ class AnalysisRunner:
             raise AnalysisPreconditionError(
                 f"{exc}；请先导入并确认当前分析批次的标准数据"
             ) from exc
+        return self._run_validated(request, flow)
 
+    def validate(self, request: AnalysisRequest) -> None:
+        """Validate cheap, structured request requirements before queuing."""
+        if request.algorithm not in ALGORITHM_VERSIONS:
+            raise ValueError(f"不支持的分析算法: {request.algorithm}")
+        if request.algorithm in {"event_response", "rdii"} and not request.event_ids:
+            raise AnalysisInputRequired(
+                "event_ids",
+                "请先选择需要分析的降雨场次 event_ids",
+            )
+        if request.algorithm == "risk":
+            if request.scope not in {"dry", "rainy", "all"}:
+                raise ValueError("风险范围 scope 必须为 dry、rainy 或 all")
+            if request.scope in {"rainy", "all"} and not request.event_ids:
+                raise AnalysisInputRequired(
+                    "event_ids",
+                    "雨天风险分析需要选择降雨场次 event_ids",
+                )
+
+    def _run_validated(
+        self, request: AnalysisRequest, flow: Any
+    ) -> AnalysisResult:
         parameters = self._normalize_parameters(request)
         if parameters["points"]:
             flow = flow[flow["point_id"].astype(str).isin(parameters["points"])]
@@ -115,6 +160,21 @@ class AnalysisRunner:
             flow = flow[flow["timestamp"] >= parameters["start"]]
         if parameters["end"] is not None:
             flow = flow[flow["timestamp"] <= parameters["end"]]
+        if request.algorithm != "data_quality":
+            flow = self.baselines.load_flow(
+                request.project_id,
+                request.batch_id,
+            )
+            if parameters["points"]:
+                flow = flow[
+                    flow["point_id"].astype(str).isin(parameters["points"])
+                ]
+            if parameters["start"] is not None:
+                flow = flow[flow["timestamp"] >= parameters["start"]]
+            if parameters["end"] is not None:
+                flow = flow[flow["timestamp"] <= parameters["end"]]
+            for column in ("flow_lps", "level_m", "velocity_mps"):
+                flow[column] = flow[column].astype(float)
         identity = {
             "standard_input": {
                 "contract_version": 1,
@@ -126,14 +186,17 @@ class AnalysisRunner:
             "baseline": self._baseline_identity(
                 request.project_id, request.batch_id, request.algorithm
             ),
+            "supplemental_inputs": self._supplemental_identity(request),
             "parameters": {
                 "points": parameters["points"],
                 "start": self._identity_timestamp(parameters["start"]),
                 "end": self._identity_timestamp(parameters["end"]),
+                "event_ids": parameters["event_ids"],
+                "scope": parameters["scope"],
             },
             "algorithm": {
                 "name": request.algorithm,
-                "version": DATA_QUALITY_ALGORITHM_VERSION,
+                "version": ALGORITHM_VERSIONS[request.algorithm],
             },
         }
         identity_digest = hashlib.sha256(
@@ -156,7 +219,105 @@ class AnalysisRunner:
         )
         run_id = uuid.uuid4().hex
         created_at = datetime.now(timezone.utc).isoformat()
-        table = check_data(flow).to_dict(orient="records")
+        if request.algorithm == "data_quality":
+            data = {"table": check_data(flow).to_dict(orient="records")}
+        elif request.algorithm == "patterns":
+            data = {
+                "table": analyze_patterns(flow)["patterns"].to_dict(
+                    orient="records"
+                )
+            }
+        elif request.algorithm == "rainfall":
+            try:
+                rainfall = self.standard_data.load_rainfall(
+                    request.project_id, request.batch_id
+                )
+            except StandardDataUnavailable as exc:
+                raise AnalysisPreconditionError(str(exc)) from exc
+            rainfall_result = analyze_rainfall(rainfall)
+            data = {
+                key: self._json_records(frame)
+                for key, frame in rainfall_result.items()
+            }
+            for row in data["daily"]:
+                row["date"] = str(row["date"]).split("T", 1)[0]
+        elif request.algorithm == "event_response":
+            if not parameters["event_ids"]:
+                raise AnalysisInputRequired(
+                    "event_ids",
+                    "请先选择需要分析的降雨场次 event_ids",
+                )
+            try:
+                rainfall = self.standard_data.load_rainfall(
+                    request.project_id, request.batch_id
+                )
+            except StandardDataUnavailable as exc:
+                raise AnalysisPreconditionError(str(exc)) from exc
+            events = analyze_rainfall(rainfall)["events"]
+            table = analyze_event_response(
+                flow, events, parameters["event_ids"]
+            )
+            if table.empty:
+                raise AnalysisPreconditionError(
+                    "所选降雨场次、点位或时间范围没有数据覆盖"
+                )
+            data = {"table": self._json_records(table)}
+        elif request.algorithm == "rdii":
+            if not parameters["event_ids"]:
+                raise AnalysisInputRequired(
+                    "event_ids",
+                    "请先选择需要分析的降雨场次 event_ids",
+                )
+            rainfall = self._load_rainfall(request)
+            events = analyze_rainfall(rainfall)["events"]
+            rdii = analyze_rdii(
+                flow,
+                build_dry_curves(flow),
+                events,
+                parameters["event_ids"],
+            )
+            table = rdii["rdii_total"]
+            if table.empty:
+                raise AnalysisPreconditionError(
+                    "所选降雨场次、点位或时间范围没有数据覆盖"
+                )
+            data = {"table": self._json_records(table)}
+        else:
+            if parameters["scope"] not in {"dry", "rainy", "all"}:
+                raise ValueError("风险范围 scope 必须为 dry、rainy 或 all")
+            if (
+                parameters["scope"] in {"rainy", "all"}
+                and not parameters["event_ids"]
+            ):
+                raise AnalysisInputRequired(
+                    "event_ids",
+                    "雨天风险分析需要选择降雨场次 event_ids",
+                )
+            try:
+                sites = self.standard_data.load_sites(
+                    request.project_id, request.batch_id
+                )
+            except StandardDataUnavailable as exc:
+                raise AnalysisPreconditionError(str(exc)) from exc
+            dry_stats = dry_statistics(flow, sites)
+            rainfall = None
+            events = None
+            if parameters["scope"] in {"rainy", "all"}:
+                rainfall = self._load_rainfall(request)
+                events = analyze_rainfall(rainfall)["events"]
+            risk = assess_risk(
+                dry_stats,
+                scope=parameters["scope"],
+                sites=sites,
+                flow=flow,
+                events=events,
+                event_ids=parameters["event_ids"],
+            )
+            data = {
+                "dry_analysis": self._json_records(dry_stats),
+                "dry_risk": self._json_records(risk["dry_risk"]),
+                "rainy_risk": self._json_records(risk["rainy_risk"]),
+            }
         artifact_relative = f"results/{request.algorithm}/{run_id}/result.json"
         result = AnalysisResult(
             run_id=run_id,
@@ -167,7 +328,7 @@ class AnalysisRunner:
             status="succeeded",
             reused=False,
             identity=identity,
-            data={"table": table},
+            data=data,
             artifacts=[artifact_relative],
             created_at=created_at,
         )
@@ -298,6 +459,52 @@ class AnalysisRunner:
         path = self._batch_root(project_id, batch_id) / "standard" / "flow.csv"
         return hashlib.sha256(path.read_bytes()).hexdigest()
 
+    def _supplemental_identity(
+        self, request: AnalysisRequest
+    ) -> dict[str, str]:
+        identity: dict[str, str] = {}
+        if request.algorithm in {"rainfall", "event_response", "rdii"} or (
+            request.algorithm == "risk" and request.scope in {"rainy", "all"}
+        ):
+            path = (
+                self._batch_root(request.project_id, request.batch_id)
+                / "standard"
+                / "rainfall.csv"
+            )
+            if not path.is_file():
+                raise AnalysisPreconditionError(
+                    "当前分析批次缺少标准降雨数据"
+                )
+            identity["rainfall_sha256"] = hashlib.sha256(
+                path.read_bytes()
+            ).hexdigest()
+        if request.algorithm == "risk":
+            sites = (
+                self._batch_root(request.project_id, request.batch_id)
+                / "standard"
+                / "sites.csv"
+            )
+            if not sites.is_file():
+                raise AnalysisPreconditionError(
+                    "当前分析批次缺少标准点位资料"
+                )
+            identity["sites_sha256"] = hashlib.sha256(
+                sites.read_bytes()
+            ).hexdigest()
+        return identity
+
+    def _load_rainfall(self, request: AnalysisRequest) -> Any:
+        try:
+            return self.standard_data.load_rainfall(
+                request.project_id, request.batch_id
+            )
+        except StandardDataUnavailable as exc:
+            raise AnalysisPreconditionError(str(exc)) from exc
+
+    @staticmethod
+    def _json_records(frame: Any) -> list[dict[str, Any]]:
+        return json.loads(frame.to_json(orient="records", date_format="iso"))
+
     def _baseline_identity(
         self, project_id: str, batch_id: str, algorithm: str
     ) -> dict[str, Any]:
@@ -323,6 +530,8 @@ class AnalysisRunner:
                 "points": sorted(set(map(str, request.points or []))),
                 "start": pd.to_datetime(request.start) if request.start else None,
                 "end": pd.to_datetime(request.end) if request.end else None,
+                "event_ids": sorted(set(map(int, request.event_ids or []))),
+                "scope": str(request.scope),
             }
         except (TypeError, ValueError) as exc:
             raise ValueError("分析时间参数无效，请使用 ISO 8601 时间") from exc

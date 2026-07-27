@@ -129,7 +129,6 @@ def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tm
             ("flow_files", ("101_W2.csv", b"timestamp,flow\n2026-01-01,2\n", "text/csv")),
             ("rainfall_file", ("rain.csv", b"timestamp,rain\n2026-01-01,0\n", "text/csv")),
             ("site_info_file", ("site.xlsx", b"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")),
-            ("template_file", ("template.docx", b"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
         ],
     )
 
@@ -138,8 +137,28 @@ def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tm
     assert (tmp_path / "resources" / "data" / "flow" / "101_W2.csv").exists()
     assert (tmp_path / "resources" / "data" / "降雨数据.csv").exists()
     assert (tmp_path / "resources" / "data" / "点位信息.xlsx").exists()
-    assert (tmp_path / "resources" / "templates" / "template.docx").exists()
     assert '"results": {}' in manifest.read_text(encoding="utf-8")
+
+
+def test_legacy_template_upload_requires_the_project_contract_endpoint(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/upload",
+        files=[
+            (
+                "template_file",
+                (
+                    "template.docx",
+                    b"docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ),
+            )
+        ],
+    )
+
+    assert response.status_code == 400
+    assert "报告模板接口" in response.json()["detail"]
 
 
 def test_upload_rejects_bad_extension(client: TestClient) -> None:

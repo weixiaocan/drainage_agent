@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -19,8 +19,13 @@ from analysis.baselines import (
     FilterRequest,
 )
 from analysis.jobs import BackgroundJob, BackgroundJobService
+from analysis.report_templates import (
+    InvalidReportTemplate,
+    ReportTemplateService,
+)
 from analysis.runs import (
     AnalysisPreconditionError,
+    AnalysisInputRequired,
     AnalysisRequest,
     AnalysisRunner,
 )
@@ -47,7 +52,6 @@ from web.standard_data import BatchDataImporter
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
 ALLOWED_RAINFALL_EXTENSIONS = {".csv"}
 ALLOWED_SITE_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
-ALLOWED_TEMPLATE_EXTENSIONS = {".docx"}
 
 
 class ChatRequest(BaseModel):
@@ -85,7 +89,13 @@ class AnalysisRunRequest(BaseModel):
     points: list[str] = Field(default_factory=list)
     start: str | None = None
     end: str | None = None
+    event_ids: list[int] = Field(default_factory=list)
+    scope: str = "all"
     force_rerun: bool = False
+
+
+class ReportDraftRequest(BaseModel):
+    template_id: str = "builtin"
 
 
 class FilterRunRequest(BaseModel):
@@ -239,6 +249,14 @@ def create_app(
     )
     app.state.deps.analysis_runner = app.state.analysis_runner
     app.state.deps.background_jobs = app.state.background_jobs
+    app.state.report_templates = ReportTemplateService(
+        app.state.root / "var" / "drainage.sqlite3",
+        app.state.root / "var" / "projects",
+        Path(__file__).resolve().parents[1]
+        / "resources"
+        / "contract_report_template.docx",
+    )
+    app.state.deps.report_templates = app.state.report_templates
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -759,9 +777,16 @@ def create_app(
                     points=request.points,
                     start=request.start,
                     end=request.end,
+                    event_ids=request.event_ids,
+                    scope=request.scope,
                     force_rerun=request.force_rerun,
                 )
             )
+        except AnalysisInputRequired as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"missing": exc.field, "message": str(exc)},
+            ) from exc
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except AnalysisPreconditionError as exc:
@@ -793,17 +818,27 @@ def create_app(
     ) -> dict[str, object]:
         if app.state.projects.get_batch(project_id, batch_id) is None:
             raise HTTPException(status_code=404, detail="分析批次不存在")
-        job = app.state.background_jobs.submit(
-            AnalysisRequest(
-                project_id=project_id,
-                batch_id=batch_id,
-                algorithm=algorithm,
-                points=request.points,
-                start=request.start,
-                end=request.end,
-                force_rerun=request.force_rerun,
+        try:
+            job = app.state.background_jobs.submit(
+                AnalysisRequest(
+                    project_id=project_id,
+                    batch_id=batch_id,
+                    algorithm=algorithm,
+                    points=request.points,
+                    start=request.start,
+                    end=request.end,
+                    event_ids=request.event_ids,
+                    scope=request.scope,
+                    force_rerun=request.force_rerun,
+                )
             )
-        )
+        except AnalysisInputRequired as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"missing": exc.field, "message": str(exc)},
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return job_data(job)
 
     @app.get(
@@ -881,6 +916,90 @@ def create_app(
             raise HTTPException(status_code=404, detail="文件不存在")
         return FileResponse(path, filename=path.name)
 
+    @app.post(
+        "/api/projects/{project_id}/report-templates",
+        status_code=201,
+    )
+    async def upload_report_template(
+        project_id: str,
+        file: UploadFile = File(...),
+        name: str = Form(""),
+    ) -> dict[str, object]:
+        try:
+            template = app.state.report_templates.upload(
+                project_id,
+                name,
+                file.filename or "",
+                await file.read(),
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except InvalidReportTemplate as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(template)
+
+    @app.get("/api/projects/{project_id}/report-templates")
+    def list_report_templates(
+        project_id: str,
+    ) -> list[dict[str, object]]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        builtin = {
+            "template_id": "builtin",
+            "project_id": project_id,
+            "name": "内置契约模板",
+            "artifact": None,
+        }
+        return [
+            builtin,
+            *[
+                asdict(item)
+                for item in app.state.report_templates.list_templates(
+                    project_id
+                )
+            ],
+        ]
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/reports",
+        status_code=201,
+    )
+    def create_report_draft(
+        project_id: str,
+        batch_id: str,
+        request: ReportDraftRequest,
+    ) -> dict[str, object]:
+        try:
+            draft = app.state.report_templates.create_draft(
+                project_id, batch_id, request.template_id
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        data = asdict(draft)
+        data["docx_url"] = (
+            f"/api/projects/{project_id}/files/batches/{batch_id}/{draft.docx}"
+        )
+        data["workbook_url"] = (
+            f"/api/projects/{project_id}/files/batches/{batch_id}/{draft.workbook}"
+        )
+        return data
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/reports")
+    def list_report_drafts(
+        project_id: str,
+        batch_id: str,
+    ) -> list[dict[str, object]]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        return [
+            asdict(item)
+            for item in app.state.report_templates.list_drafts(
+                project_id, batch_id
+            )
+        ]
+
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
         message = request.message.strip()
@@ -913,6 +1032,11 @@ def create_app(
     ) -> JSONResponse:
         deps: AgentDeps = app.state.deps
         saved: list[str] = []
+        if template_file is not None and template_file.filename:
+            raise HTTPException(
+                status_code=400,
+                detail="请在当前监测项目中通过报告模板接口上传并校验 DOCX",
+            )
 
         for upload in flow_files:
             name = _safe_upload_name(upload, ALLOWED_FLOW_EXTENSIONS)
@@ -925,12 +1049,6 @@ def create_app(
         if site_info_file is not None and site_info_file.filename:
             _safe_upload_name(site_info_file, ALLOWED_SITE_EXTENSIONS)
             saved.append("resources/data/" + _save_upload(site_info_file, deps.paths.site_info_file))
-
-        if template_file is not None and template_file.filename:
-            name = _safe_upload_name(template_file, ALLOWED_TEMPLATE_EXTENSIONS)
-            for old_template in deps.paths.templates.glob("*.docx"):
-                old_template.unlink()
-            saved.append("resources/templates/" + _save_upload(template_file, deps.paths.templates / name))
 
         if saved:
             _clear_manifest(deps)
