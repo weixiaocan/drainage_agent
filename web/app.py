@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from dataclasses import asdict
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel
 from agent.core import build_agent
 from agent.deps import AgentDeps, build_deps
 from agent.core.logging_utils import TraceLogger, trace_event
+from web.projects import Project, ProjectRepository
 
 
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
@@ -29,6 +31,14 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str
+
+
+def _project_data(project: Project) -> dict[str, str]:
+    return asdict(project)
 
 
 def _result_text(result: Any) -> str:
@@ -48,6 +58,14 @@ def _safe_upload_name(upload: UploadFile, allowed_extensions: set[str]) -> str:
     if suffix not in allowed_extensions:
         allowed = ", ".join(sorted(allowed_extensions))
         raise HTTPException(status_code=400, detail=f"{name} 文件类型不支持，仅允许 {allowed}")
+    return name
+
+
+def _safe_project_file_name(upload: UploadFile) -> str:
+    filename = upload.filename or ""
+    name = PurePath(filename).name
+    if not name or name != filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail=f"非法文件名: {filename!r}")
     return name
 
 
@@ -101,11 +119,80 @@ def create_app(
     app.state.deps.trace = app.state.trace
     app.state.agent = agent_factory(app.state.deps)
     app.state.histories: dict[str, list[Any]] = {}
+    app.state.projects = ProjectRepository(
+        app.state.root / "var" / "drainage.sqlite3",
+        app.state.root / "var" / "projects",
+    )
+    app.state.current_project_id: str | None = None
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         html_path = Path(__file__).resolve().parent / "static" / "index.html"
         return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+    @app.post("/api/projects", status_code=201)
+    def create_project(request: ProjectCreateRequest) -> dict[str, str]:
+        name = request.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="项目名称不能为空")
+        return _project_data(app.state.projects.create(name))
+
+    @app.get("/api/projects")
+    def list_projects() -> list[dict[str, str]]:
+        return [_project_data(project) for project in app.state.projects.list()]
+
+    @app.get("/api/projects/selection")
+    def get_project_selection() -> dict[str, dict[str, str] | None]:
+        project = (
+            app.state.projects.get(app.state.current_project_id)
+            if app.state.current_project_id
+            else None
+        )
+        return {"current_project": _project_data(project) if project else None}
+
+    @app.get("/api/projects/{project_id}")
+    def get_project(project_id: str) -> dict[str, str]:
+        project = app.state.projects.get(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        return _project_data(project)
+
+    @app.put("/api/projects/{project_id}/selection")
+    def select_project(project_id: str) -> dict[str, dict[str, str]]:
+        project = app.state.projects.get(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        app.state.current_project_id = project.id
+        return {"current_project": _project_data(project)}
+
+    @app.post("/api/projects/{project_id}/files")
+    def upload_project_files(
+        project_id: str,
+        files: list[UploadFile] = File(...),
+    ) -> dict[str, list[str]]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        saved = [
+            _save_upload(
+                upload,
+                app.state.projects.workspace(project_id)
+                / _safe_project_file_name(upload),
+            )
+            for upload in files
+        ]
+        return {"saved": saved}
+
+    @app.get("/api/projects/{project_id}/files/{file_path:path}")
+    def download_project_file(project_id: str, file_path: str) -> FileResponse:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        try:
+            path = app.state.projects.resolve_file(project_id, file_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        return FileResponse(path, filename=path.name)
 
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:

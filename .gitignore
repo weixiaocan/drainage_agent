@@ -6,6 +6,8 @@ var/logs/*.log
 var/logs/trace-*.jsonl
 var/workspace/agent_run_*.py
 var/workspace/*.json
+var/drainage.sqlite3
+var/projects/
 var/outputs/*
 !var/outputs/.gitkeep
 quality/eval/results.jsonl

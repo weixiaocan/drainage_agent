@@ -74,6 +74,14 @@
       background: #fff;
       font-size: 12px;
     }
+    input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      padding: 9px;
+      border-radius: 6px;
+      background: #fff;
+      font: inherit;
+    }
     button {
       border: 1px solid var(--primary);
       background: var(--primary);
@@ -95,6 +103,15 @@
     .quick {
       display: grid;
       gap: 8px;
+    }
+    .project-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .project-list button {
+      width: 100%;
+      text-align: left;
     }
     .chat {
       padding: 22px 24px;
@@ -217,6 +234,15 @@
       <h1>Drainage Agent</h1>
       <div class="sub">本地排水监测数据分析网页</div>
 
+      <h2>监测项目</h2>
+      <form id="projectForm">
+        <label for="projectName">项目名称</label>
+        <input id="projectName" name="name" type="text" required maxlength="120">
+        <button class="upload-btn" type="submit">创建并切换</button>
+      </form>
+      <div id="projectStatus" class="status">当前项目：未选择</div>
+      <div id="projectList" class="project-list"></div>
+
       <h2>上传数据</h2>
       <form id="uploadForm">
         <label>流量 CSV（可多选）</label>
@@ -268,7 +294,10 @@
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
     const files = document.getElementById("files");
+    const projectStatus = document.getElementById("projectStatus");
+    const projectList = document.getElementById("projectList");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
+    let currentProjectId = "";
 
     function createSessionId() {
       if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -519,6 +548,54 @@
       button.addEventListener("click", () => send(button.dataset.prompt));
     });
 
+    async function selectProject(project) {
+      const res = await fetch(`/api/projects/${project.id}/selection`, {method: "PUT"});
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "切换项目失败");
+      currentProjectId = data.current_project.id;
+      projectStatus.textContent = `当前项目：${data.current_project.name}`;
+      await refreshProjects();
+    }
+
+    async function refreshProjects() {
+      const res = await fetch("/api/projects");
+      const projects = await res.json();
+      projectList.innerHTML = "";
+      if (projects.length === 0) {
+        projectList.textContent = "暂无监测项目。";
+        return;
+      }
+      projects.forEach((project) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = project.id === currentProjectId ? "" : "secondary";
+        button.textContent = project.name;
+        button.title = "查看并切换到此项目";
+        button.addEventListener("click", () => selectProject(project));
+        projectList.appendChild(button);
+      });
+    }
+
+    document.getElementById("projectForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      projectStatus.className = "status";
+      try {
+        const name = event.target.elements.name.value.trim();
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({name}),
+        });
+        const project = await res.json();
+        if (!res.ok) throw new Error(project.detail || "创建项目失败");
+        event.target.reset();
+        await selectProject(project);
+      } catch (err) {
+        projectStatus.className = "status error";
+        projectStatus.textContent = err.message;
+      }
+    });
+
     document.getElementById("uploadForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       uploadStatus.className = "status";
@@ -556,6 +633,15 @@
 
     document.getElementById("refreshResults").addEventListener("click", refreshResults);
     restoreTranscript();
+    fetch("/api/projects/selection")
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.current_project) {
+          currentProjectId = data.current_project.id;
+          projectStatus.textContent = `当前项目：${data.current_project.name}`;
+        }
+        return refreshProjects();
+      });
     refreshResults();
   </script>
 </body>
