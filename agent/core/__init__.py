@@ -325,7 +325,9 @@ FILTER_CONFIRMATION_CLARIFICATION = "是确认用当前筛选结果继续吗？�
 
 
 def _has_pending_filter_confirmation(deps: AgentDeps) -> bool:
-    return bool(deps.session.pending_filter_result_path)
+    return bool(
+        deps.session.pending_filter_id or deps.session.pending_filter_result_path
+    )
 
 
 def _is_clear_filter_confirmation(message: str) -> bool:
