@@ -252,15 +252,15 @@ def test_deterministic_mapping_skips_llm_and_projects_are_isolated(
     ).status_code == 404
 
 
-def test_index_exposes_import_profile_and_candidate_workflow(tmp_path: Path) -> None:
+def test_index_exposes_confirmation_first_candidate_workflow(tmp_path: Path) -> None:
     response = _client(tmp_path).get("/")
 
     assert response.status_code == 200
-    assert 'id="importProfileSelect"' in response.text
-    assert 'id="importSaveProfile"' in response.text
-    assert 'id="saveImportProfile"' in response.text
+    assert 'id="importProfileSelect"' not in response.text
+    assert 'id="importSaveProfile"' not in response.text
+    assert 'id="saveImportProfile"' not in response.text
     assert 'id="importQuestions"' in response.text
-    assert "/import-profiles" in response.text
+    assert "/import-profiles" not in response.text
     assert "/mapping-suggestions" in response.text
     assert "/api/standard-flow-template" in response.text
 

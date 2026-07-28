@@ -325,30 +325,31 @@
       <div id="batchList" class="batch-list"></div>
 
       <h2><span class="step-no">3</span>导入监测数据</h2>
-      <div class="hint">上传原始监测 CSV，系统自动识别列名；只有认不准的列才会问你。列名规范的文件免确认直接导入，也可以<a href="/api/standard-flow-template" download>下载标准模板</a>填写后上传。</div>
+      <div class="hint">可一次选择多个原始监测 CSV。系统智能识别后会列出全部列名匹配结果，请人工修改并确认，再统一生成标准数据。也可以<a href="/api/standard-flow-template" download>下载标准模板</a>填写后上传。</div>
       <form id="batchImportForm">
-        <label for="batchImportFile">原始监测 CSV</label>
-        <input id="batchImportFile" name="file" type="file" accept=".csv" required>
+        <label for="batchImportFile">原始监测 CSV（可多选）</label>
+        <input id="batchImportFile" name="files" type="file" accept=".csv" multiple required>
         <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别</button>
       </form>
-      <details id="profileReuseDetails" class="advanced">
-        <summary>复用已保存的映射配置（同来源文件免确认）</summary>
-        <label for="importProfileSelect">映射配置</label>
-        <select id="importProfileSelect"><option value="">不使用配置</option></select>
+      <details class="advanced">
+        <summary>辅助数据（降雨、点位信息）</summary>
+        <div class="hint">辅助数据与本批监测数据配套使用；上传前请核对文件类型和列名。</div>
+        <form id="uploadForm">
+          <label>降雨 CSV</label>
+          <input name="rainfall_file" type="file" accept=".csv">
+          <label>点位信息 XLSX</label>
+          <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
+          <button class="upload-btn" type="submit">智能识别列名</button>
+        </form>
+        <div id="uploadStatus" class="status"></div>
+        <div id="auxiliaryMapping" class="inspection" hidden></div>
       </details>
       <div id="batchImportStatus" class="status">请先选择分析批次。</div>
       <div id="importQuestions" class="inspection" hidden></div>
-      <details id="importMappingDetails" class="advanced" hidden>
-        <summary>查看或调整全部字段映射</summary>
+      <div id="importMappingDetails" class="advanced" hidden>
+        <h3>列名匹配确认</h3>
+        <div class="hint">逐项核对系统识别结果；如有错误可直接修改。确认后才会生成标准数据。</div>
         <div id="importInspection" class="inspection"></div>
-      </details>
-      <div id="importSaveProfile" hidden>
-        <div class="hint">以下映射可保存为配置，以后同来源文件免确认（可选）。</div>
-        <label for="importProfileName">配置名称</label>
-        <input id="importProfileName" type="text" maxlength="120">
-        <label for="importSourceIdentifier">数据来源标识（如监测平台名称）</label>
-        <input id="importSourceIdentifier" type="text" maxlength="120">
-        <button id="saveImportProfile" type="button" class="secondary upload-btn">保存映射配置</button>
       </div>
       <details id="standardPreviewDetails" class="advanced" hidden>
         <summary>标准数据预览</summary>
@@ -394,19 +395,6 @@
       <div id="files" class="files"></div>
 
       <details class="advanced">
-        <summary>辅助数据（降雨、点位信息）</summary>
-        <div class="hint">对话分析中的降雨场次、风险等能力依赖这些全局共享文件。</div>
-        <form id="uploadForm">
-          <label>降雨 CSV</label>
-          <input name="rainfall_file" type="file" accept=".csv">
-          <label>点位信息 XLSX</label>
-          <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
-          <button class="upload-btn" type="submit">上传辅助数据</button>
-        </form>
-        <div id="uploadStatus" class="status"></div>
-      </details>
-
-      <details class="advanced">
         <summary>排查与运行记录</summary>
         <label class="check">
           <input id="deepDebug" type="checkbox">
@@ -439,6 +427,7 @@
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
+    const auxiliaryMapping = document.getElementById("auxiliaryMapping");
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
     const projectList = document.getElementById("projectList");
@@ -450,10 +439,8 @@
     const importQuestions = document.getElementById("importQuestions");
     const importMappingDetails = document.getElementById("importMappingDetails");
     const importInspection = document.getElementById("importInspection");
-    const importSaveProfile = document.getElementById("importSaveProfile");
     const standardPreviewDetails = document.getElementById("standardPreviewDetails");
     const standardPreview = document.getElementById("standardPreview");
-    const importProfileSelect = document.getElementById("importProfileSelect");
     const runDataQualityButton = document.getElementById("runDataQualityButton");
     const forceDataQualityRerun = document.getElementById("forceDataQualityRerun");
     const dataQualityResult = document.getElementById("dataQualityResult");
@@ -748,11 +735,8 @@
       importQuestions.innerHTML = "";
       importMappingDetails.hidden = true;
       importInspection.innerHTML = "";
-      importSaveProfile.hidden = true;
       standardPreviewDetails.hidden = true;
       standardPreview.innerHTML = "";
-      document.getElementById("importProfileName").value = "";
-      document.getElementById("importSourceIdentifier").value = "";
     }
 
     async function selectProject(project) {
@@ -776,7 +760,6 @@
       batchImportStatus.textContent = "请先选择分析批次。";
       resetImportArea();
       await refreshProjects();
-      await loadImportProfiles();
       await refreshBatches();
     }
 
@@ -936,19 +919,20 @@
     function pendingImportQuestions() {
       if (!importState) return [];
       const questions = [];
-      importState.columns.forEach((column) => {
-        if (!column.field) {
-          questions.push({column, kind: "field"});
-        } else if (NUMERIC_FIELDS.has(column.field) && !column.unit) {
-          questions.push({column, kind: "unit"});
-        }
+      importState.imports.forEach((item) => {
+        item.columns.forEach((column) => {
+          if (!column.field) {
+            questions.push({item, column, kind: "field"});
+          } else if (NUMERIC_FIELDS.has(column.field) && !column.unit) {
+            questions.push({item, column, kind: "unit"});
+          }
+        });
       });
       return questions;
     }
 
-    function anomalyFor(source) {
-      if (!importState) return "";
-      return importState.anomalies.find((text) => text.includes(`字段 ${source}`)) || "";
+    function anomalyFor(item, source) {
+      return item.anomalies.find((text) => text.includes(`字段 ${source}`)) || "";
     }
 
     function renderImportState() {
@@ -958,74 +942,26 @@
       importQuestions.hidden = questions.length === 0;
       importMappingDetails.hidden = false;
 
-      questions.forEach(({column, kind}) => {
-        const box = document.createElement("div");
-        box.className = "question";
-        const title = document.createElement("div");
-        title.className = "q-title";
-        if (kind === "field") {
-          title.textContent = column.suggested
-            ? `列“${column.source}”系统猜测如下，请核对：`
-            : `列“${column.source}”未识别，请选择含义：`;
-          const select = document.createElement("select");
-          select.innerHTML = fieldOptions(column.field);
-          select.addEventListener("change", () => {
-            column.field = select.value || null;
-            column.suggested = false;
-            renderImportState();
-          });
-          box.append(title, select);
-          if (column.suggested) {
-            const note = document.createElement("div");
-            note.className = "q-note";
-            note.textContent = "猜测来自 AI，不会被直接采用，需你确认。";
-            box.appendChild(note);
-          }
-        } else {
-          title.textContent = `列“${column.source}”（${fieldLabel(column.field)}）需要确认源单位：`;
-          const input = document.createElement("input");
-          input.type = "text";
-          input.placeholder = "如 L/s、m3/h、m、mm、m/s";
-          input.value = column.unit || "";
-          input.addEventListener("input", () => {
-            column.unit = input.value.trim() || null;
-          });
-          input.addEventListener("change", renderImportState);
-          box.append(title, input);
-          const hint = anomalyFor(column.source);
-          if (hint) {
-            const note = document.createElement("div");
-            note.className = "q-note";
-            note.textContent = hint;
-            box.appendChild(note);
-          }
-        }
-        importQuestions.appendChild(box);
-      });
+      importQuestions.textContent = questions.length
+        ? `还有 ${questions.length} 项未确认，请在下方表格中修改。`
+        : "所有列名和单位均已识别，请人工核对后确认。";
+      importQuestions.hidden = false;
 
-      if (questions.length > 0) {
-        const confirm = document.createElement("button");
-        confirm.type = "button";
-        confirm.className = "upload-btn";
-        confirm.textContent = "确认并生成标准数据";
-        confirm.addEventListener("click", finalizeImport);
-        importQuestions.appendChild(confirm);
-      }
-
-      const rows = importState.columns.map((column) => {
-        const selectId = `map-${column.source}`;
-        return `<tr data-source="${escapeHtml(column.source)}">
+      importInspection.innerHTML = importState.imports.map((item, itemIndex) => {
+        const rows = item.columns.map((column, columnIndex) => `<tr data-item="${itemIndex}" data-column="${columnIndex}">
           <td>${escapeHtml(column.source)}</td>
-          <td><select data-role="field" aria-label="${selectId}">${fieldOptions(column.field)}</select></td>
+          <td><select data-role="field" aria-label="${escapeHtml(column.source)} 的含义">${fieldOptions(column.field)}</select></td>
           <td>${escapeHtml(column.type)}</td>
-          <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="源单位"></td>
-        </tr>`;
-      }).join("");
-      importInspection.innerHTML = `<p>编码：${escapeHtml(importState.encoding)}；数据行：${importState.rowCount}</p>
-        <table><thead><tr><th>原始列名</th><th>含义</th><th>类型</th><th>源单位</th></tr></thead>
+          <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="如 L/s、m3/h、m、m/s"></td>
+          <td>${column.suggested ? "AI 建议，待核对" : (anomalyFor(item, column.source) || "—")}</td>
+        </tr>`).join("");
+        return `<h4>${escapeHtml(item.filename)}</h4>
+        <p>编码：${escapeHtml(item.encoding)}；数据行：${item.rowCount}</p>
+        <table><thead><tr><th>原始列名</th><th>匹配含义</th><th>类型</th><th>源单位</th><th>提示</th></tr></thead>
         <tbody>${rows}</tbody></table>`;
+      }).join("");
       importInspection.querySelectorAll("tbody tr").forEach((row) => {
-        const column = importState.columns.find((item) => item.source === row.dataset.source);
+        const column = importState.imports[Number(row.dataset.item)].columns[Number(row.dataset.column)];
         row.querySelector('[data-role="field"]').addEventListener("change", (event) => {
           column.field = event.target.value || null;
           column.suggested = false;
@@ -1036,32 +972,39 @@
           renderImportState();
         });
       });
+      const confirm = document.createElement("button");
+      confirm.type = "button";
+      confirm.className = "upload-btn";
+      confirm.textContent = "确认全部匹配并生成标准数据";
+      confirm.disabled = questions.length > 0;
+      confirm.addEventListener("click", finalizeImport);
+      importInspection.appendChild(confirm);
     }
 
     async function finalizeImport() {
       batchImportStatus.className = "status";
       try {
-        const mapping = {};
-        const units = {};
-        importState.columns.forEach((column) => {
-          if (column.field) {
-            mapping[column.source] = column.field;
+        const imports = importState.imports.map((item) => {
+          const mapping = {};
+          const units = {};
+          item.columns.forEach((column) => {
+            if (column.field) mapping[column.source] = column.field;
             if (column.unit) units[column.source] = column.unit;
-          }
+          });
+          return {import_id: item.importId, mapping, units};
         });
         const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${importState.importId}/mapping`,
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/batch-imports/mapping`,
           {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({mapping, units}),
+            body: JSON.stringify({imports}),
           },
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "确认映射失败");
         importQuestions.hidden = true;
-        importSaveProfile.hidden = false;
-        batchImportStatus.textContent = "导入完成，标准数据已生成。";
+        batchImportStatus.textContent = `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
         await loadStandardPreview();
       } catch (err) {
         batchImportStatus.className = "status error";
@@ -1086,96 +1029,46 @@
       standardPreview.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
-    async function loadImportProfiles() {
-      importProfileSelect.innerHTML = '<option value="">不使用配置</option>';
-      if (!currentProjectId) return;
-      const res = await fetch(`/api/projects/${currentProjectId}/import-profiles`);
-      if (!res.ok) return;
-      const profiles = await res.json();
-      profiles.forEach((profile) => {
-        const option = document.createElement("option");
-        option.value = profile.id;
-        option.textContent = `${profile.name}（${profile.source_identifier}）`;
-        importProfileSelect.appendChild(option);
-      });
-    }
-
-    document.getElementById("saveImportProfile").addEventListener("click", async () => {
-      const name = document.getElementById("importProfileName").value.trim();
-      const sourceIdentifier = document.getElementById("importSourceIdentifier").value.trim();
-      if (!currentProjectId || !importState || !name || !sourceIdentifier) {
-        batchImportStatus.textContent = "请填写配置名称和数据来源标识。";
-        return;
-      }
-      const mapping = {};
-      const source_units = {};
-      importState.columns.forEach((column) => {
-        if (column.field) mapping[column.source] = column.field;
-        if (column.unit) source_units[column.source] = column.unit;
-      });
-      const res = await fetch(`/api/projects/${currentProjectId}/import-profiles`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          name,
-          source_identifier: sourceIdentifier,
-          mapping,
-          source_units,
-          parsing_rules: {delimiter: ",", decimal: "."},
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        batchImportStatus.className = "status error";
-        batchImportStatus.textContent = data.detail || "保存导入配置失败";
-        return;
-      }
-      batchImportStatus.className = "status";
-      await loadImportProfiles();
-      importProfileSelect.value = data.id;
-      batchImportStatus.textContent = "导入配置已保存，后续同来源文件可免确认导入。";
-    });
-
     document.getElementById("batchImportForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       batchImportStatus.className = "status";
       try {
         if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
         batchImportStatus.textContent = "正在上传并识别...";
-        const profileQuery = importProfileSelect.value
-          ? `?profile_id=${encodeURIComponent(importProfileSelect.value)}`
-          : "";
+        const selectedNames = Array.from(event.target.elements.files.files).map((file) => file.name);
         const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports${profileQuery}`,
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/batch-imports`,
           {method: "POST", body: new FormData(event.target)},
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "批次数据上传失败");
 
-        importState = {
-          importId: data.id,
-          encoding: data.encoding,
-          rowCount: data.row_count,
-          anomalies: data.anomalies || [],
-          columns: data.columns.map((column) => ({
+        importState = {imports: data.imports.map((item, index) => ({
+          importId: item.id,
+          filename: selectedNames[index] || "监测数据",
+          encoding: item.encoding,
+          rowCount: item.row_count,
+          anomalies: item.anomalies || [],
+          columns: item.columns.map((column) => ({
             source: column.source,
             field: column.field,
             unit: column.unit,
             type: column.type,
             suggested: false,
           })),
-        };
+        }))};
 
-        if (importState.columns.some((column) => !column.field)) {
+        for (const item of importState.imports) {
+          if (!item.columns.some((column) => !column.field)) continue;
           try {
             const suggestRes = await fetch(
-              `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${importState.importId}/mapping-suggestions`,
+              `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${item.importId}/mapping-suggestions`,
               {method: "POST"},
             );
             const suggestions = await suggestRes.json();
             if (suggestRes.ok) {
               (suggestions.candidates || []).forEach((candidate) => {
-                const column = importState.columns.find((item) => item.source === candidate.source);
+                const column = item.columns.find((column) => column.source === candidate.source);
                 if (column && !column.field) {
                   column.field = candidate.field;
                   column.suggested = true;
@@ -1189,13 +1082,9 @@
 
         renderImportState();
         const questions = pendingImportQuestions();
-        if (questions.length === 0) {
-          batchImportStatus.textContent = "全部列已识别，正在直接导入...";
-          await finalizeImport();
-        } else {
-          batchImportStatus.textContent =
-            `有 ${questions.length} 列需要你确认；其余列已自动识别（可在下方详情中查看调整）。`;
-        }
+        batchImportStatus.textContent = questions.length
+          ? `已识别 ${importState.imports.length} 个文件；有 ${questions.length} 项需要修改确认。`
+          : `已识别 ${importState.imports.length} 个文件，请核对下方匹配表后确认。`;
       } catch (err) {
         batchImportStatus.className = "status error";
         batchImportStatus.textContent = err.message;
@@ -1366,17 +1255,93 @@
       }
     });
 
+    let auxiliaryState = null;
+    const AUXILIARY_FIELDS = {
+      rainfall: [
+        {value: "timestamp", label: "降雨时间"},
+        {value: "rain_mm", label: "降雨量 (mm)"},
+      ],
+      sites: [
+        {value: "point_id", label: "点位编号"},
+        {value: "diameter_m", label: "管径 (m)"},
+        {value: "well_depth_m", label: "井深 (m)"},
+        {value: "pipe_type", label: "管道类型（可选）"},
+      ],
+    };
+
+    function renderAuxiliaryMapping() {
+      auxiliaryMapping.hidden = false;
+      auxiliaryMapping.innerHTML = Object.entries(auxiliaryState).map(([kind, item]) => {
+        const options = (selected) => [
+          '<option value="">不导入此列</option>',
+          ...AUXILIARY_FIELDS[kind].map((field) =>
+            `<option value="${field.value}" ${field.value === selected ? "selected" : ""}>${field.label}</option>`
+          ),
+        ].join("");
+        const rows = item.columns.map((column, index) =>
+          `<tr data-kind="${kind}" data-column="${index}"><td>${escapeHtml(column.source)}</td>` +
+          `<td><select>${options(column.field)}</select></td><td>${escapeHtml(column.type)}</td></tr>`
+        ).join("");
+        return `<h4>${kind === "rainfall" ? "降雨数据" : "点位信息"}：${escapeHtml(item.filename)}</h4>
+          <p>数据行：${item.row_count}</p>
+          <table><thead><tr><th>原始列名</th><th>匹配含义</th><th>类型</th></tr></thead><tbody>${rows}</tbody></table>`;
+      }).join("");
+      auxiliaryMapping.querySelectorAll("tbody tr").forEach((row) => {
+        row.querySelector("select").addEventListener("change", (event) => {
+          auxiliaryState[row.dataset.kind].columns[Number(row.dataset.column)].field =
+            event.target.value || null;
+        });
+      });
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "upload-btn";
+      button.textContent = "确认辅助数据匹配并导入";
+      button.addEventListener("click", () => confirmAuxiliaryData().catch((err) => {
+        uploadStatus.className = "status error";
+        uploadStatus.textContent = err.message;
+      }));
+      auxiliaryMapping.appendChild(button);
+    }
+
+    async function confirmAuxiliaryData() {
+      const formElement = document.getElementById("uploadForm");
+      const form = new FormData(formElement);
+      const mappings = {};
+      Object.entries(auxiliaryState).forEach(([kind, item]) => {
+        mappings[kind] = {};
+        item.columns.forEach((column) => {
+          if (column.field) mappings[kind][column.source] = column.field;
+        });
+      });
+      form.append("mappings", JSON.stringify(mappings));
+      const res = await fetch(
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/confirm`,
+        {method: "POST", body: form},
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "辅助数据确认失败");
+      uploadStatus.className = "status";
+      uploadStatus.textContent = data.message;
+      auxiliaryMapping.hidden = true;
+      formElement.reset();
+    }
+
     document.getElementById("uploadForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       uploadStatus.className = "status";
-      uploadStatus.textContent = "上传中...";
+      uploadStatus.textContent = "正在识别辅助数据列名...";
       try {
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
         const form = new FormData(event.target);
-        const res = await fetch("/api/upload", {method: "POST", body: form});
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/inspect`,
+          {method: "POST", body: form},
+        );
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "上传失败");
-        uploadStatus.textContent = `${data.message} ${data.saved.join("，")}`;
-        refreshResults();
+        if (!res.ok) throw new Error(data.detail || "辅助数据识别失败");
+        auxiliaryState = data;
+        renderAuxiliaryMapping();
+        uploadStatus.textContent = "识别完成，请核对下方列名匹配。";
       } catch (err) {
         uploadStatus.className = "status error";
         uploadStatus.textContent = err.message;

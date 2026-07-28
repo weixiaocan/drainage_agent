@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -272,6 +273,99 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "/mapping" in response.text
     assert "/standard/flow" in response.text
     assert "/api/standard-flow-template" in response.text
+    assert 'name="files"' in response.text
+    assert "multiple" in response.text
+    assert "保存映射配置" not in response.text
+    assert "确认全部匹配并生成标准数据" in response.text
+    assert "/batch-imports" in response.text
+    assert "/auxiliary/inspect" in response.text
+    assert "/auxiliary/confirm" in response.text
+
+
+def test_multiple_monitoring_files_are_confirmed_as_one_standard_dataset(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    project = client.post("/api/projects", json={"name": "批量导入"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches",
+        json={"name": "两个点位"},
+    ).json()
+    endpoint = (
+        f"/api/projects/{project['id']}/batches/{batch['id']}/batch-imports"
+    )
+    response = client.post(
+        endpoint,
+        files=[
+            ("files", ("W1.csv", b"time,flow\n2026-01-01 00:00:00,1\n", "text/csv")),
+            ("files", ("W2.csv", b"time,flow\n2026-01-01 00:00:00,2\n", "text/csv")),
+        ],
+    )
+    assert response.status_code == 201
+    imports = response.json()["imports"]
+    confirm = client.put(
+        endpoint + "/mapping",
+        json={
+            "imports": [
+                {
+                    "import_id": item["id"],
+                    "mapping": {"time": "timestamp", "flow": "flow_lps"},
+                    "units": {"flow": "L/s"},
+                }
+                for item in imports
+            ]
+        },
+    )
+    assert confirm.status_code == 200
+    assert confirm.json()["import_count"] == 2
+    assert confirm.json()["row_count"] == 2
+    preview = client.get(
+        f"/api/projects/{project['id']}/batches/{batch['id']}/standard/flow"
+    ).json()
+    assert [row["point_id"] for row in preview["rows"]] == ["W1", "W2"]
+
+
+def test_auxiliary_data_is_inspected_then_saved_to_current_batch(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    project = client.post("/api/projects", json={"name": "辅助数据"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches",
+        json={"name": "列名确认"},
+    ).json()
+    endpoint = (
+        f"/api/projects/{project['id']}/batches/{batch['id']}/auxiliary"
+    )
+    rainfall = b"date,rain\n2026-01-01,2.5\n"
+    inspected = client.post(
+        endpoint + "/inspect",
+        files={"rainfall_file": ("rain.csv", rainfall, "text/csv")},
+    )
+    assert inspected.status_code == 200
+    assert inspected.json()["rainfall"]["row_count"] == 1
+    confirmed = client.post(
+        endpoint + "/confirm",
+        files={"rainfall_file": ("rain.csv", rainfall, "text/csv")},
+        data={"mappings": json.dumps(
+            {"rainfall": {"date": "timestamp", "rain": "rain_mm"}}
+        )},
+    )
+    assert confirmed.status_code == 200
+    standard = (
+        tmp_path
+        / "var"
+        / "projects"
+        / project["id"]
+        / "batches"
+        / batch["id"]
+        / "standard"
+        / "rainfall.csv"
+    )
+    assert standard.read_text(encoding="utf-8").splitlines() == [
+        "timestamp,rain_mm",
+        "2026-01-01,2.5",
+    ]
 
 
 def test_analysis_reads_confirmed_batch_data_only_through_standard_contract(

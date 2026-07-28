@@ -412,6 +412,120 @@ class BatchDataImporter:
             )
         return {"id": import_id, "status": "confirmed"}
 
+    def confirm_batch_mappings(
+        self,
+        project_id: str,
+        batch_id: str,
+        imports: list[dict[str, object]],
+    ) -> dict[str, object]:
+        if not imports:
+            raise ValueError("请至少确认一个监测数据文件")
+        standard_path = self.standard_flow_path(project_id, batch_id)
+        if standard_path.exists():
+            raise ValueError("标准数据已经生成，不可覆盖")
+
+        frames: list[pd.DataFrame] = []
+        manifests: list[dict[str, object]] = []
+        for item in imports:
+            import_id = str(item["import_id"])
+            mapping = dict(item["mapping"])
+            units = dict(item["units"])
+            source = self.raw_file(project_id, batch_id, import_id)
+            if source is None:
+                raise LookupError(f"导入记录不存在: {import_id}")
+            with sqlite3.connect(self.database) as connection:
+                row = connection.execute(
+                    """
+                    SELECT inspection_json, sha256 FROM data_imports
+                    WHERE id = ? AND project_id = ? AND batch_id = ?
+                    """,
+                    (import_id, project_id, batch_id),
+                ).fetchone()
+            inspection = json.loads(row[0])
+            parsing_rules = inspection.get("parsing_rules") or {}
+            read_options = {
+                "dtype": str,
+                "sep": parsing_rules.get("delimiter", ","),
+                "encoding": inspection["encoding"],
+            }
+            raw = pd.read_csv(source, **read_options)
+            source_columns = set(raw.columns)
+            unknown_sources = sorted(set(mapping) - source_columns)
+            if unknown_sources:
+                raise ValueError(
+                    f"{source.name} 的映射包含不存在字段: "
+                    + ", ".join(unknown_sources)
+                )
+            invalid_targets = sorted(set(mapping.values()) - set(STANDARD_FLOW_COLUMNS))
+            if invalid_targets:
+                raise ValueError("映射包含不支持的规范字段: " + ", ".join(invalid_targets))
+            duplicate_targets = sorted(
+                field for field in set(mapping.values())
+                if list(mapping.values()).count(field) > 1
+            )
+            if duplicate_targets:
+                raise ValueError("多个源字段不能映射到同一规范字段: " + ", ".join(duplicate_targets))
+            filename_point_id = self._point_id_from_filename(source.name)
+            required = {"timestamp", "flow_lps"}
+            if filename_point_id is None:
+                required.add("point_id")
+            missing = sorted(required - set(mapping.values()))
+            if missing:
+                raise ValueError(f"{source.name} 缺少必需字段映射: {', '.join(missing)}")
+            frames.append(
+                self._canonicalize(
+                    raw, mapping, units, filename_point_id,
+                    parsing_rules.get("decimal", "."),
+                )
+            )
+            manifests.append({
+                "import_id": import_id,
+                "source_sha256": row[1],
+                "source_encoding": inspection["encoding"],
+                "mapping": mapping,
+                "source_units": units,
+            })
+
+        standard_path.parent.mkdir(parents=True, exist_ok=True)
+        combined = pd.concat(frames, ignore_index=True)
+        combined.to_csv(
+            standard_path,
+            index=False,
+            encoding="utf-8",
+            date_format="%Y-%m-%dT%H:%M:%S",
+        )
+        (standard_path.parent / "manifest.json").write_text(
+            json.dumps({
+                "contract_version": 1,
+                "kind": "standard_flow",
+                "columns": list(STANDARD_FLOW_COLUMNS),
+                "units": STANDARD_FLOW_UNITS,
+                "sources": manifests,
+                "file": "flow.csv",
+            }, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        with sqlite3.connect(self.database) as connection:
+            for item in imports:
+                connection.execute(
+                    """
+                    UPDATE data_imports SET status = 'confirmed', mapping_json = ?
+                    WHERE id = ? AND project_id = ? AND batch_id = ?
+                    """,
+                    (
+                        json.dumps(
+                            {"mapping": item["mapping"], "units": item["units"]},
+                            ensure_ascii=False,
+                        ),
+                        item["import_id"], project_id, batch_id,
+                    ),
+                )
+        return {
+            "status": "confirmed",
+            "import_count": len(imports),
+            "row_count": len(combined),
+        }
+
     def _canonicalize(
         self,
         raw: pd.DataFrame,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from dataclasses import asdict
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
+import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -86,6 +88,16 @@ class AnalysisBatchCreateRequest(BaseModel):
 class ImportMappingRequest(BaseModel):
     mapping: dict[str, str]
     units: dict[str, str]
+
+
+class BatchImportMappingItem(BaseModel):
+    import_id: str
+    mapping: dict[str, str]
+    units: dict[str, str]
+
+
+class BatchImportMappingRequest(BaseModel):
+    imports: list[BatchImportMappingItem]
 
 
 class ImportProfileCreateRequest(BaseModel):
@@ -477,6 +489,34 @@ def create_app(
         return inspection.as_dict()
 
     @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/batch-imports",
+        status_code=201,
+    )
+    async def import_batch_files(
+        project_id: str,
+        batch_id: str,
+        files: list[UploadFile] = File(...),
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        if not files:
+            raise HTTPException(status_code=400, detail="请至少选择一个监测数据文件")
+        inspections = []
+        try:
+            for upload in files:
+                inspections.append(
+                    app.state.data_importer.inspect_upload(
+                        project_id,
+                        batch_id,
+                        upload.filename or "",
+                        await _read_upload(upload),
+                    ).as_dict()
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"imports": inspections}
+
+    @app.post(
         "/api/projects/{project_id}/batches/{batch_id}"
         "/imports/{import_id}/mapping-suggestions"
     )
@@ -559,6 +599,27 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.put(
+        "/api/projects/{project_id}/batches/{batch_id}/batch-imports/mapping"
+    )
+    def confirm_batch_import_mappings(
+        project_id: str,
+        batch_id: str,
+        request: BatchImportMappingRequest,
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        try:
+            return app.state.data_importer.confirm_batch_mappings(
+                project_id,
+                batch_id,
+                [item.model_dump() for item in request.imports],
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/api/standard-flow-template")
     def download_standard_flow_template() -> Response:
         content = (
@@ -582,6 +643,128 @@ def create_app(
         if preview is None:
             raise HTTPException(status_code=409, detail="标准数据尚未确认生成")
         return preview
+
+    def _auxiliary_frame(content: bytes, filename: str) -> pd.DataFrame:
+        suffix = Path(filename).suffix.lower()
+        if suffix == ".csv":
+            for encoding in ("utf-8-sig", "utf-8", "gb18030"):
+                try:
+                    return pd.read_csv(io.BytesIO(content), encoding=encoding)
+                except UnicodeDecodeError:
+                    continue
+            raise ValueError("CSV 编码无法识别")
+        if suffix in ALLOWED_SITE_EXTENSIONS:
+            return pd.read_excel(io.BytesIO(content))
+        raise ValueError("辅助数据文件类型不受支持")
+
+    def _auxiliary_columns(frame: pd.DataFrame, kind: str) -> list[dict[str, str | None]]:
+        aliases = {
+            "rainfall": {
+                "timestamp": {"timestamp", "time", "时间", "日期", "数据时间"},
+                "rain_mm": {"rain", "rain_mm", "雨量", "降雨量", "降雨量(mm)", "日降雨量(mm)"},
+            },
+            "sites": {
+                "point_id": {"point_id", "点位", "点位编号", "监测点位"},
+                "diameter_m": {"diameter_m", "管径", "管径(m)", "管径（m）"},
+                "well_depth_m": {"well_depth_m", "井深", "井深(m)", "井深（m）"},
+                "pipe_type": {"pipe_type", "管道类型", "管材", "设备类型"},
+            },
+        }[kind]
+        return [
+            {
+                "source": str(source),
+                "field": next(
+                    (field for field, names in aliases.items() if str(source).strip() in names),
+                    None,
+                ),
+                "type": str(frame[source].dtype),
+            }
+            for source in frame.columns
+        ]
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/auxiliary/inspect"
+    )
+    async def inspect_auxiliary_data(
+        project_id: str,
+        batch_id: str,
+        rainfall_file: UploadFile | None = File(default=None),
+        site_info_file: UploadFile | None = File(default=None),
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        result: dict[str, object] = {}
+        try:
+            if rainfall_file and rainfall_file.filename:
+                content = await _read_upload(rainfall_file)
+                frame = _auxiliary_frame(content, rainfall_file.filename)
+                result["rainfall"] = {
+                    "filename": rainfall_file.filename,
+                    "row_count": len(frame),
+                    "columns": _auxiliary_columns(frame, "rainfall"),
+                }
+            if site_info_file and site_info_file.filename:
+                content = await _read_upload(site_info_file)
+                frame = _auxiliary_frame(content, site_info_file.filename)
+                result["sites"] = {
+                    "filename": site_info_file.filename,
+                    "row_count": len(frame),
+                    "columns": _auxiliary_columns(frame, "sites"),
+                }
+        except (ValueError, ImportError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not result:
+            raise HTTPException(status_code=400, detail="请至少选择一个辅助数据文件")
+        return result
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/auxiliary/confirm"
+    )
+    async def confirm_auxiliary_data(
+        project_id: str,
+        batch_id: str,
+        mappings: str = Form(...),
+        rainfall_file: UploadFile | None = File(default=None),
+        site_info_file: UploadFile | None = File(default=None),
+    ) -> dict[str, object]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        try:
+            mapping_data = json.loads(mappings)
+            standard_root = app.state.data_importer.standard_flow_path(
+                project_id, batch_id
+            ).parent
+            standard_root.mkdir(parents=True, exist_ok=True)
+            saved: list[str] = []
+            specs = [
+                ("rainfall", rainfall_file, ["timestamp", "rain_mm"], "rainfall.csv"),
+                (
+                    "sites", site_info_file,
+                    ["point_id", "diameter_m", "well_depth_m", "pipe_type"],
+                    "sites.csv",
+                ),
+            ]
+            for kind, upload, required, target_name in specs:
+                if upload is None or not upload.filename:
+                    continue
+                frame = _auxiliary_frame(await _read_upload(upload), upload.filename)
+                mapping = mapping_data.get(kind, {})
+                missing = [field for field in required if field not in mapping.values()]
+                if kind == "sites" and missing == ["pipe_type"]:
+                    frame["__pipe_type_default"] = ""
+                    mapping["__pipe_type_default"] = "pipe_type"
+                    missing = []
+                if missing:
+                    raise ValueError(f"{upload.filename} 缺少字段匹配: {', '.join(missing)}")
+                normalized = pd.DataFrame({
+                    field: frame[next(source for source, target in mapping.items() if target == field)]
+                    for field in required
+                })
+                normalized.to_csv(standard_root / target_name, index=False, encoding="utf-8")
+                saved.append(target_name)
+        except (ValueError, KeyError, json.JSONDecodeError, StopIteration) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"saved": saved, "message": "辅助数据已确认并生成标准文件。"}
 
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}/filters",
