@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import shutil
+import os
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -53,6 +53,20 @@ from web.standard_data import BatchDataImporter
 ALLOWED_FLOW_EXTENSIONS = {".csv"}
 ALLOWED_RAINFALL_EXTENSIONS = {".csv"}
 ALLOWED_SITE_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
+ALLOWED_PROJECT_EXTENSIONS = {
+    ".csv",
+    ".docx",
+    ".json",
+    ".png",
+    ".txt",
+    ".xls",
+    ".xlsm",
+    ".xlsx",
+}
+MAX_UPLOAD_BYTES = int(
+    os.getenv("DRAINAGE_MAX_UPLOAD_BYTES", str(256 * 1024 * 1024))
+)
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 class ChatRequest(BaseModel):
@@ -151,19 +165,47 @@ def _safe_upload_name(upload: UploadFile, allowed_extensions: set[str]) -> str:
     return name
 
 
-def _safe_project_file_name(upload: UploadFile) -> str:
-    filename = upload.filename or ""
-    name = PurePath(filename).name
-    if not name or name != filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail=f"非法文件名: {filename!r}")
-    return name
-
-
 def _save_upload(upload: UploadFile, target: Path) -> str:
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("wb") as f:
-        shutil.copyfileobj(upload.file, f)
+    size = 0
+    created = False
+    try:
+        with target.open("xb") as f:
+            created = True
+            while chunk := upload.file.read(UPLOAD_CHUNK_BYTES):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"上传文件超过 {MAX_UPLOAD_BYTES} 字节上限",
+                    )
+                f.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="上传文件不能为空")
+    except FileExistsError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=f"文件已存在，不允许静默覆盖: {target.name}",
+        ) from exc
+    except Exception:
+        if created:
+            target.unlink(missing_ok=True)
+        raise
     return target.name
+
+
+async def _read_upload(upload: UploadFile) -> bytes:
+    content = bytearray()
+    while chunk := await upload.read(UPLOAD_CHUNK_BYTES):
+        content.extend(chunk)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"上传文件超过 {MAX_UPLOAD_BYTES} 字节上限",
+            )
+    if not content:
+        raise HTTPException(status_code=400, detail="上传文件不能为空")
+    return bytes(content)
 
 
 def _clear_manifest(deps: AgentDeps) -> None:
@@ -514,7 +556,7 @@ def create_app(
                 project_id,
                 batch_id,
                 file.filename or "",
-                await file.read(),
+                await _read_upload(file),
                 profile_id=profile.id if profile else None,
                 source_identifier=(
                     profile.source_identifier if profile else source_identifier
@@ -712,7 +754,7 @@ def create_app(
                 batch_id,
                 filter_id,
                 file.filename or "",
-                await file.read(),
+                await _read_upload(file),
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -902,7 +944,7 @@ def create_app(
             _save_upload(
                 upload,
                 app.state.projects.workspace(project_id)
-                / _safe_project_file_name(upload),
+                / _safe_upload_name(upload, ALLOWED_PROJECT_EXTENSIONS),
             )
             for upload in files
         ]
@@ -912,8 +954,31 @@ def create_app(
     def download_project_file(project_id: str, file_path: str) -> FileResponse:
         if app.state.projects.get(project_id) is None:
             raise HTTPException(status_code=404, detail="监测项目不存在")
+        if PurePath(file_path).parts[:1] == ("batches",):
+            raise HTTPException(
+                status_code=403,
+                detail="批次产物必须通过绑定分析批次的下载接口访问",
+            )
         try:
             path = app.state.projects.resolve_file(project_id, file_path)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        return FileResponse(path, filename=path.name)
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/files/{file_path:path}"
+    )
+    def download_batch_file(
+        project_id: str, batch_id: str, file_path: str
+    ) -> FileResponse:
+        try:
+            path = app.state.projects.resolve_batch_file(
+                project_id, batch_id, file_path
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
         if not path.is_file():
@@ -934,7 +999,7 @@ def create_app(
                 project_id,
                 name,
                 file.filename or "",
-                await file.read(),
+                await _read_upload(file),
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1022,10 +1087,10 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         data = asdict(draft)
         data["docx_url"] = (
-            f"/api/projects/{project_id}/files/batches/{batch_id}/{draft.docx}"
+            f"/api/projects/{project_id}/batches/{batch_id}/files/{draft.docx}"
         )
         data["workbook_url"] = (
-            f"/api/projects/{project_id}/files/batches/{batch_id}/{draft.workbook}"
+            f"/api/projects/{project_id}/batches/{batch_id}/files/{draft.workbook}"
         )
         return data
 

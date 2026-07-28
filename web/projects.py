@@ -203,5 +203,16 @@ class ProjectRepository:
             raise ValueError("项目文件路径超出当前项目空间")
         return requested
 
+    def resolve_batch_file(
+        self, project_id: str, batch_id: str, file_path: str
+    ) -> Path:
+        if self.get_batch(project_id, batch_id) is None:
+            raise LookupError("分析批次不存在")
+        workspace = self.batch_workspace(project_id, batch_id).resolve()
+        requested = (workspace / file_path).resolve()
+        if requested == workspace or not requested.is_relative_to(workspace):
+            raise ValueError("批次文件路径超出当前分析批次空间")
+        return requested
+
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database)

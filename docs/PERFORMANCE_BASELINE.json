@@ -1,0 +1,30 @@
+{
+  "shape": {
+    "points": 50,
+    "days": 30,
+    "interval_minutes": 1,
+    "rows": 2160000,
+    "source_bytes": 114216407
+  },
+  "generation": {
+    "seconds": 127.491,
+    "python_peak_mib": 0.2
+  },
+  "inspection": {
+    "seconds": 16.2,
+    "python_peak_mib": 544.7
+  },
+  "standardization": {
+    "seconds": 114.937,
+    "python_peak_mib": 41.3
+  },
+  "data_quality": {
+    "seconds": 20.951,
+    "python_peak_mib": 621.2
+  },
+  "result_run_id": "d4dc9c5dc8984fd5a257c9d33d4a426c",
+  "notes": [
+    "python_peak_mib 由 tracemalloc 测量，仅覆盖 Python 分配器；pandas/NumPy 原生分配可能更高。",
+    "第一版容量承诺止于 50 点位、30 天、1 分钟采样；半年数据仅作探索，不属于支持容量。"
+  ]
+}

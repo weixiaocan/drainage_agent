@@ -128,7 +128,13 @@ class BatchDataImporter:
         delimiter = (parsing_rules or {}).get("delimiter", ",")
         if len(delimiter) != 1:
             raise ValueError("解析规则 delimiter 必须是单个字符")
-        rows = list(csv.DictReader(io.StringIO(text), delimiter=delimiter))
+        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        rows: list[dict[str, str]] = []
+        row_count = 0
+        for row in reader:
+            row_count += 1
+            if len(rows) < 100:
+                rows.append(row)
         if not rows:
             raise ValueError("文件不包含数据行，请上传至少一行监测数据")
         columns = []
@@ -192,7 +198,7 @@ class BatchDataImporter:
             id=uuid.uuid4().hex,
             status="pending_confirmation" if anomalies or profile_id else "ready",
             encoding=encoding,
-            row_count=len(rows),
+            row_count=row_count,
             columns=columns,
             anomalies=anomalies,
             mapping=effective_mapping if profile_id else None,
@@ -313,14 +319,14 @@ class BatchDataImporter:
             ).fetchone()
         inspection = json.loads(row[0])
         source_sha256 = row[1]
-        text = source.read_bytes().decode(inspection["encoding"])
         parsing_rules = inspection.get("parsing_rules") or {}
-        raw = pd.read_csv(
-            io.StringIO(text),
-            dtype=str,
-            sep=parsing_rules.get("delimiter", ","),
-        )
-        unknown_sources = sorted(set(mapping) - set(raw.columns))
+        read_options = {
+            "dtype": str,
+            "sep": parsing_rules.get("delimiter", ","),
+            "encoding": inspection["encoding"],
+        }
+        source_columns = list(pd.read_csv(source, nrows=0, **read_options).columns)
+        unknown_sources = sorted(set(mapping) - set(source_columns))
         if unknown_sources:
             raise ValueError(
                 "映射包含文件中不存在的字段: " + ", ".join(unknown_sources)
@@ -349,43 +355,29 @@ class BatchDataImporter:
         if missing:
             raise ValueError(f"缺少必需字段映射: {', '.join(missing)}")
 
-        canonical = pd.DataFrame()
-        for field in STANDARD_FLOW_COLUMNS:
-            sources = [source_name for source_name, target in mapping.items() if target == field]
-            canonical[field] = raw[sources[0]] if sources else None
-        if "point_id" not in mapped_fields:
-            canonical["point_id"] = filename_point_id
-        canonical["timestamp"] = pd.to_datetime(canonical["timestamp"], errors="coerce")
-        if canonical["timestamp"].isna().any():
-            raise ValueError("时间字段包含无效值，请修正后重新确认")
-        for field in ("flow_lps", "level_m", "velocity_mps"):
-            decimal = parsing_rules.get("decimal", ".")
-            if decimal != ".":
-                canonical[field] = canonical[field].str.replace(
-                    decimal, ".", regex=False
-                )
-            canonical[field] = pd.to_numeric(canonical[field], errors="coerce")
-            source_name = next(
-                (name for name, target in mapping.items() if target == field),
-                None,
-            )
-            if source_name is not None:
-                unit = units.get(source_name)
-                if not unit:
-                    raise ValueError(f"字段 {source_name} 的单位仍未确认")
-                canonical[field] = self._convert(canonical[field], field, unit)
-        if canonical["point_id"].isna().any() or canonical["point_id"].str.strip().eq("").any():
-            raise ValueError("点位字段包含空值，请补齐后重新确认")
-        if canonical["flow_lps"].isna().any():
-            raise ValueError("流量字段包含非数值或空值，请修正后重新确认")
-
         standard_path.parent.mkdir(parents=True, exist_ok=True)
-        canonical.to_csv(
-            standard_path,
-            index=False,
-            encoding="utf-8",
-            date_format="%Y-%m-%dT%H:%M:%S",
-        )
+        try:
+            for chunk_index, raw in enumerate(
+                pd.read_csv(source, chunksize=200_000, **read_options)
+            ):
+                canonical = self._canonicalize(
+                    raw,
+                    mapping,
+                    units,
+                    filename_point_id,
+                    parsing_rules.get("decimal", "."),
+                )
+                canonical.to_csv(
+                    standard_path,
+                    mode="w" if chunk_index == 0 else "a",
+                    header=chunk_index == 0,
+                    index=False,
+                    encoding="utf-8",
+                    date_format="%Y-%m-%dT%H:%M:%S",
+                )
+        except Exception:
+            standard_path.unlink(missing_ok=True)
+            raise
         manifest = {
             "contract_version": 1,
             "kind": "standard_flow",
@@ -419,6 +411,53 @@ class BatchDataImporter:
                 ),
             )
         return {"id": import_id, "status": "confirmed"}
+
+    def _canonicalize(
+        self,
+        raw: pd.DataFrame,
+        mapping: dict[str, str],
+        units: dict[str, str],
+        filename_point_id: str | None,
+        decimal: str,
+    ) -> pd.DataFrame:
+        canonical = pd.DataFrame(index=raw.index)
+        for field in STANDARD_FLOW_COLUMNS:
+            source_names = [
+                source for source, target in mapping.items() if target == field
+            ]
+            canonical[field] = raw[source_names[0]] if source_names else None
+        if "point_id" not in mapping.values():
+            canonical["point_id"] = filename_point_id
+        canonical["timestamp"] = pd.to_datetime(
+            canonical["timestamp"], errors="coerce"
+        )
+        if canonical["timestamp"].isna().any():
+            raise ValueError("时间字段包含无效值，请修正后重新确认")
+        for field in ("flow_lps", "level_m", "velocity_mps"):
+            if decimal != ".":
+                canonical[field] = canonical[field].str.replace(
+                    decimal, ".", regex=False
+                )
+            canonical[field] = pd.to_numeric(canonical[field], errors="coerce")
+            source_name = next(
+                (name for name, target in mapping.items() if target == field),
+                None,
+            )
+            if source_name is not None:
+                unit = units.get(source_name)
+                if not unit:
+                    raise ValueError(f"字段 {source_name} 的单位仍未确认")
+                canonical[field] = self._convert(
+                    canonical[field], field, unit
+                )
+        if (
+            canonical["point_id"].isna().any()
+            or canonical["point_id"].astype(str).str.strip().eq("").any()
+        ):
+            raise ValueError("点位字段包含空值，请补齐后重新确认")
+        if canonical["flow_lps"].isna().any():
+            raise ValueError("流量字段包含非数值或空值，请修正后重新确认")
+        return canonical
 
     def raw_file(self, project_id: str, batch_id: str, import_id: str) -> Path | None:
         with sqlite3.connect(self.database) as connection:

@@ -84,6 +84,86 @@ def test_project_file_download_is_confined_to_requested_project(tmp_path: Path) 
     assert escaped.status_code == 403
 
 
+def test_project_upload_rejects_executable_and_preserves_existing_file(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "上传安全"}).json()
+    endpoint = f"/api/projects/{project['id']}/files"
+
+    rejected = client.post(
+        endpoint,
+        files=[
+            (
+                "files",
+                ("payload.exe", b"MZ", "application/octet-stream"),
+            )
+        ],
+    )
+    first = client.post(
+        endpoint,
+        files=[("files", ("记录.txt", b"original", "text/plain"))],
+    )
+    duplicate = client.post(
+        endpoint,
+        files=[("files", ("记录.txt", b"replacement", "text/plain"))],
+    )
+
+    assert rejected.status_code == 400
+    assert first.status_code == 200
+    assert duplicate.status_code == 409
+    assert (
+        app.state.projects.workspace(project["id"]) / "记录.txt"
+    ).read_bytes() == b"original"
+
+
+def test_batch_artifacts_require_matching_project_and_batch(tmp_path: Path) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "隔离"}).json()
+    first = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第一批"}
+    ).json()
+    second = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第二批"}
+    ).json()
+    artifact = (
+        app.state.projects.batch_workspace(project["id"], first["id"])
+        / "results"
+        / "result.json"
+    )
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("first", encoding="utf-8")
+
+    allowed = client.get(
+        f"/api/projects/{project['id']}/batches/{first['id']}"
+        "/files/results/result.json"
+    )
+    wrong_batch = client.get(
+        f"/api/projects/{project['id']}/batches/{second['id']}"
+        "/files/../"
+        f"{first['id']}/results/result.json"
+    )
+    legacy_bypass = client.get(
+        f"/api/projects/{project['id']}/files/batches/{first['id']}"
+        "/results/result.json"
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.text == "first"
+    assert wrong_batch.status_code in {403, 404}
+    assert legacy_bypass.status_code == 403
+
+
 def test_index_exposes_project_workbench(tmp_path: Path) -> None:
     app = create_app(
         tmp_path,

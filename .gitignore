@@ -17,3 +17,4 @@ quality/eval/eval_stage1/artifacts/
 quality/eval/eval_stage2/artifacts/
 quality/eval/*/results.jsonl
 quality/eval/*/results.jsonl.tmp
+.scratch/capacity/

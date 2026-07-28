@@ -41,6 +41,14 @@ docker run --rm -p 8000:8000 --env-file .env drainage-agent
 
 浏览器打开 `http://127.0.0.1:8000`。
 
+推荐使用命名卷保存 SQLite、项目文件、结果与日志：
+
+```powershell
+docker compose up -d --build
+```
+
+`docker-compose.yml` 将完整的 `/app/var` 挂载到 `drainage-state`。删除并重建容器不会删除命名卷；只有显式执行 `docker compose down -v` 才会删除持久数据。
+
 把产物目录挂载到宿主机，容器删除后仍保留 `var/outputs/`、`var/workspace/` 和 `var/logs/`：
 
 ```powershell
@@ -107,6 +115,7 @@ docs/PROJECT_NOTES.md  项目记忆
 - `docs/adr/`: 已接受的架构决策。
 - `docs/adr/0013-keep-pydantic-ai-behind-project-aware-conversation-runner.md`: Agent 框架选型与对话运行 seam。
 - `docs/EVALUATION.md`: 当前评测策略与发布门槛。
+- `docs/PERFORMANCE.md`: 50 点位、30 天容量基线与已知边界。
 - `docs/README.md`: 文档索引及优先级。
 
 ## Tool Result Protocol

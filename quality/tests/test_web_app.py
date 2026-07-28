@@ -264,6 +264,25 @@ def test_upload_rejects_bad_extension(client: TestClient) -> None:
     assert "文件类型不支持" in response.json()["detail"]
 
 
+def test_upload_rejects_empty_and_oversized_files(
+    client: TestClient, monkeypatch
+) -> None:
+    empty = client.post(
+        "/api/upload",
+        files=[("flow_files", ("empty.csv", b"", "text/csv"))],
+    )
+    monkeypatch.setattr("web.app.MAX_UPLOAD_BYTES", 4)
+    oversized = client.post(
+        "/api/upload",
+        files=[("flow_files", ("large.csv", b"12345", "text/csv"))],
+    )
+
+    assert empty.status_code == 400
+    assert empty.json()["detail"] == "上传文件不能为空"
+    assert oversized.status_code == 413
+    assert "超过 4 字节上限" in oversized.json()["detail"]
+
+
 def test_upload_rejects_path_traversal_filename(client: TestClient) -> None:
     response = client.post(
         "/api/upload",
