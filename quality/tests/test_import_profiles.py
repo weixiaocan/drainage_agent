@@ -256,13 +256,13 @@ def test_index_exposes_import_profile_and_candidate_workflow(tmp_path: Path) -> 
     response = _client(tmp_path).get("/")
 
     assert response.status_code == 200
-    assert 'id="importProfileForm"' in response.text
     assert 'id="importProfileSelect"' in response.text
+    assert 'id="importSaveProfile"' in response.text
     assert 'id="saveImportProfile"' in response.text
-    assert 'id="suggestImportMapping"' in response.text
+    assert 'id="importQuestions"' in response.text
     assert "/import-profiles" in response.text
     assert "/mapping-suggestions" in response.text
-    assert "尚未确认" in response.text
+    assert "/api/standard-flow-template" in response.text
 
 
 def test_reused_parsing_rules_drive_preview_and_confirmed_v1_data(

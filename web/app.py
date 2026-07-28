@@ -8,11 +8,10 @@ from dataclasses import asdict
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from analysis.io import StandardDataUnavailable
 from analysis.io.standard import STANDARD_FLOW_COLUMNS
 from analysis.baselines import (
     BaselinePreconditionError,
@@ -33,14 +32,6 @@ from agent.core import build_agent
 from agent.conversations import ConversationRepository, ConversationRunner
 from agent.deps import AgentDeps, build_deps
 from agent.run_records import RunRecorder
-from web.derived_batches import (
-    BatchRecordReader,
-    InvalidConflictResolution,
-    UnresolvedMergeConflicts,
-    merge_batch_records,
-    standard_batch_record_reader,
-    write_derived_standard_flow,
-)
 from web.projects import AnalysisBatch, Project, ProjectRepository
 from web.import_profiles import (
     ImportProfileRepository,
@@ -131,18 +122,6 @@ class FilterRunRequest(BaseModel):
 
 class FilterConfirmationRequest(BaseModel):
     confirm: bool
-
-
-class ConflictResolution(BaseModel):
-    point_id: str
-    timestamp: str
-    source_batch_id: str
-
-
-class DerivedAnalysisBatchCreateRequest(BaseModel):
-    name: str
-    source_batch_ids: list[str]
-    conflict_resolutions: list[ConflictResolution] = Field(default_factory=list)
 
 
 def _project_data(project: Project) -> dict[str, str]:
@@ -243,7 +222,6 @@ def create_app(
     *,
     deps_factory: Callable[[Path], AgentDeps] = build_deps,
     agent_factory: Callable[[AgentDeps], Any] = build_agent,
-    batch_record_reader: BatchRecordReader = standard_batch_record_reader,
     mapping_suggester: MappingSuggester | None = None,
     background_job_workers: int = 2,
 ) -> FastAPI:
@@ -415,92 +393,6 @@ def create_app(
             for batch in app.state.projects.list_batches(project_id)
         ]
 
-    @app.post("/api/projects/{project_id}/derived-batches", status_code=201)
-    def create_derived_analysis_batch(
-        project_id: str,
-        request: DerivedAnalysisBatchCreateRequest,
-    ) -> dict[str, str]:
-        if app.state.projects.get(project_id) is None:
-            raise HTTPException(status_code=404, detail="监测项目不存在")
-        source_batch_ids = list(dict.fromkeys(request.source_batch_ids))
-        if len(source_batch_ids) < 2:
-            raise HTTPException(
-                status_code=400,
-                detail="派生分析批次至少需要两个来源批次",
-            )
-        if any(
-            app.state.projects.get_batch(project_id, batch_id) is None
-            for batch_id in source_batch_ids
-        ):
-            raise HTTPException(
-                status_code=404,
-                detail="来源分析批次不存在于当前监测项目",
-            )
-        try:
-            merged_records = merge_batch_records(
-                [
-                    (
-                        source_batch_id,
-                        app.state.projects.batch_workspace(
-                            project_id,
-                            source_batch_id,
-                        ),
-                    )
-                    for source_batch_id in source_batch_ids
-                ],
-                batch_record_reader,
-                [
-                    resolution.model_dump()
-                    for resolution in request.conflict_resolutions
-                ],
-            )
-        except UnresolvedMergeConflicts as exc:
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "status": "conflicts",
-                    "conflicts": exc.summary,
-                    "conflict_items": exc.items,
-                },
-            )
-        except StandardDataUnavailable as exc:
-            raise HTTPException(
-                status_code=409,
-                detail="来源批次标准数据尚未确认生成",
-            ) from exc
-        except InvalidConflictResolution as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        name = request.name.strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="分析批次名称不能为空")
-        derived_batch = app.state.projects.create_derived_batch(
-            project_id,
-            name,
-            source_batch_ids,
-        )
-        write_derived_standard_flow(
-            app.state.projects.batch_workspace(project_id, derived_batch.id),
-            merged_records,
-            source_batch_ids,
-            [
-                resolution.model_dump()
-                for resolution in request.conflict_resolutions
-            ],
-        )
-        return _batch_data(derived_batch)
-
-    @app.get("/api/projects/{project_id}/batches/{batch_id}/sources")
-    def get_analysis_batch_sources(
-        project_id: str,
-        batch_id: str,
-    ) -> list[dict[str, str]]:
-        if app.state.projects.get_batch(project_id, batch_id) is None:
-            raise HTTPException(status_code=404, detail="分析批次不存在")
-        return [
-            _batch_data(batch)
-            for batch in app.state.projects.get_batch_sources(project_id, batch_id)
-        ]
-
     @app.get("/api/projects/{project_id}/batches/selection")
     def get_analysis_batch_selection(
         project_id: str,
@@ -651,6 +543,21 @@ def create_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/standard-flow-template")
+    def download_standard_flow_template() -> Response:
+        content = (
+            "数据时间,设备编号,点位编号,流量(L/s),液位(m),流速(m/s)\n"
+            "2026-01-01 00:00:00,D001,W1,12.5,1.23,0.45\n"
+        )
+        return Response(
+            content=content.encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition":
+                    'attachment; filename="standard_flow_template.csv"'
+            },
+        )
 
     @app.get("/api/projects/{project_id}/batches/{batch_id}/standard/flow")
     def get_standard_flow(project_id: str, batch_id: str) -> dict[str, object]:

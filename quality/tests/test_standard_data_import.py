@@ -22,6 +22,34 @@ def _client(tmp_path: Path) -> TestClient:
     )
 
 
+def test_standard_flow_template_downloads_and_imports_without_questions(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+
+    template = client.get("/api/standard-flow-template")
+
+    assert template.status_code == 200
+    assert "attachment" in template.headers["content-disposition"]
+    assert template.content.startswith(b"\xef\xbb\xbf")
+
+    project = client.post("/api/projects", json={"name": "模板项目"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches",
+        json={"name": "模板批次"},
+    ).json()
+    response = client.post(
+        f"/api/projects/{project['id']}/batches/{batch['id']}/imports",
+        files={"file": ("filled_template.csv", template.content, "text/csv")},
+    )
+
+    assert response.status_code == 201
+    inspection = response.json()
+    assert inspection["status"] == "ready"
+    assert inspection["anomalies"] == []
+    assert all(column["field"] for column in inspection["columns"])
+
+
 def test_web_uploads_demo_flow_as_immutable_batch_input_and_inspects_it(
     tmp_path: Path,
 ) -> None:
@@ -233,16 +261,17 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
 
     assert response.status_code == 200
     assert 'id="batchImportForm"' in response.text
+    assert 'id="importQuestions"' in response.text
     assert 'id="importInspection"' in response.text
     assert 'id="standardPreview"' in response.text
     assert "编码" in response.text
-    assert "字段" in response.text
+    assert "原始列名" in response.text
     assert "类型" in response.text
-    assert "单位" in response.text
-    assert "异常" in response.text
+    assert "源单位" in response.text
     assert "/imports" in response.text
     assert "/mapping" in response.text
     assert "/standard/flow" in response.text
+    assert "/api/standard-flow-template" in response.text
 
 
 def test_analysis_reads_confirmed_batch_data_only_through_standard_contract(

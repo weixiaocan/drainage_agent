@@ -58,18 +58,6 @@ class ProjectRepository:
                 )
                 """
             )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS derived_batch_sources (
-                    derived_batch_id TEXT NOT NULL,
-                    source_batch_id TEXT NOT NULL,
-                    source_position INTEGER NOT NULL,
-                    PRIMARY KEY (derived_batch_id, source_batch_id),
-                    FOREIGN KEY (derived_batch_id) REFERENCES analysis_batches (id),
-                    FOREIGN KEY (source_batch_id) REFERENCES analysis_batches (id)
-                )
-                """
-            )
 
     def create(self, name: str) -> Project:
         project = Project(
@@ -131,51 +119,6 @@ class ProjectRepository:
                 (project_id, batch_id),
             ).fetchone()
         return AnalysisBatch(*row) if row is not None else None
-
-    def create_derived_batch(
-        self,
-        project_id: str,
-        name: str,
-        source_batch_ids: list[str],
-    ) -> AnalysisBatch:
-        batch = self.create_batch(project_id, name)
-        with self._connect() as connection:
-            connection.executemany(
-                """
-                INSERT INTO derived_batch_sources (
-                    derived_batch_id,
-                    source_batch_id,
-                    source_position
-                )
-                VALUES (?, ?, ?)
-                """,
-                [
-                    (batch.id, source_batch_id, position)
-                    for position, source_batch_id in enumerate(source_batch_ids)
-                ],
-            )
-        return batch
-
-    def get_batch_sources(
-        self,
-        project_id: str,
-        derived_batch_id: str,
-    ) -> list[AnalysisBatch]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT source.id, source.project_id, source.name, source.created_at
-                FROM derived_batch_sources AS relation
-                JOIN analysis_batches AS derived
-                    ON derived.id = relation.derived_batch_id
-                JOIN analysis_batches AS source
-                    ON source.id = relation.source_batch_id
-                WHERE derived.project_id = ? AND derived.id = ?
-                ORDER BY relation.source_position
-                """,
-                (project_id, derived_batch_id),
-            ).fetchall()
-        return [AnalysisBatch(*row) for row in rows]
 
     def list_batches(self, project_id: str) -> list[AnalysisBatch]:
         with self._connect() as connection:

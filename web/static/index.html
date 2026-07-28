@@ -15,6 +15,8 @@
       --primary-dark: #0f5268;
       --soft: #edf6f8;
       --danger: #a63d40;
+      --warn-bg: #fffaf0;
+      --warn-border: #e5c07b;
     }
     * { box-sizing: border-box; }
     body {
@@ -55,11 +57,31 @@
       margin: 20px 0 10px;
       font-size: 15px;
     }
+    .step-no {
+      display: inline-block;
+      min-width: 20px;
+      height: 20px;
+      line-height: 20px;
+      text-align: center;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      font-size: 12px;
+      margin-right: 4px;
+      vertical-align: 1px;
+    }
     .sub {
       margin-top: 5px;
       color: var(--muted);
       font-size: 13px;
     }
+    .hint {
+      margin: 6px 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .hint a { color: var(--primary); }
     label {
       display: block;
       margin: 10px 0 6px;
@@ -114,6 +136,33 @@
     .batch-list button {
       width: 100%;
       text-align: left;
+    }
+    details.advanced {
+      margin: 10px 0;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    details.advanced > summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .question {
+      border: 1px solid var(--warn-border);
+      background: var(--warn-bg);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-top: 8px;
+    }
+    .question .q-title {
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .question .q-note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
     }
     .chat {
       padding: 22px 24px;
@@ -256,7 +305,7 @@
       <h1>Drainage Agent</h1>
       <div class="sub">本地排水监测数据分析网页</div>
 
-      <h2>监测项目</h2>
+      <h2><span class="step-no">1</span>监测项目</h2>
       <form id="projectForm">
         <label for="projectName">项目名称</label>
         <input id="projectName" name="name" type="text" required maxlength="120">
@@ -265,7 +314,8 @@
       <div id="projectStatus" class="status">当前项目：未选择</div>
       <div id="projectList" class="project-list"></div>
 
-      <h2>分析批次</h2>
+      <h2><span class="step-no">2</span>分析批次</h2>
+      <div class="hint">一次独立分析对应一个批次，数据、筛选和结果都挂在批次下。</div>
       <form id="batchForm">
         <label for="batchName">批次名称</label>
         <input id="batchName" name="name" type="text" required maxlength="120">
@@ -274,28 +324,38 @@
       <div id="batchStatus" class="status">当前批次：未选择</div>
       <div id="batchList" class="batch-list"></div>
 
-      <h2>批次标准数据</h2>
-      <form id="importProfileForm">
-        <label for="importProfileName">导入配置名称</label>
-        <input id="importProfileName" type="text" maxlength="120">
-        <label for="importSourceIdentifier">数据来源标识</label>
-        <input id="importSourceIdentifier" type="text" maxlength="120">
-        <button id="saveImportProfile" type="button" disabled>保存当前映射配置</button>
-      </form>
+      <h2><span class="step-no">3</span>导入监测数据</h2>
+      <div class="hint">上传原始监测 CSV，系统自动识别列名；只有认不准的列才会问你。列名规范的文件免确认直接导入，也可以<a href="/api/standard-flow-template" download>下载标准模板</a>填写后上传。</div>
       <form id="batchImportForm">
-        <label for="importProfileSelect">复用导入配置</label>
-        <select id="importProfileSelect"><option value="">不使用配置</option></select>
         <label for="batchImportFile">原始监测 CSV</label>
         <input id="batchImportFile" name="file" type="file" accept=".csv" required>
-        <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并识别</button>
+        <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别</button>
       </form>
+      <details id="profileReuseDetails" class="advanced">
+        <summary>复用已保存的映射配置（同来源文件免确认）</summary>
+        <label for="importProfileSelect">映射配置</label>
+        <select id="importProfileSelect"><option value="">不使用配置</option></select>
+      </details>
       <div id="batchImportStatus" class="status">请先选择分析批次。</div>
-      <div id="importInspection" class="inspection">
-        编码、字段、类型、单位和异常将在上传后显示。
+      <div id="importQuestions" class="inspection" hidden></div>
+      <details id="importMappingDetails" class="advanced" hidden>
+        <summary>查看或调整全部字段映射</summary>
+        <div id="importInspection" class="inspection"></div>
+      </details>
+      <div id="importSaveProfile" hidden>
+        <div class="hint">以下映射可保存为配置，以后同来源文件免确认（可选）。</div>
+        <label for="importProfileName">配置名称</label>
+        <input id="importProfileName" type="text" maxlength="120">
+        <label for="importSourceIdentifier">数据来源标识（如监测平台名称）</label>
+        <input id="importSourceIdentifier" type="text" maxlength="120">
+        <button id="saveImportProfile" type="button" class="secondary upload-btn">保存映射配置</button>
       </div>
-      <div id="standardPreview" class="inspection">标准数据预览尚未生成。</div>
+      <details id="standardPreviewDetails" class="advanced" hidden>
+        <summary>标准数据预览</summary>
+        <div id="standardPreview" class="inspection"></div>
+      </details>
 
-      <h2>筛选确认与分析基线</h2>
+      <h2><span class="step-no">4</span>筛选确认与分析基线</h2>
       <button id="runFilterButton" class="upload-btn" type="button" disabled>
         运行自动筛选
       </button>
@@ -309,7 +369,7 @@
         明确确认当前筛选文件
       </button>
 
-      <h2>数据质量检查</h2>
+      <h2><span class="step-no">5</span>数据质量检查</h2>
       <label class="check">
         <input id="forceDataQualityRerun" type="checkbox">
         明确重新运行并创建新版本
@@ -319,31 +379,6 @@
       </button>
       <div id="dataQualityResult" class="inspection">请先选择已有标准数据的分析批次。</div>
       <div id="analysisJobHistory" class="inspection">当前批次暂无后台作业。</div>
-
-      <h2>派生分析批次</h2>
-      <form id="derivedBatchForm">
-        <label for="derivedBatchName">派生批次名称</label>
-        <input id="derivedBatchName" name="name" type="text" required maxlength="120">
-        <label>选择至少两个来源批次</label>
-        <div id="derivedBatchSources" class="batch-list">请先选择监测项目。</div>
-        <button class="upload-btn" type="submit">创建派生批次</button>
-      </form>
-      <div id="derivedBatchStatus" class="status"></div>
-      <div id="derivedConflictPanel" class="status" hidden></div>
-
-      <h2>上传数据</h2>
-      <form id="uploadForm">
-        <label>流量 CSV（可多选）</label>
-        <input name="flow_files" type="file" accept=".csv" multiple>
-        <label>降雨 CSV</label>
-        <input name="rainfall_file" type="file" accept=".csv">
-        <label>点位信息 XLSX</label>
-        <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
-        <label>报告模板 DOCX</label>
-        <input name="template_file" type="file" accept=".docx">
-        <button class="upload-btn" type="submit">上传并标记旧结果过期</button>
-      </form>
-      <div id="uploadStatus" class="status"></div>
 
       <h2>快捷指令</h2>
       <div class="quick">
@@ -358,22 +393,37 @@
       <button class="secondary" id="refreshResults" type="button">刷新列表</button>
       <div id="files" class="files"></div>
 
-      <h2>Agent 运行记录</h2>
-      <label class="check">
-        <input id="deepDebug" type="checkbox">
-        开启受控深度调试
-      </label>
-      <button class="secondary" id="refreshAgentRuns" type="button">刷新运行记录</button>
-      <div id="agentRuns" class="inspection">请先选择分析批次。</div>
+      <details class="advanced">
+        <summary>辅助数据（降雨、点位信息）</summary>
+        <div class="hint">对话分析中的降雨场次、风险等能力依赖这些全局共享文件。</div>
+        <form id="uploadForm">
+          <label>降雨 CSV</label>
+          <input name="rainfall_file" type="file" accept=".csv">
+          <label>点位信息 XLSX</label>
+          <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
+          <button class="upload-btn" type="submit">上传辅助数据</button>
+        </form>
+        <div id="uploadStatus" class="status"></div>
+      </details>
+
+      <details class="advanced">
+        <summary>排查与运行记录</summary>
+        <label class="check">
+          <input id="deepDebug" type="checkbox">
+          开启受控深度调试
+        </label>
+        <button class="secondary" id="refreshAgentRuns" type="button">刷新运行记录</button>
+        <div id="agentRuns" class="inspection">请先选择分析批次。</div>
+      </details>
     </aside>
 
     <main>
       <header>
         <h1>对话分析</h1>
-        <div class="sub">上传数据后，直接描述要做的分析。</div>
+        <div class="sub">完成左侧第 1～3 步后，直接描述要做的分析。</div>
       </header>
       <section id="chat" class="chat">
-        <div class="msg agent">已就绪。可以先点“描述当前数据”。</div>
+        <div class="msg agent">已就绪。请先在左侧第 1 步创建或选择监测项目。</div>
       </section>
       <form id="chatForm" class="composer">
         <textarea id="message" placeholder="例如：只看 3 月 7 日这场雨的场次统计"></textarea>
@@ -397,7 +447,11 @@
     const createBatchButton = document.getElementById("createBatchButton");
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
+    const importQuestions = document.getElementById("importQuestions");
+    const importMappingDetails = document.getElementById("importMappingDetails");
     const importInspection = document.getElementById("importInspection");
+    const importSaveProfile = document.getElementById("importSaveProfile");
+    const standardPreviewDetails = document.getElementById("standardPreviewDetails");
     const standardPreview = document.getElementById("standardPreview");
     const importProfileSelect = document.getElementById("importProfileSelect");
     const runDataQualityButton = document.getElementById("runDataQualityButton");
@@ -411,16 +465,26 @@
     const analysisJobHistory = document.getElementById("analysisJobHistory");
     const agentRuns = document.getElementById("agentRuns");
     const deepDebug = document.getElementById("deepDebug");
-    const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
+    const welcomeMessage = "已就绪。请先在左侧第 1 步创建或选择监测项目。";
     let currentProjectId = "";
     let currentBatchId = "";
-    let currentInspection = null;
+    let importState = null;
     let currentFilterId = "";
-    const derivedBatchSources = document.getElementById("derivedBatchSources");
-    const derivedBatchStatus = document.getElementById("derivedBatchStatus");
-    const derivedConflictPanel = document.getElementById("derivedConflictPanel");
-    let availableBatches = [];
-    let pendingDerivedRequest = null;
+
+    const CANONICAL_FIELDS = [
+      {value: "timestamp", label: "监测时间"},
+      {value: "device_id", label: "设备编号"},
+      {value: "point_id", label: "点位编号"},
+      {value: "flow_lps", label: "流量 (L/s)"},
+      {value: "level_m", label: "液位 (m)"},
+      {value: "velocity_mps", label: "流速 (m/s)"},
+    ];
+    const NUMERIC_FIELDS = new Set(["flow_lps", "level_m", "velocity_mps"]);
+
+    function fieldLabel(value) {
+      const found = CANONICAL_FIELDS.find((item) => item.value === value);
+      return found ? found.label : value;
+    }
 
     function createSessionId() {
       if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -678,6 +742,19 @@
       button.addEventListener("click", () => send(button.dataset.prompt));
     });
 
+    function resetImportArea() {
+      importState = null;
+      importQuestions.hidden = true;
+      importQuestions.innerHTML = "";
+      importMappingDetails.hidden = true;
+      importInspection.innerHTML = "";
+      importSaveProfile.hidden = true;
+      standardPreviewDetails.hidden = true;
+      standardPreview.innerHTML = "";
+      document.getElementById("importProfileName").value = "";
+      document.getElementById("importSourceIdentifier").value = "";
+    }
+
     async function selectProject(project) {
       const res = await fetch(`/api/projects/${project.id}/selection`, {method: "PUT"});
       const data = await res.json();
@@ -696,7 +773,8 @@
       currentFilterId = "";
       filterSummary.textContent = "请先生成并确认标准数据。";
       dataQualityResult.textContent = "请先选择已有标准数据的分析批次。";
-      currentInspection = null;
+      batchImportStatus.textContent = "请先选择分析批次。";
+      resetImportArea();
       await refreshProjects();
       await loadImportProfiles();
       await refreshBatches();
@@ -739,6 +817,7 @@
       confirmFilterButton.disabled = true;
       filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
       batchImportStatus.textContent = "可上传原始监测 CSV。";
+      resetImportArea();
       loadStandardPreview();
       await loadAnalysisJobs();
       await loadAgentRuns();
@@ -782,19 +861,15 @@
 
     async function refreshBatches() {
       batchList.innerHTML = "";
-      derivedBatchSources.innerHTML = "";
       if (!currentProjectId) {
         batchList.textContent = "请先选择监测项目。";
-        derivedBatchSources.textContent = "请先选择监测项目。";
         return;
       }
       const res = await fetch(`/api/projects/${currentProjectId}/batches`);
       const batches = await res.json();
       if (!res.ok) throw new Error(batches.detail || "读取分析批次失败");
-      availableBatches = batches;
       if (batches.length === 0) {
         batchList.textContent = "暂无分析批次。";
-        derivedBatchSources.textContent = "暂无可选来源批次。";
         return;
       }
       batches.forEach((batch) => {
@@ -805,106 +880,8 @@
         button.title = "查看并切换到此分析批次";
         button.addEventListener("click", () => selectBatch(batch));
         batchList.appendChild(button);
-
-        const sourceLabel = document.createElement("label");
-        const sourceCheckbox = document.createElement("input");
-        sourceCheckbox.type = "checkbox";
-        sourceCheckbox.name = "source_batch_ids";
-        sourceCheckbox.value = batch.id;
-        sourceLabel.append(sourceCheckbox, ` ${batch.name}`);
-        derivedBatchSources.appendChild(sourceLabel);
       });
     }
-
-    function showDerivedConflicts(payload) {
-      const summary = payload.conflicts;
-      derivedBatchStatus.className = "status error";
-      derivedBatchStatus.textContent =
-        `发现 ${summary.count} 处冲突，点位 ${summary.point_ids.join("、")}，` +
-        `时间范围 ${summary.time_start} 至 ${summary.time_end}。请选择每处冲突的来源。`;
-      derivedConflictPanel.hidden = false;
-      derivedConflictPanel.innerHTML = "";
-      payload.conflict_items.forEach((item, index) => {
-        const label = document.createElement("label");
-        label.textContent = `${item.point_id} / ${item.timestamp}（${item.kind}）`;
-        const select = document.createElement("select");
-        select.dataset.pointId = item.point_id;
-        select.dataset.timestamp = item.timestamp;
-        item.source_batch_ids.forEach((sourceId) => {
-          const option = document.createElement("option");
-          option.value = sourceId;
-          option.textContent =
-            availableBatches.find((batch) => batch.id === sourceId)?.name || sourceId;
-          select.appendChild(option);
-        });
-        label.appendChild(select);
-        derivedConflictPanel.appendChild(label);
-      });
-      const completeButton = document.createElement("button");
-      completeButton.type = "button";
-      completeButton.textContent = "按所选来源完成合并";
-      completeButton.addEventListener("click", completeDerivedConflictMerge);
-      derivedConflictPanel.appendChild(completeButton);
-    }
-
-    async function submitDerivedBatch(request) {
-      const res = await fetch(`/api/projects/${currentProjectId}/derived-batches`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(request),
-      });
-      const data = await res.json();
-      if (res.status === 409) {
-        pendingDerivedRequest = request;
-        showDerivedConflicts(data);
-        return;
-      }
-      if (!res.ok) throw new Error(data.detail || "创建派生分析批次失败");
-      pendingDerivedRequest = null;
-      derivedConflictPanel.hidden = true;
-      derivedBatchStatus.className = "status";
-      derivedBatchStatus.textContent = `已创建派生批次：${data.name}`;
-      document.getElementById("derivedBatchForm").reset();
-      await refreshBatches();
-    }
-
-    async function completeDerivedConflictMerge() {
-      if (!pendingDerivedRequest) return;
-      const conflict_resolutions = Array.from(
-        derivedConflictPanel.querySelectorAll("select"),
-      ).map((select) => ({
-        point_id: select.dataset.pointId,
-        timestamp: select.dataset.timestamp,
-        source_batch_id: select.value,
-      }));
-      try {
-        await submitDerivedBatch({...pendingDerivedRequest, conflict_resolutions});
-      } catch (err) {
-        derivedBatchStatus.className = "status error";
-        derivedBatchStatus.textContent = err.message;
-      }
-    }
-
-    document.getElementById("derivedBatchForm").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      derivedBatchStatus.className = "status";
-      try {
-        if (!currentProjectId) throw new Error("请先选择监测项目");
-        const source_batch_ids = Array.from(
-          event.target.querySelectorAll('input[name="source_batch_ids"]:checked'),
-        ).map((input) => input.value);
-        if (source_batch_ids.length < 2) throw new Error("请选择至少两个来源批次");
-        derivedConflictPanel.hidden = true;
-        await submitDerivedBatch({
-          name: event.target.elements.name.value.trim(),
-          source_batch_ids,
-          conflict_resolutions: [],
-        });
-      } catch (err) {
-        derivedBatchStatus.className = "status error";
-        derivedBatchStatus.textContent = err.message;
-      }
-    });
 
     document.getElementById("batchForm").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -947,72 +924,133 @@
       }
     });
 
-    function inspectionTable(columns) {
-      const fields = ["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"];
-      const rows = columns.map((column) => {
-        const options = [
-          `<option value="" ${column.field ? "" : "selected"}>未映射 / 忽略</option>`,
-          ...fields.map((field) =>
-          `<option value="${field}" ${field === column.field ? "selected" : ""}>${field}</option>`
-          ),
-        ].join("");
+    function fieldOptions(selected) {
+      return [
+        `<option value="" ${selected ? "" : "selected"}>未映射 / 忽略此列</option>`,
+        ...CANONICAL_FIELDS.map((item) =>
+          `<option value="${item.value}" ${item.value === selected ? "selected" : ""}>${item.label}</option>`
+        ),
+      ].join("");
+    }
+
+    function pendingImportQuestions() {
+      if (!importState) return [];
+      const questions = [];
+      importState.columns.forEach((column) => {
+        if (!column.field) {
+          questions.push({column, kind: "field"});
+        } else if (NUMERIC_FIELDS.has(column.field) && !column.unit) {
+          questions.push({column, kind: "unit"});
+        }
+      });
+      return questions;
+    }
+
+    function anomalyFor(source) {
+      if (!importState) return "";
+      return importState.anomalies.find((text) => text.includes(`字段 ${source}`)) || "";
+    }
+
+    function renderImportState() {
+      if (!importState) return;
+      const questions = pendingImportQuestions();
+      importQuestions.innerHTML = "";
+      importQuestions.hidden = questions.length === 0;
+      importMappingDetails.hidden = false;
+
+      questions.forEach(({column, kind}) => {
+        const box = document.createElement("div");
+        box.className = "question";
+        const title = document.createElement("div");
+        title.className = "q-title";
+        if (kind === "field") {
+          title.textContent = column.suggested
+            ? `列“${column.source}”系统猜测如下，请核对：`
+            : `列“${column.source}”未识别，请选择含义：`;
+          const select = document.createElement("select");
+          select.innerHTML = fieldOptions(column.field);
+          select.addEventListener("change", () => {
+            column.field = select.value || null;
+            column.suggested = false;
+            renderImportState();
+          });
+          box.append(title, select);
+          if (column.suggested) {
+            const note = document.createElement("div");
+            note.className = "q-note";
+            note.textContent = "猜测来自 AI，不会被直接采用，需你确认。";
+            box.appendChild(note);
+          }
+        } else {
+          title.textContent = `列“${column.source}”（${fieldLabel(column.field)}）需要确认源单位：`;
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "如 L/s、m3/h、m、mm、m/s";
+          input.value = column.unit || "";
+          input.addEventListener("input", () => {
+            column.unit = input.value.trim() || null;
+          });
+          input.addEventListener("change", renderImportState);
+          box.append(title, input);
+          const hint = anomalyFor(column.source);
+          if (hint) {
+            const note = document.createElement("div");
+            note.className = "q-note";
+            note.textContent = hint;
+            box.appendChild(note);
+          }
+        }
+        importQuestions.appendChild(box);
+      });
+
+      if (questions.length > 0) {
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "upload-btn";
+        confirm.textContent = "确认并生成标准数据";
+        confirm.addEventListener("click", finalizeImport);
+        importQuestions.appendChild(confirm);
+      }
+
+      const rows = importState.columns.map((column) => {
+        const selectId = `map-${column.source}`;
         return `<tr data-source="${escapeHtml(column.source)}">
           <td>${escapeHtml(column.source)}</td>
-          <td><select data-role="field">${options}</select></td>
+          <td><select data-role="field" aria-label="${selectId}">${fieldOptions(column.field)}</select></td>
           <td>${escapeHtml(column.type)}</td>
-          <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="确认源单位"></td>
+          <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="源单位"></td>
         </tr>`;
       }).join("");
-      return `<table><thead><tr><th>字段</th><th>规范字段</th><th>类型</th><th>单位</th></tr></thead>
+      importInspection.innerHTML = `<p>编码：${escapeHtml(importState.encoding)}；数据行：${importState.rowCount}</p>
+        <table><thead><tr><th>原始列名</th><th>含义</th><th>类型</th><th>源单位</th></tr></thead>
         <tbody>${rows}</tbody></table>`;
-    }
-
-    function renderInspection(inspection) {
-      currentInspection = inspection;
-      const anomalies = inspection.anomalies.length
-        ? `<p><strong>异常：</strong>${inspection.anomalies.map(escapeHtml).join("；")}</p>`
-        : "<p>异常：无</p>";
-      importInspection.innerHTML = `<p>编码：${escapeHtml(inspection.encoding)}；数据行：${inspection.row_count}</p>
-        ${inspectionTable(inspection.columns)}${anomalies}
-        <button id="suggestImportMapping" type="button">获取 LLM 候选映射</button>
-        <button id="confirmImportMapping" type="button">确认映射并生成标准数据</button>`;
-      document.getElementById("suggestImportMapping").addEventListener("click", suggestImportMapping);
-      document.getElementById("confirmImportMapping").addEventListener("click", confirmImportMapping);
-      document.getElementById("saveImportProfile").disabled = false;
-      if (inspection.standard_preview) renderStandardPreview(inspection.standard_preview);
-    }
-
-    async function suggestImportMapping() {
-      const res = await fetch(
-        `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${currentInspection.id}/mapping-suggestions`,
-        {method: "POST"},
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "获取候选映射失败");
-      data.candidates.forEach((candidate) => {
-        const row = [...importInspection.querySelectorAll("tbody tr")]
-          .find((item) => item.dataset.source === candidate.source);
-        if (row) row.querySelector('[data-role="field"]').value = candidate.field;
+      importInspection.querySelectorAll("tbody tr").forEach((row) => {
+        const column = importState.columns.find((item) => item.source === row.dataset.source);
+        row.querySelector('[data-role="field"]').addEventListener("change", (event) => {
+          column.field = event.target.value || null;
+          column.suggested = false;
+          renderImportState();
+        });
+        row.querySelector('[data-role="unit"]').addEventListener("change", (event) => {
+          column.unit = event.target.value.trim() || null;
+          renderImportState();
+        });
       });
-      batchImportStatus.textContent = data.candidates.length
-        ? "候选映射已填入，尚未确认；请工程师检查字段和单位。"
-        : "确定性规则已覆盖字段，无需 LLM 候选。";
     }
 
-    async function confirmImportMapping() {
+    async function finalizeImport() {
       batchImportStatus.className = "status";
       try {
         const mapping = {};
         const units = {};
-        importInspection.querySelectorAll("tbody tr").forEach((row) => {
-          const source = row.dataset.source;
-          const field = row.querySelector('[data-role="field"]').value;
-          if (field) mapping[source] = field;
-          const unit = row.querySelector('[data-role="unit"]').value.trim();
-          if (unit) units[source] = unit;
+        importState.columns.forEach((column) => {
+          if (column.field) {
+            mapping[column.source] = column.field;
+            if (column.unit) units[column.source] = column.unit;
+          }
         });
         const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${currentInspection.id}/mapping`,
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${importState.importId}/mapping`,
           {
             method: "PUT",
             headers: {"Content-Type": "application/json"},
@@ -1021,7 +1059,9 @@
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "确认映射失败");
-        batchImportStatus.textContent = "映射已确认，标准数据已生成。";
+        importQuestions.hidden = true;
+        importSaveProfile.hidden = false;
+        batchImportStatus.textContent = "导入完成，标准数据已生成。";
         await loadStandardPreview();
       } catch (err) {
         batchImportStatus.className = "status error";
@@ -1034,20 +1074,16 @@
       const res = await fetch(`/api/projects/${currentProjectId}/batches/${currentBatchId}/standard/flow`);
       const data = await res.json();
       if (res.status === 409) {
-        standardPreview.textContent = "标准数据预览尚未生成。";
+        standardPreviewDetails.hidden = true;
         return;
       }
       if (!res.ok) throw new Error(data.detail || "读取标准数据失败");
-      renderStandardPreview(data);
-    }
-
-    function renderStandardPreview(data) {
+      standardPreviewDetails.hidden = false;
       const header = data.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
       const rows = data.rows.map((row) =>
         `<tr>${data.columns.map((column) => `<td>${escapeHtml(String(row[column] ?? ""))}</td>`).join("")}</tr>`
       ).join("");
-      standardPreview.innerHTML = `<p><strong>标准数据预览</strong></p>
-        <table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+      standardPreview.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
     async function loadImportProfiles() {
@@ -1067,17 +1103,15 @@
     document.getElementById("saveImportProfile").addEventListener("click", async () => {
       const name = document.getElementById("importProfileName").value.trim();
       const sourceIdentifier = document.getElementById("importSourceIdentifier").value.trim();
-      if (!currentProjectId || !currentInspection || !name || !sourceIdentifier) {
+      if (!currentProjectId || !importState || !name || !sourceIdentifier) {
         batchImportStatus.textContent = "请填写配置名称和数据来源标识。";
         return;
       }
       const mapping = {};
       const source_units = {};
-      importInspection.querySelectorAll("tbody tr").forEach((row) => {
-        const field = row.querySelector('[data-role="field"]').value;
-        const unit = row.querySelector('[data-role="unit"]').value.trim();
-        if (field) mapping[row.dataset.source] = field;
-        if (unit) source_units[row.dataset.source] = unit;
+      importState.columns.forEach((column) => {
+        if (column.field) mapping[column.source] = column.field;
+        if (column.unit) source_units[column.source] = column.unit;
       });
       const res = await fetch(`/api/projects/${currentProjectId}/import-profiles`, {
         method: "POST",
@@ -1091,10 +1125,15 @@
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "保存导入配置失败");
+      if (!res.ok) {
+        batchImportStatus.className = "status error";
+        batchImportStatus.textContent = data.detail || "保存导入配置失败";
+        return;
+      }
+      batchImportStatus.className = "status";
       await loadImportProfiles();
       importProfileSelect.value = data.id;
-      batchImportStatus.textContent = "导入配置已保存，可在当前项目后续批次复用。";
+      batchImportStatus.textContent = "导入配置已保存，后续同来源文件可免确认导入。";
     });
 
     document.getElementById("batchImportForm").addEventListener("submit", async (event) => {
@@ -1112,10 +1151,51 @@
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "批次数据上传失败");
-        renderInspection(data);
-        batchImportStatus.textContent = data.status === "pending_confirmation"
-          ? "存在不确定项，请确认或修正映射。"
-          : "识别完成，请确认映射。";
+
+        importState = {
+          importId: data.id,
+          encoding: data.encoding,
+          rowCount: data.row_count,
+          anomalies: data.anomalies || [],
+          columns: data.columns.map((column) => ({
+            source: column.source,
+            field: column.field,
+            unit: column.unit,
+            type: column.type,
+            suggested: false,
+          })),
+        };
+
+        if (importState.columns.some((column) => !column.field)) {
+          try {
+            const suggestRes = await fetch(
+              `/api/projects/${currentProjectId}/batches/${currentBatchId}/imports/${importState.importId}/mapping-suggestions`,
+              {method: "POST"},
+            );
+            const suggestions = await suggestRes.json();
+            if (suggestRes.ok) {
+              (suggestions.candidates || []).forEach((candidate) => {
+                const column = importState.columns.find((item) => item.source === candidate.source);
+                if (column && !column.field) {
+                  column.field = candidate.field;
+                  column.suggested = true;
+                }
+              });
+            }
+          } catch {
+            // AI 候选只是辅助，失败不影响人工确认
+          }
+        }
+
+        renderImportState();
+        const questions = pendingImportQuestions();
+        if (questions.length === 0) {
+          batchImportStatus.textContent = "全部列已识别，正在直接导入...";
+          await finalizeImport();
+        } else {
+          batchImportStatus.textContent =
+            `有 ${questions.length} 列需要你确认；其余列已自动识别（可在下方详情中查看调整）。`;
+        }
       } catch (err) {
         batchImportStatus.className = "status error";
         batchImportStatus.textContent = err.message;
