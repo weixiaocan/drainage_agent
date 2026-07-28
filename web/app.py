@@ -35,6 +35,7 @@ from agent.run_records import RunRecorder
 from web.projects import AnalysisBatch, Project, ProjectRepository
 from web.import_profiles import (
     ImportProfileRepository,
+    LLMMappingSuggester,
     MappingSuggester,
     NoMappingSuggester,
 )
@@ -217,6 +218,16 @@ def _resolve_download_path(deps: AgentDeps, file_path: str) -> Path:
     return requested
 
 
+def _default_mapping_suggester(deps: AgentDeps) -> MappingSuggester:
+    if deps.settings.api_key:
+        return LLMMappingSuggester(
+            model=deps.settings.model,
+            base_url=deps.settings.base_url,
+            api_key=deps.settings.api_key,
+        )
+    return NoMappingSuggester()
+
+
 def create_app(
     root: Path | None = None,
     *,
@@ -249,7 +260,11 @@ def create_app(
     app.state.import_profiles = ImportProfileRepository(
         str(app.state.root / "var" / "drainage.sqlite3")
     )
-    app.state.mapping_suggester = mapping_suggester or NoMappingSuggester()
+    app.state.mapping_suggester = (
+        mapping_suggester
+        if mapping_suggester is not None
+        else _default_mapping_suggester(app.state.deps)
+    )
     app.state.analysis_runner = AnalysisRunner(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",

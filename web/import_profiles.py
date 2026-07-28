@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Protocol
+from typing import Any, Protocol
+
+from analysis.io.standard import STANDARD_FLOW_COLUMNS
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,116 @@ class NoMappingSuggester:
         columns: list[dict[str, object]],
     ) -> list[MappingCandidate]:
         return []
+
+
+_FIELD_DESCRIPTIONS = {
+    "timestamp": "监测时间",
+    "device_id": "设备编号",
+    "point_id": "点位编号",
+    "flow_lps": "流量（升/秒）",
+    "level_m": "液位（米）",
+    "velocity_mps": "流速（米/秒）",
+}
+
+
+class LLMMappingSuggester:
+    """LLM-backed candidate provider; suggestions always require engineer confirmation."""
+
+    def __init__(self, model: str, base_url: str | None, api_key: str) -> None:
+        from openai import OpenAI
+
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self._client = OpenAI(**kwargs)
+        self._model = model
+
+    def suggest(
+        self,
+        *,
+        source_identifier: str | None,
+        columns: list[dict[str, object]],
+    ) -> list[MappingCandidate]:
+        if not columns:
+            return []
+        try:
+            return self._suggest_with_retry(
+                source_identifier=source_identifier, columns=columns
+            )
+        except Exception:
+            return []
+
+    def _suggest_with_retry(
+        self,
+        *,
+        source_identifier: str | None,
+        columns: list[dict[str, object]],
+    ) -> list[MappingCandidate]:
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "user", "content": self._prompt(
+                        source_identifier, columns
+                    )}],
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                )
+                payload = json.loads(response.choices[0].message.content or "{}")
+                return self._validated_candidates(payload, columns)
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 2:
+                    time.sleep(2**attempt)
+        raise last_exc or RuntimeError("LLM 映射候选调用失败")
+
+    @staticmethod
+    def _prompt(
+        source_identifier: str | None,
+        columns: list[dict[str, object]],
+    ) -> str:
+        fields = "、".join(
+            f"{field}（{label}）" for field, label in _FIELD_DESCRIPTIONS.items()
+        )
+        lines = "\n".join(
+            f"- {column['source']}（类型：{column.get('type', '未知')}）"
+            for column in columns
+        )
+        return (
+            "你是排水监测数据导入助手。下面是 CSV 文件中无法自动识别的列，"
+            "请判断每一列对应哪个规范字段。\n"
+            f"规范字段：{fields}\n"
+            f"数据来源标识：{source_identifier or '未知'}\n"
+            f"待判断列：\n{lines}\n"
+            "要求：只输出你有把握的映射；无法判断的列不要输出；"
+            "不要根据数值猜测单位；同一规范字段最多对应一列。\n"
+            '输出 JSON：{"candidates": [{"source": "<原始列名>", "field": "<规范字段>"}]}'
+        )
+
+    @staticmethod
+    def _validated_candidates(
+        payload: dict[str, object],
+        columns: list[dict[str, object]],
+    ) -> list[MappingCandidate]:
+        valid_sources = {column["source"] for column in columns}
+        candidates: list[MappingCandidate] = []
+        used_fields: set[str] = set()
+        for item in payload.get("candidates", []):
+            if not isinstance(item, dict):
+                continue
+            source = item.get("source")
+            field = item.get("field")
+            if (
+                isinstance(source, str)
+                and isinstance(field, str)
+                and source in valid_sources
+                and field in STANDARD_FLOW_COLUMNS
+                and field not in used_fields
+            ):
+                used_fields.add(field)
+                candidates.append(MappingCandidate(source=source, field=field))
+        return candidates
 
 
 class ImportProfileRepository:

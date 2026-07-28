@@ -311,3 +311,103 @@ def test_reused_parsing_rules_drive_preview_and_confirmed_v1_data(
 
     assert confirmed.status_code == 200
     assert preview["rows"][0]["flow_lps"] == 2.5
+
+
+class _FakeCompletionResponse:
+    def __init__(self, content: str) -> None:
+        message = type("Message", (), {"content": content})
+        self.choices = [type("Choice", (), {"message": message})]
+
+
+class _FakeCompletions:
+    def __init__(self, outcome: object) -> None:
+        self.outcome = outcome
+        self.calls = 0
+
+    def create(self, **_kwargs: object) -> _FakeCompletionResponse:
+        self.calls += 1
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return _FakeCompletionResponse(str(self.outcome))
+
+
+def _patch_openai(monkeypatch: pytest.MonkeyPatch, outcome: object) -> _FakeCompletions:
+    import openai
+
+    completions = _FakeCompletions(outcome)
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs: object) -> None:
+            self.chat = type("Chat", (), {"completions": completions})
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr("web.import_profiles.time.sleep", lambda _s: None)
+    return completions
+
+
+def test_llm_suggester_validates_candidates_against_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_openai(
+        monkeypatch,
+        '{"candidates": ['
+        '{"source": "when", "field": "timestamp"},'
+        '{"source": "value", "field": "flow_lps"},'
+        '{"source": "value2", "field": "flow_lps"},'
+        '{"source": "ghost", "field": "level_m"},'
+        '{"source": "when", "field": "not_a_field"}'
+        ']}',
+    )
+    from web.import_profiles import LLMMappingSuggester
+
+    suggester = LLMMappingSuggester(model="m", base_url=None, api_key="sk")
+    candidates = suggester.suggest(
+        source_identifier="vendor-x",
+        columns=[
+            {"source": "when", "type": "string"},
+            {"source": "value", "type": "number"},
+            {"source": "value2", "type": "number"},
+        ],
+    )
+
+    assert [(c.source, c.field) for c in candidates] == [
+        ("when", "timestamp"),
+        ("value", "flow_lps"),
+    ]
+
+
+def test_llm_suggester_returns_empty_on_llm_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    completions = _patch_openai(monkeypatch, RuntimeError("boom"))
+    from web.import_profiles import LLMMappingSuggester
+
+    suggester = LLMMappingSuggester(model="m", base_url=None, api_key="sk")
+    assert suggester.suggest(
+        source_identifier=None, columns=[{"source": "x", "type": "string"}]
+    ) == []
+    assert completions.calls == 3
+
+
+def test_app_wires_suggester_by_api_key_presence(tmp_path: Path) -> None:
+    from agent.deps import AgentSettings
+    from web.import_profiles import LLMMappingSuggester, NoMappingSuggester
+
+    def deps_with_key(root: Path):
+        deps = make_deps(root)
+        deps.settings = AgentSettings(model="m", base_url=None, api_key="sk")
+        return deps
+
+    with_key = create_app(
+        tmp_path / "with",
+        deps_factory=deps_with_key,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    without_key = create_app(
+        tmp_path / "without",
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+
+    assert isinstance(with_key.state.mapping_suggester, LLMMappingSuggester)
+    assert isinstance(without_key.state.mapping_suggester, NoMappingSuggester)
