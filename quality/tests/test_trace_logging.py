@@ -88,3 +88,24 @@ def test_trace_includes_run_python_stderr_on_error() -> None:
     assert "FileNotFoundError" in summary["stderr"]
     assert summary["script"] == "workspace/agent_run.py"
     assert "stdout" not in summary
+
+
+def test_trace_redacts_sensitive_keys_recursively(tmp_path) -> None:
+    trace = TraceLogger(tmp_path)
+
+    trace_event(
+        trace,
+        {
+            "event": "tool_call",
+            "run_id": "run-secret",
+            "args": {
+                "api_key": "must-not-leak",
+                "nested": {"authorization": "Bearer secret"},
+            },
+        },
+    )
+
+    content = trace.path.read_text(encoding="utf-8")
+    assert "must-not-leak" not in content
+    assert "Bearer secret" not in content
+    assert content.count("<redacted>") == 2

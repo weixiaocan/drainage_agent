@@ -357,6 +357,14 @@
       <h2>结果文件</h2>
       <button class="secondary" id="refreshResults" type="button">刷新列表</button>
       <div id="files" class="files"></div>
+
+      <h2>Agent 运行记录</h2>
+      <label class="check">
+        <input id="deepDebug" type="checkbox">
+        开启受控深度调试
+      </label>
+      <button class="secondary" id="refreshAgentRuns" type="button">刷新运行记录</button>
+      <div id="agentRuns" class="inspection">请先选择分析批次。</div>
     </aside>
 
     <main>
@@ -401,6 +409,8 @@
     const uploadFilterRevisionButton = document.getElementById("uploadFilterRevisionButton");
     const confirmFilterButton = document.getElementById("confirmFilterButton");
     const analysisJobHistory = document.getElementById("analysisJobHistory");
+    const agentRuns = document.getElementById("agentRuns");
+    const deepDebug = document.getElementById("deepDebug");
     const welcomeMessage = "已就绪。可以先点“描述当前数据”。";
     let currentProjectId = "";
     let currentBatchId = "";
@@ -627,7 +637,13 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({message: trimmed, session_id: sessionId || null})
+          body: JSON.stringify({
+            message: trimmed,
+            session_id: sessionId || null,
+            project_id: currentProjectId || null,
+            batch_id: currentBatchId || null,
+            debug: deepDebug.checked
+          })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "请求失败");
@@ -638,6 +654,7 @@
         localStorage.setItem(sessionStorageKey, sessionId);
         addMessage(data.reply, "agent");
         refreshResults();
+        loadAgentRuns();
       } catch (err) {
         addMessage(`请求失败：${err.message}`, "agent");
       } finally {
@@ -724,8 +741,44 @@
       batchImportStatus.textContent = "可上传原始监测 CSV。";
       loadStandardPreview();
       await loadAnalysisJobs();
+      await loadAgentRuns();
       await refreshBatches();
     }
+
+    async function loadAgentRuns() {
+      if (!currentProjectId || !currentBatchId) {
+        agentRuns.textContent = "请先选择分析批次。";
+        return;
+      }
+      const res = await fetch(
+        `/api/projects/${currentProjectId}/batches/${currentBatchId}/agent-runs`
+      );
+      const runs = await res.json();
+      if (!res.ok) throw new Error(runs.detail || "读取 Agent 运行记录失败");
+      if (runs.length === 0) {
+        agentRuns.textContent = "当前批次暂无 Agent 运行记录。";
+        return;
+      }
+      const table = document.createElement("table");
+      table.innerHTML = "<thead><tr><th>时间</th><th>状态</th><th>模型</th><th>耗时</th><th>Token</th></tr></thead>";
+      const body = document.createElement("tbody");
+      runs.forEach((run) => {
+        const row = document.createElement("tr");
+        const token = run.total_tokens == null ? "—" : String(run.total_tokens);
+        const duration = run.duration_ms == null ? "—" : `${run.duration_ms} ms`;
+        row.innerHTML = `<td>${escapeHtml(run.started_at)}</td><td>${escapeHtml(run.status)}</td><td>${escapeHtml(run.model)}</td><td>${duration}</td><td>${token}</td>`;
+        row.title = `run_id: ${run.run_id}`;
+        body.appendChild(row);
+      });
+      table.appendChild(body);
+      agentRuns.replaceChildren(table);
+    }
+
+    document.getElementById("refreshAgentRuns").addEventListener("click", () => {
+      loadAgentRuns().catch((err) => {
+        agentRuns.textContent = `读取失败：${err.message}`;
+      });
+    });
 
     async function refreshBatches() {
       batchList.innerHTML = "";

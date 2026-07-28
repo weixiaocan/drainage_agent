@@ -66,7 +66,7 @@ def run_turn(prompt, deps, agent, trace, message_history=None):
         trace_event(trace, {"event": "turn_error", "run_id": run_id, "error": repr(exc)})
         raise
     trace_event(trace, {"event": "turn_end", "run_id": run_id, "reply": str(result.output)})
-    return result
+    return result, run_id
 
 
 def main():
@@ -83,6 +83,7 @@ def main():
                 "tool_calls": [],
                 "root": "",
                 "trace": "",
+                "run_id": None,
                 "error": None,
             }
             with tempfile.TemporaryDirectory(prefix=f"eval-{case['id']}-") as temp_dir:
@@ -95,14 +96,16 @@ def main():
                     agent = build_agent(deps)
                     message_history = []
                     for seed in case.get("seed_prompts", []):
-                        seed_result = run_turn(seed, deps, agent, trace, message_history)
+                        seed_result, _ = run_turn(seed, deps, agent, trace, message_history)
                         message_history = seed_result.all_messages()
                     if case.get("rebuild_after_seed"):
                         deps = build_deps(root)
                         deps.trace = trace
                         agent = build_agent(deps)
                         message_history = []
-                    result = run_turn(case["prompt"], deps, agent, trace, message_history)
+                    result, rec["run_id"] = run_turn(
+                        case["prompt"], deps, agent, trace, message_history
+                    )
                     rec["output"] = str(result.output)
                     rec["tool_calls"] = tool_seq(result.new_messages())
                 except Exception as exc:

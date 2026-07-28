@@ -60,12 +60,28 @@ def client(tmp_path: Path, fake_agent: FakeAgent) -> TestClient:
 
 
 def test_chat_maintains_session_history(client: TestClient, fake_agent: FakeAgent) -> None:
-    first = client.post("/api/chat", json={"message": "描述当前数据"})
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第一批"}
+    ).json()
+    context = {"project_id": project["id"], "batch_id": batch["id"]}
+
+    first = client.post(
+        "/api/chat", json={"message": "描述当前数据", **context}
+    )
     assert first.status_code == 200
     session_id = first.json()["session_id"]
     assert first.json()["reply"] == "reply: 描述当前数据"
+    assert first.json()["run_id"]
 
-    second = client.post("/api/chat", json={"message": "列出已有结果", "session_id": session_id})
+    second = client.post(
+        "/api/chat",
+        json={
+            "message": "列出已有结果",
+            "session_id": session_id,
+            **context,
+        },
+    )
     assert second.status_code == 200
     assert second.json()["session_id"] == session_id
     assert fake_agent.calls[0]["history_len"] == 0
@@ -116,6 +132,84 @@ def test_chat_rejects_empty_message(client: TestClient) -> None:
     response = client.post("/api/chat", json={"message": "   "})
 
     assert response.status_code == 400
+
+
+def test_chat_requires_project_and_batch_context(client: TestClient) -> None:
+    response = client.post("/api/chat", json={"message": "描述当前数据"})
+
+    assert response.status_code == 409
+    assert "监测项目和分析批次" in response.json()["detail"]
+
+
+def test_chat_session_cannot_cross_batch_scope(
+    client: TestClient, fake_agent: FakeAgent
+) -> None:
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    first_batch = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第一批"}
+    ).json()
+    second_batch = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第二批"}
+    ).json()
+    first = client.post(
+        "/api/chat",
+        json={
+            "message": "描述当前数据",
+            "project_id": project["id"],
+            "batch_id": first_batch["id"],
+        },
+    )
+
+    crossed = client.post(
+        "/api/chat",
+        json={
+            "message": "继续",
+            "session_id": first.json()["session_id"],
+            "project_id": project["id"],
+            "batch_id": second_batch["id"],
+        },
+    )
+
+    assert crossed.status_code == 409
+    assert "绑定其他" in crossed.json()["detail"]
+    assert len(fake_agent.calls) == 1
+
+
+def test_agent_runs_are_queryable_within_batch(
+    client: TestClient,
+) -> None:
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches", json={"name": "第一批"}
+    ).json()
+    turn = client.post(
+        "/api/chat",
+        json={
+            "message": "描述当前数据",
+            "project_id": project["id"],
+            "batch_id": batch["id"],
+            "debug": True,
+        },
+    ).json()
+
+    listing = client.get(
+        f"/api/projects/{project['id']}/batches/{batch['id']}/agent-runs"
+    )
+    detail = client.get(
+        f"/api/projects/{project['id']}/batches/{batch['id']}"
+        f"/agent-runs/{turn['run_id']}"
+    )
+
+    assert listing.status_code == 200
+    assert listing.json()[0]["run_id"] == turn["run_id"]
+    assert listing.json()[0]["debug"] is True
+    assert detail.status_code == 200
+    assert detail.json()["project_id"] == project["id"]
+    assert detail.json()["batch_id"] == batch["id"]
+    assert [step["event"] for step in detail.json()["steps"]] == [
+        "debug_input",
+        "debug_output",
+    ]
 
 
 def test_upload_writes_expected_files_and_clears_manifest(client: TestClient, tmp_path: Path) -> None:

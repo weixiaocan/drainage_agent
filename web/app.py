@@ -30,8 +30,9 @@ from analysis.runs import (
     AnalysisRunner,
 )
 from agent.core import build_agent
+from agent.conversations import ConversationRepository, ConversationRunner
 from agent.deps import AgentDeps, build_deps
-from agent.core.logging_utils import TraceLogger, trace_event
+from agent.run_records import RunRecorder
 from web.derived_batches import (
     BatchRecordReader,
     InvalidConflictResolution,
@@ -57,10 +58,14 @@ ALLOWED_SITE_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    project_id: str | None = None
+    batch_id: str | None = None
+    debug: bool = False
 
 
 class ChatResponse(BaseModel):
     session_id: str
+    run_id: str
     reply: str
 
 
@@ -132,14 +137,6 @@ def _project_data(project: Project) -> dict[str, str]:
 
 def _batch_data(batch: AnalysisBatch) -> dict[str, str]:
     return asdict(batch)
-
-
-def _result_text(result: Any) -> str:
-    for attr in ("output", "data"):
-        if hasattr(result, attr):
-            value = getattr(result, attr)
-            return value() if callable(value) else str(value)
-    return str(result)
 
 
 def _safe_upload_name(upload: UploadFile, allowed_extensions: set[str]) -> str:
@@ -220,10 +217,7 @@ def create_app(
     )
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
-    app.state.trace = TraceLogger(app.state.deps.paths.logs)
-    app.state.deps.trace = app.state.trace
     app.state.agent = agent_factory(app.state.deps)
-    app.state.histories: dict[str, list[Any]] = {}
     app.state.projects = ProjectRepository(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
@@ -257,6 +251,16 @@ def create_app(
         / "contract_report_template.docx",
     )
     app.state.deps.report_templates = app.state.report_templates
+    app.state.run_records = RunRecorder(
+        app.state.root / "var" / "drainage.sqlite3"
+    )
+    app.state.conversations = ConversationRunner(
+        ConversationRepository(app.state.root / "var" / "drainage.sqlite3"),
+        app.state.agent,
+        app.state.deps,
+        app.state.root / "var" / "projects",
+        app.state.run_records,
+    )
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -960,6 +964,45 @@ def create_app(
             ],
         ]
 
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/facts")
+    def get_batch_facts(project_id: str, batch_id: str) -> dict[str, object]:
+        project = app.state.projects.get(project_id)
+        batch = app.state.projects.get_batch(project_id, batch_id)
+        if project is None or batch is None:
+            raise HTTPException(status_code=404, detail="监测项目或分析批次不存在")
+        baseline = app.state.filter_baselines.current_baseline(
+            project_id, batch_id
+        )
+        current_results = {
+            algorithm: asdict(result)
+            for algorithm in (
+                "data_quality",
+                "patterns",
+                "rainfall",
+                "event_response",
+                "rdii",
+                "risk",
+            )
+            if (
+                result := app.state.analysis_runner.current(
+                    project_id, batch_id, algorithm
+                )
+            )
+            is not None
+        }
+        return {
+            "project": _project_data(project),
+            "batch": _batch_data(batch),
+            "baseline": asdict(baseline) if baseline else None,
+            "analysis_results": current_results,
+            "jobs": [
+                job_data(job)
+                for job in app.state.background_jobs.list_for_batch(
+                    project_id, batch_id
+                )
+            ],
+        }
+
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}/reports",
         status_code=201,
@@ -1005,23 +1048,64 @@ def create_app(
         message = request.message.strip()
         if not message:
             raise HTTPException(status_code=400, detail="消息不能为空")
-        session_id = request.session_id or uuid.uuid4().hex
-        history = app.state.histories.setdefault(session_id, [])
-        run_id = uuid.uuid4().hex
-        app.state.deps.session.current_run_id = run_id
-        trace_event(app.state.trace, {"event": "turn_start", "run_id": run_id, "session_id": session_id, "user": message})
+        project_id = request.project_id
+        batch_id = request.batch_id
+        if not project_id or not batch_id:
+            raise HTTPException(
+                status_code=409,
+                detail="请先选择当前监测项目和分析批次",
+            )
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail="当前监测项目或分析批次不存在",
+            )
         try:
-            result = app.state.agent.run_sync(message, deps=app.state.deps, message_history=history)
-            reply = _result_text(result)
-            if hasattr(result, "all_messages"):
-                app.state.histories[session_id] = result.all_messages()
-            trace_event(app.state.trace, {"event": "turn_end", "run_id": run_id, "session_id": session_id, "reply": reply})
-            app.state.deps.session.current_run_id = None
-            return ChatResponse(session_id=session_id, reply=reply)
+            turn = app.state.conversations.run(
+                project_id=project_id,
+                batch_id=batch_id,
+                message=message,
+                session_id=request.session_id,
+                debug=request.debug,
+            )
+            return ChatResponse(
+                session_id=turn.session_id,
+                run_id=turn.run_id,
+                reply=turn.reply,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except Exception as exc:
             app.state.deps.logger.exception("Web agent turn failed")
-            app.state.deps.session.current_run_id = None
-            return ChatResponse(session_id=session_id, reply=f"Agent 调用失败: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Agent 调用失败: {exc}"
+            ) from exc
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/agent-runs"
+    )
+    def list_agent_runs(
+        project_id: str, batch_id: str, limit: int = 100
+    ) -> list[dict[str, object]]:
+        if app.state.projects.get_batch(project_id, batch_id) is None:
+            raise HTTPException(status_code=404, detail="分析批次不存在")
+        return [
+            asdict(record)
+            for record in app.state.run_records.list(
+                project_id, batch_id, limit=limit
+            )
+        ]
+
+    @app.get(
+        "/api/projects/{project_id}/batches/{batch_id}/agent-runs/{run_id}"
+    )
+    def get_agent_run(
+        project_id: str, batch_id: str, run_id: str
+    ) -> dict[str, object]:
+        record = app.state.run_records.get(project_id, batch_id, run_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Agent 运行记录不存在")
+        return record
 
     @app.post("/api/upload")
     def upload_files(

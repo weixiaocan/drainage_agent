@@ -28,6 +28,8 @@ python -m pytest
 
 Agent Eval 的用例、运行器、人工标注数据和 HTML 报告位于 `quality/eval/`。需要真实模型调用的完整 Eval 会产生费用，应在发布前手动运行；CI 只运行选定的关键用例。
 
+每个 Eval 回合记录独立的 `run_id`。评测结果可以用该标识定位对应 trace 或项目内 Agent 运行记录，而不需要保存完整提示词和模型回复。
+
 ## 历史材料
 
 主体功能开发阶段的详细评测过程保存在 `docs/history/EVAL_V2_RETROSPECTIVE.md`。其中的通过率、问题清单和阶段结论仅代表当时状态。

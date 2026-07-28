@@ -15,7 +15,7 @@ Web 版启动：
 python app/web_run.py
 ```
 
-浏览器打开 `http://127.0.0.1:8000`。Web 版支持上传流量 CSV、降雨 CSV、点位信息 XLSX 和报告模板 DOCX，并复用同一套 Agent 工具。
+浏览器打开 `http://127.0.0.1:8000`。Web 版支持上传流量 CSV、降雨 CSV、点位信息 XLSX 和报告模板 DOCX，并复用同一套 Agent 工具。对话必须绑定当前监测项目和分析批次；会话状态与 Agent 运行摘要保存在 SQLite。工作台可按批次查看模型、工具步骤、耗时、Token、错误和产物，完整对话默认不写入运行记录。
 
 `.env` 使用 OpenAI 兼容配置：
 
@@ -105,6 +105,7 @@ docs/PROJECT_NOTES.md  项目记忆
 - `docs/PRD.md`: 成熟开源版本的目标规格。
 - `CONTEXT.md`: 领域词汇。
 - `docs/adr/`: 已接受的架构决策。
+- `docs/adr/0013-keep-pydantic-ai-behind-project-aware-conversation-runner.md`: Agent 框架选型与对话运行 seam。
 - `docs/EVALUATION.md`: 当前评测策略与发布门槛。
 - `docs/README.md`: 文档索引及优先级。
 

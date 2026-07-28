@@ -11,6 +11,14 @@ MAX_TRACE_STRING = 2000
 MAX_TRACE_LIST_ITEMS = 20
 MAX_TRACE_DICT_ITEMS = 50
 MAX_TRACE_ARTIFACTS = 10
+SENSITIVE_TRACE_KEYS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "password",
+    "secret",
+    "token",
+}
 
 
 def setup_logging(logs_dir: Path) -> Path:
@@ -52,7 +60,11 @@ def _trace_safe(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, dict):
         items = list(value.items())
         result = {
-            str(key): _trace_safe(item, depth=depth + 1)
+            str(key): (
+                "<redacted>"
+                if str(key).lower() in SENSITIVE_TRACE_KEYS
+                else _trace_safe(item, depth=depth + 1)
+            )
             for key, item in items[:MAX_TRACE_DICT_ITEMS]
             if key != "data"
         }
@@ -83,7 +95,7 @@ def summarize_tool_result(result: Any) -> dict[str, Any]:
         "summary": result.get("summary"),
         **_summarize_artifacts(result.get("artifacts", [])),
     }
-    for key in ("missing", "hint", "options"):
+    for key in ("missing", "hint", "options", "job_id"):
         if key in result:
             summary[key] = result[key]
     data = result.get("data")

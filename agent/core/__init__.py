@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from time import monotonic
 from pathlib import Path
 import re
 from typing import Any
@@ -548,6 +549,7 @@ def build_agent(deps: AgentDeps) -> Any:
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
             call_id = uuid.uuid4().hex
             run_id = ctx.deps.session.current_run_id
+            started = monotonic()
             trace_event(
                 ctx.deps.trace,
                 {
@@ -561,6 +563,7 @@ def build_agent(deps: AgentDeps) -> Any:
             try:
                 result = func()
             except Exception as exc:
+                duration_ms = round((monotonic() - started) * 1000)
                 trace_event(
                     ctx.deps.trace,
                     {
@@ -569,6 +572,7 @@ def build_agent(deps: AgentDeps) -> Any:
                         "call_id": call_id,
                         "tool_name": tool_name,
                         "error": repr(exc),
+                        "duration_ms": duration_ms,
                     },
                 )
                 raise
@@ -579,6 +583,7 @@ def build_agent(deps: AgentDeps) -> Any:
                     "run_id": run_id,
                     "call_id": call_id,
                     "tool_name": tool_name,
+                    "duration_ms": round((monotonic() - started) * 1000),
                     **summarize_tool_result(result),
                 },
             )
