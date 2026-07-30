@@ -1147,7 +1147,9 @@
         importQuestions.hidden = true;
         importMappingDialog.close();
         continueImportMapping.hidden = true;
-        batchImportStatus.textContent = `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
+        batchImportStatus.textContent = data.replaced_existing
+          ? `重新识别完成：已替换当前标准数据，共 ${data.import_count} 个文件、${data.row_count} 行。旧筛选和分析结果需要重新计算。`
+          : `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
         await loadStandardPreview();
       } catch (err) {
         batchImportStatus.className = "status error";

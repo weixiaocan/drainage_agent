@@ -586,7 +586,7 @@ def create_app(
         batch_id: str,
         import_id: str,
         request: ImportMappingRequest,
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         if app.state.projects.get_batch(project_id, batch_id) is None:
             raise HTTPException(status_code=404, detail="分析批次不存在")
         try:

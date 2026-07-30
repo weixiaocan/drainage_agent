@@ -301,13 +301,12 @@ class BatchDataImporter:
         import_id: str,
         mapping: dict[str, str],
         units: dict[str, str],
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         source = self.raw_file(project_id, batch_id, import_id)
         if source is None:
             raise LookupError("导入记录不存在")
         standard_path = self.standard_flow_path(project_id, batch_id)
-        if standard_path.exists():
-            raise ValueError("标准数据已经生成，不可覆盖")
+        replaced_existing = standard_path.exists()
 
         with sqlite3.connect(self.database) as connection:
             row = connection.execute(
@@ -356,6 +355,9 @@ class BatchDataImporter:
             raise ValueError(f"缺少必需字段映射: {', '.join(missing)}")
 
         standard_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = standard_path.with_name(
+            f".{standard_path.name}.{uuid.uuid4().hex}.tmp"
+        )
         try:
             for chunk_index, raw in enumerate(
                 pd.read_csv(source, chunksize=200_000, **read_options)
@@ -368,15 +370,16 @@ class BatchDataImporter:
                     parsing_rules.get("decimal", "."),
                 )
                 canonical.to_csv(
-                    standard_path,
+                    temporary_path,
                     mode="w" if chunk_index == 0 else "a",
                     header=chunk_index == 0,
                     index=False,
                     encoding="utf-8",
                     date_format="%Y-%m-%dT%H:%M:%S",
                 )
+            temporary_path.replace(standard_path)
         except Exception:
-            standard_path.unlink(missing_ok=True)
+            temporary_path.unlink(missing_ok=True)
             raise
         manifest = {
             "contract_version": 1,
@@ -410,7 +413,11 @@ class BatchDataImporter:
                     batch_id,
                 ),
             )
-        return {"id": import_id, "status": "confirmed"}
+        return {
+            "id": import_id,
+            "status": "confirmed",
+            "replaced_existing": replaced_existing,
+        }
 
     def confirm_batch_mappings(
         self,
@@ -421,8 +428,7 @@ class BatchDataImporter:
         if not imports:
             raise ValueError("请至少确认一个监测数据文件")
         standard_path = self.standard_flow_path(project_id, batch_id)
-        if standard_path.exists():
-            raise ValueError("标准数据已经生成，不可覆盖")
+        replaced_existing = standard_path.exists()
 
         frames: list[pd.DataFrame] = []
         manifests: list[dict[str, object]] = []
@@ -488,12 +494,20 @@ class BatchDataImporter:
 
         standard_path.parent.mkdir(parents=True, exist_ok=True)
         combined = pd.concat(frames, ignore_index=True)
-        combined.to_csv(
-            standard_path,
-            index=False,
-            encoding="utf-8",
-            date_format="%Y-%m-%dT%H:%M:%S",
+        temporary_path = standard_path.with_name(
+            f".{standard_path.name}.{uuid.uuid4().hex}.tmp"
         )
+        try:
+            combined.to_csv(
+                temporary_path,
+                index=False,
+                encoding="utf-8",
+                date_format="%Y-%m-%dT%H:%M:%S",
+            )
+            temporary_path.replace(standard_path)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
         (standard_path.parent / "manifest.json").write_text(
             json.dumps({
                 "contract_version": 1,
@@ -524,6 +538,7 @@ class BatchDataImporter:
             "status": "confirmed",
             "import_count": len(imports),
             "row_count": len(combined),
+            "replaced_existing": replaced_existing,
         }
 
     def _canonicalize(

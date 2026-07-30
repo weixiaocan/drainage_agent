@@ -332,6 +332,25 @@ def test_multiple_monitoring_files_are_confirmed_as_one_standard_dataset(
         f"/api/projects/{project['id']}/batches/{batch['id']}/standard/flow"
     ).json()
     assert [row["point_id"] for row in preview["rows"]] == ["W1", "W2"]
+    replaced = client.put(
+        endpoint + "/mapping",
+        json={
+            "imports": [
+                {
+                    "import_id": item["id"],
+                    "mapping": {"time": "timestamp", "flow": "flow_lps"},
+                    "units": {"flow": "m3/h"},
+                }
+                for item in imports
+            ]
+        },
+    )
+    assert replaced.status_code == 200
+    assert replaced.json()["replaced_existing"] is True
+    replaced_preview = client.get(
+        f"/api/projects/{project['id']}/batches/{batch['id']}/standard/flow"
+    ).json()
+    assert replaced_preview["rows"][0]["flow_lps"] == pytest.approx(1 / 3.6)
 
 
 def test_auxiliary_data_is_inspected_then_saved_to_current_batch(
@@ -596,14 +615,14 @@ def test_imports_cannot_be_read_across_projects_or_batches(tmp_path: Path) -> No
     assert wrong_batch.status_code == 404
 
 
-def test_confirmed_standard_data_and_original_upload_cannot_be_overwritten(
+def test_confirmed_standard_data_can_be_replaced_without_changing_original_upload(
     tmp_path: Path,
 ) -> None:
     client = _client(tmp_path)
-    project = client.post("/api/projects", json={"name": "不可变数据"}).json()
+    project = client.post("/api/projects", json={"name": "重新识别数据"}).json()
     batch = client.post(
         f"/api/projects/{project['id']}/batches",
-        json={"name": "不可覆盖"},
+        json={"name": "允许替换"},
     ).json()
     raw = b"time,site,flow\n2026-03-07,W8,1\n"
     uploaded = client.post(
@@ -633,7 +652,7 @@ def test_confirmed_standard_data_and_original_upload_cannot_be_overwritten(
         f"/api/projects/{project['id']}/batches/{batch['id']}/standard/flow"
     ).json()
 
-    assert repeated.status_code == 400
-    assert repeated.json()["detail"] == "标准数据已经生成，不可覆盖"
+    assert repeated.status_code == 200
+    assert repeated.json()["replaced_existing"] is True
     assert raw_download.content == raw
-    assert preview["rows"][0]["flow_lps"] == 1.0
+    assert preview["rows"][0]["flow_lps"] == pytest.approx(1 / 3.6)
