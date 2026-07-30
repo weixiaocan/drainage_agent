@@ -418,20 +418,20 @@
         <label>原始监测 CSV（可多选） <span class="required">*</span></label>
         <div class="file-picker">
           <input id="batchImportFile" name="files" type="file" accept=".csv" multiple required>
-          <label for="batchImportFile">选择监测 CSV</label>
-          <span id="flowFileNames">未选择</span>
+          <label id="flowFileButtonLabel" for="batchImportFile">选择监测 CSV</label>
+          <span id="flowFileNames">尚未上传</span>
         </div>
         <label>降雨 CSV</label>
         <div class="file-picker">
           <input id="rainfallFile" name="rainfall_file" type="file" accept=".csv">
-          <label for="rainfallFile">选择降雨 CSV</label>
-          <span id="rainfallFileName">未选择</span>
+          <label id="rainfallFileButtonLabel" for="rainfallFile">选择降雨 CSV</label>
+          <span id="rainfallFileName">尚未上传</span>
         </div>
         <label>点位信息 XLSX</label>
         <div class="file-picker">
           <input id="siteInfoFile" name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
-          <label for="siteInfoFile">选择点位 XLSX</label>
-          <span id="siteInfoFileName">未选择</span>
+          <label id="siteInfoFileButtonLabel" for="siteInfoFile">选择点位 XLSX</label>
+          <span id="siteInfoFileName">尚未上传</span>
         </div>
         <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别全部列名</button>
       </form>
@@ -554,6 +554,7 @@
     const welcomeMessage = "已就绪。请先在左侧第 1 步创建或选择监测项目。";
     let currentProjectId = "";
     let currentBatchId = "";
+    let currentWorkspaceState = null;
     let importState = null;
     let pendingAuxiliaryFiles = {rainfall: null, sites: null};
     let projectOptions = [];
@@ -850,6 +851,42 @@
       importInspection.innerHTML = "";
     }
 
+    async function loadWorkspaceState() {
+      const res = await fetch(`/api/projects/${currentProjectId}/workspace/state`);
+      const state = await res.json();
+      if (!res.ok) throw new Error(state.detail || "项目状态加载失败");
+      currentWorkspaceState = state;
+      currentBatchId = state.workspace_id;
+      const flowText = state.flow.present
+        ? `当前已导入 ${state.flow.file_count || 1} 个文件`
+        : "尚未上传";
+      const rainfallText = state.rainfall.present
+        ? `当前已导入：${state.rainfall.filename || "降雨数据"}`
+        : "尚未上传";
+      const sitesText = state.sites.present
+        ? `当前已导入：${state.sites.filename || "点位信息"}`
+        : "尚未上传";
+      document.getElementById("flowFileNames").textContent = flowText;
+      document.getElementById("rainfallFileName").textContent = rainfallText;
+      document.getElementById("siteInfoFileName").textContent = sitesText;
+      document.getElementById("flowFileButtonLabel").textContent =
+        state.flow.present ? "替换监测 CSV" : "选择监测 CSV";
+      document.getElementById("rainfallFileButtonLabel").textContent =
+        state.rainfall.present ? "替换降雨 CSV" : "选择降雨 CSV";
+      document.getElementById("siteInfoFileButtonLabel").textContent =
+        state.sites.present ? "替换点位 XLSX" : "选择点位 XLSX";
+      if (state.filter.present) {
+        const download =
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${state.filter.path}`;
+        filterSummary.innerHTML =
+          `<p>当前筛选结果已确认，可<a href="${download}">下载查看</a>；重新运行将替换当前筛选结果。</p>`;
+      } else {
+        filterSummary.textContent = state.has_data
+          ? "尚未生成筛选结果。"
+          : "请先上传并确认监测数据。";
+      }
+    }
+
     async function selectProject(project) {
       const res = await fetch(`/api/projects/${project.id}/selection`, {method: "PUT"});
       const data = await res.json();
@@ -864,10 +901,11 @@
       filterRevisionFile.disabled = true;
       confirmFilterButton.disabled = true;
       currentFilterId = "";
-      filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
       batchImportStatus.textContent = "";
       resetImportArea();
+      await loadWorkspaceState();
       await loadAgentRuns();
+      await refreshResults();
       await refreshProjects();
     }
 
@@ -1087,6 +1125,7 @@
         importMappingDialog.close();
         continueImportMapping.hidden = true;
         batchImportStatus.textContent = "";
+        await loadWorkspaceState();
         if (auxiliaryState) renderAuxiliaryMapping();
       } catch (err) {
         batchImportStatus.className = "status error";
@@ -1115,6 +1154,36 @@
         );
         if (selectedNames.length === 0) {
           throw new Error("请选择必需的原始监测 CSV");
+        }
+        if (currentWorkspaceState?.has_data) {
+          const confirmed = window.confirm(
+            `重新上传将替换 ${projectNameInput.value} 的当前数据，归档旧对话，` +
+            "并清空已有筛选、分析结果和报告。是否继续？"
+          );
+          if (!confirmed) return;
+          const resetRes = await fetch(
+            `/api/projects/${currentProjectId}/workspace/reset`,
+            {method: "POST"},
+          );
+          const resetData = await resetRes.json();
+          if (!resetRes.ok) {
+            throw new Error(resetData.detail || "项目当前数据重置失败");
+          }
+          const oldSessionId = sessionId;
+          if (oldSessionId) {
+            localStorage.removeItem(`drainage-agent-chat-${oldSessionId}`);
+          }
+          localStorage.removeItem(projectSessionStorageKey(currentProjectId));
+          sessionId = "";
+          restoreTranscript();
+          currentWorkspaceState = {
+            has_data: false,
+            flow: {present: false},
+            rainfall: {present: false},
+            sites: {present: false},
+            filter: {present: false},
+          };
+          await refreshResults();
         }
         auxiliaryState = null;
         if (hasAuxiliary) {
@@ -1280,17 +1349,23 @@
     document.getElementById("rainfallFile").addEventListener("change", (event) => {
       pendingAuxiliaryFiles.rainfall = event.target.files[0] || null;
       document.getElementById("rainfallFileName").textContent =
-        pendingAuxiliaryFiles.rainfall?.name || "未选择";
+        pendingAuxiliaryFiles.rainfall?.name
+        || (currentWorkspaceState?.rainfall?.present ? "当前已导入：降雨数据" : "尚未上传");
     });
     document.getElementById("siteInfoFile").addEventListener("change", (event) => {
       pendingAuxiliaryFiles.sites = event.target.files[0] || null;
       document.getElementById("siteInfoFileName").textContent =
-        pendingAuxiliaryFiles.sites?.name || "未选择";
+        pendingAuxiliaryFiles.sites?.name
+        || (currentWorkspaceState?.sites?.present ? "当前已导入：点位信息" : "尚未上传");
     });
     document.getElementById("batchImportFile").addEventListener("change", (event) => {
       const names = Array.from(event.target.files).map((file) => file.name);
       document.getElementById("flowFileNames").textContent =
-        names.length ? `已选择 ${names.length} 个文件` : "未选择";
+        names.length
+          ? `已选择 ${names.length} 个文件`
+          : (currentWorkspaceState?.flow?.present
+            ? `当前已导入 ${currentWorkspaceState.flow.file_count || 1} 个文件`
+            : "尚未上传");
     });
     const AUXILIARY_FIELDS = {
       rainfall: [
@@ -1370,6 +1445,7 @@
         }`;
         auxiliaryMappingDialog.close();
         continueAuxiliaryMapping.hidden = true;
+        await loadWorkspaceState();
       } catch (err) {
         auxiliaryDialogStatus.className = "status error";
         auxiliaryDialogStatus.textContent = `生成失败：${err.message}`;
@@ -1408,7 +1484,8 @@
       data.files.forEach((item) => {
         const a = document.createElement("a");
         a.href = `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
-        a.textContent = `${item.path} (${item.size} bytes)`;
+        a.textContent = `${item.name} (${item.size} bytes)`;
+        a.title = item.path;
         a.target = "_blank";
         files.appendChild(a);
       });

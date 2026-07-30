@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import io
 import os
+import shutil
+import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path, PurePath
 from typing import Any, Callable
 
@@ -761,6 +764,7 @@ def create_app(
             ).parent
             standard_root.mkdir(parents=True, exist_ok=True)
             saved: list[str] = []
+            source_filenames: dict[str, str] = {}
             specs = [
                 (
                     "rainfall",
@@ -811,6 +815,7 @@ def create_app(
                 )
                 normalized.to_csv(standard_root / target_name, index=False, encoding="utf-8")
                 saved.append(target_name)
+                source_filenames[kind] = upload.filename
         except (ValueError, KeyError, json.JSONDecodeError, StopIteration) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not saved:
@@ -818,6 +823,20 @@ def create_app(
                 status_code=400,
                 detail="辅助数据文件已失效，请重新选择后再确认",
             )
+        manifest_path = standard_root / "auxiliary_manifest.json"
+        existing_manifest = {}
+        if manifest_path.is_file():
+            try:
+                existing_manifest = json.loads(
+                    manifest_path.read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError):
+                existing_manifest = {}
+        existing_manifest.update(source_filenames)
+        manifest_path.write_text(
+            json.dumps(existing_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return {"saved": saved, "message": "辅助数据已确认并生成标准文件。"}
 
     @app.post(
@@ -1151,11 +1170,200 @@ def create_app(
         workspace = app.state.projects.get_or_create_workspace(project_id)
         root = app.state.projects.batch_workspace(project_id, workspace.id)
         files: list[dict[str, Any]] = []
-        for directory in ("results", "baseline", "jobs"):
-            files.extend(_list_files(root, root / directory))
+        current_results = {
+            algorithm: app.state.analysis_runner.current(
+                project_id, workspace.id, algorithm
+            )
+            for algorithm in (
+                "data_quality", "patterns", "rainfall",
+                "event_response", "rdii", "risk",
+            )
+        }
+        labels = {
+            "data_quality": "数据质量结果",
+            "patterns": "排污规律结果",
+            "rainfall": "降雨分析结果",
+            "event_response": "降雨响应结果",
+            "rdii": "RDII 分析结果",
+            "risk": "风险分析结果",
+        }
+        for algorithm, result in current_results.items():
+            if result is None:
+                continue
+            for artifact in result.artifacts:
+                path = root / artifact
+                if path.is_file():
+                    files.append({
+                        "path": artifact,
+                        "name": labels[algorithm],
+                        "size": path.stat().st_size,
+                    })
+        baseline = app.state.filter_baselines.current_baseline(
+            project_id, workspace.id
+        )
+        if baseline is not None:
+            path = root / baseline.artifact
+            if path.is_file():
+                files.append({
+                    "path": baseline.artifact,
+                    "name": "当前筛选结果",
+                    "size": path.stat().st_size,
+                })
+        for draft in app.state.report_templates.list_drafts(
+            project_id, workspace.id
+        )[-1:]:
+            for artifact, label in (
+                (draft.docx, "当前报告初稿"),
+                (draft.workbook, "当前综合结果表"),
+            ):
+                path = root / artifact
+                if path.is_file():
+                    files.append({
+                        "path": artifact,
+                        "name": label,
+                        "size": path.stat().st_size,
+                    })
         return {
             "workspace_id": workspace.id,
             "files": files,
+        }
+
+    @app.get("/api/projects/{project_id}/workspace/state")
+    def get_project_workspace_state(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        standard = root / "standard"
+        flow_files = 0
+        flow_manifest_path = standard / "manifest.json"
+        if flow_manifest_path.is_file():
+            try:
+                flow_manifest = json.loads(
+                    flow_manifest_path.read_text(encoding="utf-8")
+                )
+                sources = flow_manifest.get("sources", [])
+                if isinstance(sources, list):
+                    flow_files = len(sources)
+            except (OSError, json.JSONDecodeError):
+                flow_files = 0
+        auxiliary_manifest = {}
+        auxiliary_path = standard / "auxiliary_manifest.json"
+        if auxiliary_path.is_file():
+            try:
+                auxiliary_manifest = json.loads(
+                    auxiliary_path.read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError):
+                auxiliary_manifest = {}
+        baseline = app.state.filter_baselines.current_baseline(
+            project_id, workspace.id
+        )
+        return {
+            "workspace_id": workspace.id,
+            "has_data": (standard / "flow.csv").is_file(),
+            "flow": {
+                "present": (standard / "flow.csv").is_file(),
+                "file_count": int(flow_files),
+            },
+            "rainfall": {
+                "present": (standard / "rainfall.csv").is_file(),
+                "filename": auxiliary_manifest.get("rainfall"),
+            },
+            "sites": {
+                "present": (standard / "sites.csv").is_file(),
+                "filename": auxiliary_manifest.get("sites"),
+            },
+            "filter": (
+                {
+                    "present": True,
+                    "version": baseline.version,
+                    "path": baseline.artifact,
+                }
+                if baseline is not None
+                else {"present": False}
+            ),
+        }
+
+    @app.post("/api/projects/{project_id}/workspace/reset")
+    def reset_project_workspace(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        database = app.state.root / "var" / "drainage.sqlite3"
+        archived_at = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS archived_agent_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    batch_id TEXT NOT NULL,
+                    history_json TEXT NOT NULL,
+                    state_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    archived_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO archived_agent_sessions
+                SELECT session_id, project_id, batch_id, history_json,
+                       state_json, created_at, updated_at, ?
+                FROM agent_sessions
+                WHERE project_id = ? AND batch_id = ?
+                """,
+                (archived_at, project_id, workspace.id),
+            )
+            for table in (
+                "agent_sessions",
+                "current_analysis_results",
+                "analysis_runs",
+                "current_analysis_baselines",
+                "analysis_baselines",
+                "filter_results",
+                "background_jobs",
+                "report_drafts",
+                "data_imports",
+            ):
+                connection.execute(
+                    f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
+                    (project_id, workspace.id),
+                )
+            run_ids = [
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT run_id FROM agent_runs
+                    WHERE project_id = ? AND batch_id = ?
+                    """,
+                    (project_id, workspace.id),
+                )
+            ]
+            if run_ids:
+                placeholders = ",".join("?" for _ in run_ids)
+                connection.execute(
+                    f"DELETE FROM agent_run_steps WHERE run_id IN ({placeholders})",
+                    run_ids,
+                )
+            connection.execute(
+                "DELETE FROM agent_runs WHERE project_id = ? AND batch_id = ?",
+                (project_id, workspace.id),
+            )
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        for directory in (
+            "inputs", "standard", "baseline", "results",
+            "reports", "jobs", "sessions",
+        ):
+            target = (root / directory).resolve()
+            if target.is_relative_to(root.resolve()) and target.is_dir():
+                shutil.rmtree(target)
+            target.mkdir(parents=True, exist_ok=True)
+        return {
+            "workspace_id": workspace.id,
+            "message": "当前数据已清空，旧对话已归档。",
         }
 
     @app.post(

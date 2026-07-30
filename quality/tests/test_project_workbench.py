@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -93,7 +94,7 @@ def test_project_file_download_is_confined_to_requested_project(tmp_path: Path) 
     assert escaped.status_code == 403
 
 
-def test_project_artifact_list_only_returns_selected_project_workspace(
+def test_project_artifact_list_only_returns_current_tracked_results(
     tmp_path: Path,
 ) -> None:
     client = TestClient(
@@ -122,16 +123,92 @@ def test_project_artifact_list_only_returns_selected_project_workspace(
     response = client.get(f"/api/projects/{project['id']}/workspace/artifacts")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "workspace_id": workspace_id,
-        "files": [
-            {
-                "path": "results/data_quality/run-1/result.json",
-                "name": "result.json",
-                "size": 2,
-            }
-        ],
+    assert response.json() == {"workspace_id": workspace_id, "files": []}
+
+
+def test_existing_project_restores_current_data_state(tmp_path: Path) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    standard = (
+        tmp_path / "var" / "projects" / project["id"]
+        / "batches" / workspace_id / "standard"
+    )
+    standard.mkdir(parents=True, exist_ok=True)
+    (standard / "flow.csv").write_text("flow", encoding="utf-8")
+    (standard / "manifest.json").write_text(
+        '{"sources":[{"filename":"W1.csv"},{"filename":"W2.csv"}]}',
+        encoding="utf-8",
+    )
+    (standard / "rainfall.csv").write_text("rain", encoding="utf-8")
+    (standard / "auxiliary_manifest.json").write_text(
+        '{"rainfall":"rain.csv"}',
+        encoding="utf-8",
+    )
+
+    response = client.get(f"/api/projects/{project['id']}/workspace/state")
+
+    assert response.status_code == 200
+    assert response.json()["has_data"] is True
+    assert response.json()["flow"] == {
+        "present": True,
+        "file_count": 2,
     }
+    assert response.json()["rainfall"] == {
+        "present": True,
+        "filename": "rain.csv",
+    }
+    assert response.json()["sites"]["present"] is False
+
+
+def test_reimport_reset_archives_chat_and_clears_current_artifacts(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = (
+        tmp_path / "var" / "projects" / project["id"]
+        / "batches" / workspace_id
+    )
+    (root / "standard").mkdir(parents=True, exist_ok=True)
+    (root / "standard" / "flow.csv").write_text("old", encoding="utf-8")
+    app.state.conversations.repository.save(
+        "session-1",
+        project["id"],
+        workspace_id,
+        [{"role": "user", "content": "旧问题"}],
+        app.state.deps.session,
+    )
+
+    response = client.post(f"/api/projects/{project['id']}/workspace/reset")
+
+    assert response.status_code == 200
+    assert not (root / "standard" / "flow.csv").exists()
+    assert (root / "standard").is_dir()
+    database = tmp_path / "var" / "drainage.sqlite3"
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM agent_sessions WHERE session_id = 'session-1'"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM archived_agent_sessions
+            WHERE session_id = 'session-1'
+            """
+        ).fetchone()[0] == 1
 
 
 def test_project_upload_rejects_executable_and_preserves_existing_file(
