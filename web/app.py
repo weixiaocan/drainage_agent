@@ -314,7 +314,10 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         html_path = Path(__file__).resolve().parent / "static" / "index.html"
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
+        return HTMLResponse(
+            html_path.read_text(encoding="utf-8"),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.post("/api/projects", status_code=201)
     def create_project(request: ProjectCreateRequest) -> dict[str, str]:

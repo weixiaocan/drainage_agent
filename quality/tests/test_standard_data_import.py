@@ -261,6 +261,7 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     response = _client(tmp_path).get("/")
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
     assert 'id="batchImportForm"' in response.text
     assert 'id="importQuestions"' in response.text
     assert 'id="importInspection"' in response.text
