@@ -444,8 +444,12 @@
         运行自动筛选
       </button>
       <div id="filterSummary" class="inspection">请先生成并确认标准数据。</div>
-      <label for="filterRevisionFile">修改后的筛选文件</label>
-      <input id="filterRevisionFile" type="file" accept=".xlsx" disabled>
+      <label>筛选文件</label>
+      <div class="file-picker">
+        <input id="filterRevisionFile" type="file" accept=".xlsx" disabled>
+        <label id="filterRevisionFileButtonLabel" for="filterRevisionFile">上传修改版</label>
+        <span id="filterRevisionFileName">尚未生成</span>
+      </div>
       <button id="confirmFilterButton" class="upload-btn" type="button" disabled>
         确认筛选结果
       </button>
@@ -548,6 +552,9 @@
     const runFilterButton = document.getElementById("runFilterButton");
     const filterSummary = document.getElementById("filterSummary");
     const filterRevisionFile = document.getElementById("filterRevisionFile");
+    const filterRevisionFileName = document.getElementById("filterRevisionFileName");
+    const filterRevisionFileButtonLabel =
+      document.getElementById("filterRevisionFileButtonLabel");
     const confirmFilterButton = document.getElementById("confirmFilterButton");
     const agentRuns = document.getElementById("agentRuns");
     const deepDebug = document.getElementById("deepDebug");
@@ -880,10 +887,14 @@
           `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${state.filter.path}`;
         filterSummary.innerHTML =
           `<p>当前筛选结果已确认，可<a href="${download}">下载查看</a>；重新运行将替换当前筛选结果。</p>`;
+        filterRevisionFileName.textContent = "当前已确认：筛选结果.xlsx";
+        filterRevisionFileButtonLabel.textContent = "上传修改版";
       } else {
         filterSummary.textContent = state.has_data
           ? "尚未生成筛选结果。"
           : "请先上传并确认监测数据。";
+        filterRevisionFileName.textContent = "尚未生成";
+        filterRevisionFileButtonLabel.textContent = "上传修改版";
       }
     }
 
@@ -1262,6 +1273,8 @@
         `/filters/${data.filter_id}/download`;
       filterSummary.innerHTML =
         `<p>数据筛选已完成，请<a href="${download}">下载筛选文件</a>进行查看和修改。</p>`;
+      filterRevisionFileName.textContent = "待确认：自动筛选结果.xlsx";
+      filterRevisionFileButtonLabel.textContent = "上传修改版";
       filterRevisionFile.disabled = false;
       confirmFilterButton.disabled = false;
     }
@@ -1319,6 +1332,9 @@
         filterSummary.innerHTML =
           `<p><strong>已确认第 ${data.version} 版分析基线</strong></p>` +
           `<p>后续依赖基线的分析将复用该不可变文件。</p>`;
+        filterRevisionFileName.textContent = "当前已确认：筛选结果.xlsx";
+        filterRevisionFileButtonLabel.textContent = "上传修改版";
+        filterRevisionFile.value = "";
         confirmFilterButton.disabled = true;
       } catch (err) {
         filterSummary.textContent = err.message;
@@ -1366,6 +1382,13 @@
           : (currentWorkspaceState?.flow?.present
             ? `当前已导入 ${currentWorkspaceState.flow.file_count || 1} 个文件`
             : "尚未上传");
+    });
+    filterRevisionFile.addEventListener("change", (event) => {
+      filterRevisionFileName.textContent =
+        event.target.files[0]?.name
+        || (currentWorkspaceState?.filter?.present
+          ? "当前已确认：筛选结果.xlsx"
+          : "待确认：自动筛选结果.xlsx");
     });
     const AUXILIARY_FIELDS = {
       rainfall: [

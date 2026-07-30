@@ -268,6 +268,10 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert 'id="batchImportForm"' not in response.text
     assert 'id="batchImportFile" name="files" type="file" accept=".csv" multiple required' in response.text
     assert 'id="flowFileNames"' in response.text
+    assert 'id="filterRevisionFileName"' in response.text
+    assert 'id="filterRevisionFileButtonLabel"' in response.text
+    assert '"当前已确认：筛选结果.xlsx"' in response.text
+    assert '"上传修改版"' in response.text
     assert "已选择 ${names.length} 个文件" in response.text
     assert 'names.join("、")' not in response.text
     assert "重新识别完成：已替换当前标准数据" not in response.text
