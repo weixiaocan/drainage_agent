@@ -337,7 +337,15 @@ def create_app(
             if app.state.current_project_id
             else None
         )
-        return {"current_project": _project_data(project) if project else None}
+        batch = (
+            app.state.projects.get_batch(project.id, app.state.current_batch_id)
+            if project and app.state.current_batch_id
+            else None
+        )
+        return {
+            "current_project": _project_data(project) if project else None,
+            "current_workspace": _batch_data(batch) if batch else None,
+        }
 
     @app.get("/api/projects/{project_id}")
     def get_project(project_id: str) -> dict[str, str]:
@@ -351,11 +359,15 @@ def create_app(
         project = app.state.projects.get(project_id)
         if project is None:
             raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project.id)
         app.state.current_project_id = project.id
-        app.state.current_batch_id = None
+        app.state.current_batch_id = workspace.id
         app.state.deps.current_project_id = project.id
-        app.state.deps.current_batch_id = None
-        return {"current_project": _project_data(project)}
+        app.state.deps.current_batch_id = workspace.id
+        return {
+            "current_project": _project_data(project),
+            "current_workspace": _batch_data(workspace),
+        }
 
     @app.post("/api/projects/{project_id}/import-profiles", status_code=201)
     def create_import_profile(
@@ -1092,6 +1104,56 @@ def create_app(
         if not path.is_file():
             raise HTTPException(status_code=404, detail="文件不存在")
         return FileResponse(path, filename=path.name)
+
+    @app.get("/api/projects/{project_id}/workspace/artifacts")
+    def list_project_artifacts(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        files: list[dict[str, Any]] = []
+        for directory in ("results", "baseline", "jobs"):
+            files.extend(_list_files(root, root / directory))
+        return {"workspace_id": workspace.id, "files": files}
+
+    @app.get("/api/projects/{project_id}/workspace/artifacts")
+    def list_project_artifacts(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        files: list[dict[str, Any]] = []
+        for directory in ("results", "baseline", "jobs"):
+            files.extend(_list_files(root, root / directory))
+        return {"workspace_id": workspace.id, "files": files}
+
+    @app.get("/api/projects/{project_id}/workspace/artifacts")
+    def list_project_artifacts(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        files: list[dict[str, Any]] = []
+        for directory in ("results", "baseline", "jobs"):
+            files.extend(_list_files(root, root / directory))
+        return {
+            "workspace_id": workspace.id,
+            "files": files,
+        }
+
+    @app.get("/api/projects/{project_id}/workspace/artifacts")
+    def list_project_artifacts(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        files: list[dict[str, Any]] = []
+        for directory in ("results", "baseline", "jobs"):
+            files.extend(_list_files(root, root / directory))
+        return {
+            "workspace_id": workspace.id,
+            "files": files,
+        }
 
     @app.post(
         "/api/projects/{project_id}/report-templates",

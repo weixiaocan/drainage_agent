@@ -44,10 +44,19 @@ def test_web_user_can_create_list_view_and_switch_projects(tmp_path: Path) -> No
     selected = client.put(f"/api/projects/{south_project['id']}/selection")
 
     assert selected.status_code == 200
-    assert selected.json() == {"current_project": south_project}
-    assert client.get("/api/projects/selection").json() == {
-        "current_project": south_project
+    workspace = selected.json()["current_workspace"]
+    assert selected.json() == {
+        "current_project": south_project,
+        "current_workspace": workspace,
     }
+    assert workspace["project_id"] == south_project["id"]
+    assert client.get("/api/projects/selection").json() == {
+        "current_project": south_project,
+        "current_workspace": workspace,
+    }
+
+    reselected = client.put(f"/api/projects/{south_project['id']}/selection")
+    assert reselected.json()["current_workspace"]["id"] == workspace["id"]
 
 
 def test_project_file_download_is_confined_to_requested_project(tmp_path: Path) -> None:
@@ -82,6 +91,47 @@ def test_project_file_download_is_confined_to_requested_project(tmp_path: Path) 
         f"/api/projects/{north['id']}/files/..%2F{south['id']}%2F记录.txt"
     )
     assert escaped.status_code == 403
+
+
+def test_project_artifact_list_only_returns_selected_project_workspace(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(
+        create_app(
+            tmp_path,
+            deps_factory=make_deps,
+            agent_factory=lambda _deps: FakeAgent(),
+        )
+    )
+    project = client.post("/api/projects", json={"name": "北区"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = (
+        tmp_path
+        / "var"
+        / "projects"
+        / project["id"]
+        / "batches"
+        / workspace_id
+    )
+    artifact = root / "results" / "data_quality" / "run-1" / "result.json"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("{}", encoding="utf-8")
+    (root / "standard" / "flow.csv").write_text("ignored", encoding="utf-8")
+
+    response = client.get(f"/api/projects/{project['id']}/workspace/artifacts")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "workspace_id": workspace_id,
+        "files": [
+            {
+                "path": "results/data_quality/run-1/result.json",
+                "name": "result.json",
+                "size": 2,
+            }
+        ],
+    }
 
 
 def test_project_upload_rejects_executable_and_preserves_existing_file(

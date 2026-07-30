@@ -373,25 +373,16 @@
       <div class="sub">本地排水监测数据分析网页</div>
 
       <h2><span class="step-no">1</span>监测项目</h2>
+      <div class="hint">项目名称就是本次分析结果的文件夹名称。选择已有项目会继续使用其中的数据和结果。</div>
       <form id="projectForm">
         <label for="projectName">项目名称</label>
         <input id="projectName" name="name" type="text" required maxlength="120">
-        <button class="upload-btn" type="submit">创建并切换</button>
+        <button class="upload-btn" type="submit">创建新项目</button>
       </form>
       <div id="projectStatus" class="status">当前项目：未选择</div>
       <div id="projectList" class="project-list"></div>
 
-      <h2><span class="step-no">2</span>分析批次</h2>
-      <div class="hint">一次独立分析对应一个批次，数据、筛选和结果都挂在批次下。</div>
-      <form id="batchForm">
-        <label for="batchName">批次名称</label>
-        <input id="batchName" name="name" type="text" required maxlength="120">
-        <button id="createBatchButton" class="upload-btn" type="submit" disabled>创建并切换</button>
-      </form>
-      <div id="batchStatus" class="status">当前批次：未选择</div>
-      <div id="batchList" class="batch-list"></div>
-
-      <h2><span class="step-no">3</span>导入监测数据</h2>
+      <h2><span class="step-no">2</span>导入监测数据</h2>
       <div class="hint">可一次选择多个原始监测 CSV。系统智能识别后会列出全部列名匹配结果，请人工修改并确认，再统一生成标准数据。也可以<a href="/api/standard-flow-template" download>下载标准模板</a>填写后上传。</div>
       <form id="batchImportForm">
         <label for="batchImportFile">原始监测 CSV（可多选）</label>
@@ -400,7 +391,7 @@
       </form>
       <details class="advanced">
         <summary>辅助数据（降雨、点位信息）</summary>
-        <div class="hint">辅助数据与本批监测数据配套使用；上传前请核对文件类型和列名。</div>
+        <div class="hint">辅助数据与当前项目的监测数据配套使用；上传前请核对文件类型和列名。</div>
         <form id="uploadForm">
           <label>降雨 CSV</label>
           <input name="rainfall_file" type="file" accept=".csv">
@@ -411,14 +402,14 @@
         <div id="uploadStatus" class="status"></div>
         <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
       </details>
-      <div id="batchImportStatus" class="status">请先选择分析批次。</div>
+      <div id="batchImportStatus" class="status">请先选择监测项目。</div>
       <button id="continueImportMapping" class="secondary" type="button" hidden>继续确认列名匹配</button>
       <details id="standardPreviewDetails" class="advanced" hidden>
         <summary>标准数据预览</summary>
         <div id="standardPreview" class="inspection"></div>
       </details>
 
-      <h2><span class="step-no">4</span>筛选确认与分析基线</h2>
+      <h2><span class="step-no">3</span>筛选确认与分析基线</h2>
       <button id="runFilterButton" class="upload-btn" type="button" disabled>
         运行自动筛选
       </button>
@@ -432,7 +423,7 @@
         明确确认当前筛选文件
       </button>
 
-      <h2><span class="step-no">5</span>数据质量检查</h2>
+      <h2><span class="step-no">4</span>数据质量检查</h2>
       <label class="check">
         <input id="forceDataQualityRerun" type="checkbox">
         明确重新运行并创建新版本
@@ -440,8 +431,8 @@
       <button id="runDataQualityButton" class="upload-btn" type="button" disabled>
         运行数据质量检查
       </button>
-      <div id="dataQualityResult" class="inspection">请先选择已有标准数据的分析批次。</div>
-      <div id="analysisJobHistory" class="inspection">当前批次暂无后台作业。</div>
+      <div id="dataQualityResult" class="inspection">请先选择已有标准数据的监测项目。</div>
+      <div id="analysisJobHistory" class="inspection">当前项目暂无后台作业。</div>
 
       <h2>快捷指令</h2>
       <div class="quick">
@@ -463,14 +454,14 @@
           开启受控深度调试
         </label>
         <button class="secondary" id="refreshAgentRuns" type="button">刷新运行记录</button>
-        <div id="agentRuns" class="inspection">请先选择分析批次。</div>
+        <div id="agentRuns" class="inspection">请先选择监测项目。</div>
       </details>
     </aside>
 
     <main>
       <header>
         <h1>对话分析</h1>
-        <div class="sub">完成左侧第 1～3 步后，直接描述要做的分析。</div>
+        <div class="sub">完成左侧项目选择和数据导入后，直接描述要做的分析。</div>
       </header>
       <section id="chat" class="chat">
         <div class="msg agent">已就绪。请先在左侧第 1 步创建或选择监测项目。</div>
@@ -505,7 +496,7 @@
       <div class="dialog-header">
         <div>
           <h2>确认辅助数据列名匹配</h2>
-          <div class="hint">核对降雨数据和点位信息的字段含义，确认后写入当前分析批次。</div>
+          <div class="hint">核对降雨数据和点位信息的字段含义，确认后写入当前监测项目。</div>
         </div>
         <button id="closeAuxiliaryMappingDialog" class="dialog-close" type="button"
                 aria-label="关闭辅助数据列名匹配弹窗" title="暂不确认">×</button>
@@ -531,9 +522,6 @@
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
     const projectList = document.getElementById("projectList");
-    const batchStatus = document.getElementById("batchStatus");
-    const batchList = document.getElementById("batchList");
-    const createBatchButton = document.getElementById("createBatchButton");
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
@@ -849,23 +837,23 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "切换项目失败");
       currentProjectId = data.current_project.id;
-      currentBatchId = "";
+      currentBatchId = data.current_workspace.id;
       projectStatus.textContent = `当前项目：${data.current_project.name}`;
-      batchStatus.textContent = "当前批次：未选择";
-      createBatchButton.disabled = false;
-      batchImportButton.disabled = true;
-      runDataQualityButton.disabled = true;
-      runFilterButton.disabled = true;
+      batchImportButton.disabled = false;
+      runDataQualityButton.disabled = false;
+      runFilterButton.disabled = false;
       filterRevisionFile.disabled = true;
       uploadFilterRevisionButton.disabled = true;
       confirmFilterButton.disabled = true;
       currentFilterId = "";
-      filterSummary.textContent = "请先生成并确认标准数据。";
-      dataQualityResult.textContent = "请先选择已有标准数据的分析批次。";
-      batchImportStatus.textContent = "请先选择分析批次。";
+      filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
+      dataQualityResult.textContent = "请先确认当前项目的标准数据。";
+      batchImportStatus.textContent = "可上传原始监测 CSV；重新导入会替换当前标准数据。";
       resetImportArea();
+      await loadStandardPreview();
+      await loadAnalysisJobs();
+      await loadAgentRuns();
       await refreshProjects();
-      await refreshBatches();
     }
 
     async function refreshProjects() {
@@ -887,34 +875,9 @@
       });
     }
 
-    async function selectBatch(batch) {
-      const res = await fetch(
-        `/api/projects/${currentProjectId}/batches/${batch.id}/selection`,
-        {method: "PUT"},
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "切换分析批次失败");
-      currentBatchId = data.current_batch.id;
-      batchStatus.textContent = `当前批次：${data.current_batch.name}`;
-      batchImportButton.disabled = false;
-      runDataQualityButton.disabled = false;
-      runFilterButton.disabled = false;
-      currentFilterId = "";
-      filterRevisionFile.disabled = true;
-      uploadFilterRevisionButton.disabled = true;
-      confirmFilterButton.disabled = true;
-      filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
-      batchImportStatus.textContent = "可上传原始监测 CSV。";
-      resetImportArea();
-      loadStandardPreview();
-      await loadAnalysisJobs();
-      await loadAgentRuns();
-      await refreshBatches();
-    }
-
     async function loadAgentRuns() {
       if (!currentProjectId || !currentBatchId) {
-        agentRuns.textContent = "请先选择分析批次。";
+        agentRuns.textContent = "请先选择监测项目。";
         return;
       }
       const res = await fetch(
@@ -923,7 +886,7 @@
       const runs = await res.json();
       if (!res.ok) throw new Error(runs.detail || "读取 Agent 运行记录失败");
       if (runs.length === 0) {
-        agentRuns.textContent = "当前批次暂无 Agent 运行记录。";
+        agentRuns.textContent = "当前项目暂无 Agent 运行记录。";
         return;
       }
       const table = document.createElement("table");
@@ -947,56 +910,20 @@
       });
     });
 
-    async function refreshBatches() {
-      batchList.innerHTML = "";
-      if (!currentProjectId) {
-        batchList.textContent = "请先选择监测项目。";
-        return;
-      }
-      const res = await fetch(`/api/projects/${currentProjectId}/batches`);
-      const batches = await res.json();
-      if (!res.ok) throw new Error(batches.detail || "读取分析批次失败");
-      if (batches.length === 0) {
-        batchList.textContent = "暂无分析批次。";
-        return;
-      }
-      batches.forEach((batch) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = batch.id === currentBatchId ? "" : "secondary";
-        button.textContent = batch.name;
-        button.title = "查看并切换到此分析批次";
-        button.addEventListener("click", () => selectBatch(batch));
-        batchList.appendChild(button);
-      });
-    }
-
-    document.getElementById("batchForm").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      batchStatus.className = "status";
-      try {
-        if (!currentProjectId) throw new Error("请先选择监测项目");
-        const name = event.target.elements.name.value.trim();
-        const res = await fetch(`/api/projects/${currentProjectId}/batches`, {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({name}),
-        });
-        const batch = await res.json();
-        if (!res.ok) throw new Error(batch.detail || "创建分析批次失败");
-        event.target.reset();
-        await selectBatch(batch);
-      } catch (err) {
-        batchStatus.className = "status error";
-        batchStatus.textContent = err.message;
-      }
-    });
-
     document.getElementById("projectForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       projectStatus.className = "status";
       try {
         const name = event.target.elements.name.value.trim();
+        const existingRes = await fetch("/api/projects");
+        const existingProjects = await existingRes.json();
+        const existing = existingProjects.find((project) => project.name === name);
+        if (existing) {
+          event.target.reset();
+          await selectProject(existing);
+          projectStatus.textContent = `已加载已有项目：${existing.name}`;
+          return;
+        }
         const res = await fetch("/api/projects", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1181,7 +1108,7 @@
       event.preventDefault();
       batchImportStatus.className = "status";
       try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
         batchImportStatus.textContent = "正在上传并识别...";
         const selectedNames = Array.from(event.target.elements.files.files).map((file) => file.name);
         const res = await fetch(
@@ -1261,7 +1188,7 @@
               : "") +
             "</p>"
           ).join("")
-        : "当前批次暂无后台作业。";
+        : "当前项目暂无后台作业。";
     }
 
     async function waitForAnalysisJob(job) {
@@ -1287,7 +1214,7 @@
     runDataQualityButton.addEventListener("click", async () => {
       dataQualityResult.className = "inspection";
       try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
         runDataQualityButton.disabled = true;
         dataQualityResult.textContent = "正在提交后台数据质量检查...";
         const res = await fetch(
@@ -1343,7 +1270,7 @@
 
     runFilterButton.addEventListener("click", async () => {
       try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
         filterSummary.textContent = "正在运行确定性筛选...";
         const res = await fetch(
           `/api/projects/${currentProjectId}/batches/${currentBatchId}/filters`,
@@ -1502,7 +1429,7 @@
       uploadStatus.className = "status";
       uploadStatus.textContent = "正在识别辅助数据列名...";
       try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择分析批次");
+        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
         const form = new FormData(event.target);
         const res = await fetch(
           `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/inspect`,
@@ -1521,17 +1448,25 @@
     });
 
     async function refreshResults() {
-      const res = await fetch("/api/results");
-      const data = await res.json();
-      const all = [...data.outputs, ...data.workspace];
       files.innerHTML = "";
-      if (all.length === 0) {
+      if (!currentProjectId || !currentBatchId) {
+        files.textContent = "请先选择监测项目。";
+        return;
+      }
+      const res = await fetch(`/api/projects/${currentProjectId}/workspace/artifacts`);
+      const data = await res.json();
+      if (!res.ok) {
+        files.textContent = data.detail || "结果文件加载失败。";
+        return;
+      }
+      currentBatchId = data.workspace_id;
+      if (data.files.length === 0) {
         files.textContent = "暂无结果文件。";
         return;
       }
-      all.forEach((item) => {
+      data.files.forEach((item) => {
         const a = document.createElement("a");
-        a.href = `/files/${item.path}`;
+        a.href = `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
         a.textContent = `${item.path} (${item.size} bytes)`;
         a.target = "_blank";
         files.appendChild(a);
@@ -1542,13 +1477,12 @@
     restoreTranscript();
     fetch("/api/projects/selection")
       .then((response) => response.json())
-      .then((data) => {
+      .then(async (data) => {
         if (data.current_project) {
-          currentProjectId = data.current_project.id;
-          projectStatus.textContent = `当前项目：${data.current_project.name}`;
-          createBatchButton.disabled = false;
+          await selectProject(data.current_project);
+        } else {
+          await refreshProjects();
         }
-        return Promise.all([refreshProjects(), refreshBatches()]);
       });
     refreshResults();
   </script>

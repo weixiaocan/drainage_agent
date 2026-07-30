@@ -131,11 +131,13 @@ def test_new_batches_have_isolated_empty_workspaces_across_two_projects(
     assert not (batch_roots[2] / "inputs" / marker.name).exists()
 
 
-def test_index_exposes_analysis_batch_workbench(tmp_path: Path) -> None:
+def test_index_exposes_project_first_workbench(tmp_path: Path) -> None:
     response = _client(tmp_path).get("/")
 
     assert response.status_code == 200
-    assert 'id="batchForm"' in response.text
-    assert 'id="batchList"' in response.text
+    assert 'id="batchForm"' not in response.text
+    assert 'id="batchList"' not in response.text
+    assert "分析批次" not in response.text
+    assert "项目名称就是本次分析结果的文件夹名称" in response.text
     assert "/batches" in response.text
     assert "/selection" in response.text

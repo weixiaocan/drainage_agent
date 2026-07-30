@@ -23,6 +23,7 @@ class AnalysisBatch:
 
 
 class ProjectRepository:
+    INTERNAL_WORKSPACE_NAME = "__project_workspace__"
     BATCH_DIRECTORIES = (
         "inputs",
         "standard",
@@ -132,6 +133,20 @@ class ProjectRepository:
                 (project_id,),
             ).fetchall()
         return [AnalysisBatch(*row) for row in rows]
+
+    def get_or_create_workspace(self, project_id: str) -> AnalysisBatch:
+        """Return the single internal workspace used by the project-first UI."""
+        batches = self.list_batches(project_id)
+        internal = next(
+            (batch for batch in reversed(batches)
+             if batch.name == self.INTERNAL_WORKSPACE_NAME),
+            None,
+        )
+        if internal is not None:
+            return internal
+        if batches:
+            return batches[-1]
+        return self.create_batch(project_id, self.INTERNAL_WORKSPACE_NAME)
 
     def workspace(self, project_id: str) -> Path:
         return self.files_root / project_id
