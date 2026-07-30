@@ -96,6 +96,28 @@
       background: #fff;
       font-size: 12px;
     }
+    .file-picker {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .file-picker input { display: none; }
+    .file-picker label {
+      margin: 0;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--soft);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .file-picker span {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
     input[type="text"] {
       width: 100%;
       border: 1px solid var(--border);
@@ -125,17 +147,6 @@
     .quick {
       display: grid;
       gap: 8px;
-    }
-    .project-list,
-    .batch-list {
-      display: grid;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    .project-list button,
-    .batch-list button {
-      width: 100%;
-      text-align: left;
     }
     details.advanced {
       margin: 10px 0;
@@ -375,33 +386,38 @@
       <h2><span class="step-no">1</span>监测项目</h2>
       <div class="hint">项目名称就是本次分析结果的文件夹名称。选择已有项目会继续使用其中的数据和结果。</div>
       <form id="projectForm">
+        <label for="projectSelect">选择已有项目</label>
+        <select id="projectSelect">
+          <option value="">新建项目…</option>
+        </select>
         <label for="projectName">项目名称</label>
-        <input id="projectName" name="name" type="text" required maxlength="120">
-        <button class="upload-btn" type="submit">创建新项目</button>
+        <input id="projectName" name="name" type="text" required maxlength="120"
+               placeholder="输入新名称，或从上方选择">
+        <button class="upload-btn" type="submit">创建或打开项目</button>
       </form>
       <div id="projectStatus" class="status">当前项目：未选择</div>
-      <div id="projectList" class="project-list"></div>
 
-      <h2><span class="step-no">2</span>导入监测数据</h2>
-      <div class="hint">可一次选择多个原始监测 CSV。系统智能识别后会列出全部列名匹配结果，请人工修改并确认，再统一生成标准数据。也可以<a href="/api/standard-flow-template" download>下载标准模板</a>填写后上传。</div>
-      <form id="batchImportForm">
+      <h2><span class="step-no">2</span>数据导入</h2>
+      <div class="hint">监测、降雨和点位数据统一在这里选择；点击一次即可识别全部列名，再按数据类型人工确认。也可以<a href="/api/standard-flow-template" download>下载监测数据标准模板</a>填写后上传。</div>
+      <form id="dataImportForm">
         <label for="batchImportFile">原始监测 CSV（可多选）</label>
-        <input id="batchImportFile" name="files" type="file" accept=".csv" multiple required>
-        <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别</button>
+        <input id="batchImportFile" name="files" type="file" accept=".csv" multiple>
+        <label>降雨 CSV</label>
+        <div class="file-picker">
+          <input id="rainfallFile" name="rainfall_file" type="file" accept=".csv">
+          <label for="rainfallFile">选择降雨 CSV</label>
+          <span id="rainfallFileName">未选择</span>
+        </div>
+        <label>点位信息 XLSX</label>
+        <div class="file-picker">
+          <input id="siteInfoFile" name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
+          <label for="siteInfoFile">选择点位 XLSX</label>
+          <span id="siteInfoFileName">未选择</span>
+        </div>
+        <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别全部列名</button>
       </form>
-      <details class="advanced">
-        <summary>辅助数据（降雨、点位信息）</summary>
-        <div class="hint">辅助数据与当前项目的监测数据配套使用；上传前请核对文件类型和列名。</div>
-        <form id="uploadForm">
-          <label>降雨 CSV</label>
-          <input name="rainfall_file" type="file" accept=".csv">
-          <label>点位信息 XLSX</label>
-          <input name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
-          <button class="upload-btn" type="submit">智能识别列名</button>
-        </form>
-        <div id="uploadStatus" class="status"></div>
-        <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
-      </details>
+      <div id="uploadStatus" class="status"></div>
+      <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
       <div id="batchImportStatus" class="status">请先选择监测项目。</div>
       <button id="continueImportMapping" class="secondary" type="button" hidden>继续确认列名匹配</button>
       <details id="standardPreviewDetails" class="advanced" hidden>
@@ -521,7 +537,7 @@
     const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
-    const projectList = document.getElementById("projectList");
+    const projectSelect = document.getElementById("projectSelect");
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
@@ -546,6 +562,8 @@
     let currentProjectId = "";
     let currentBatchId = "";
     let importState = null;
+    let pendingAuxiliaryFiles = {rainfall: null, sites: null};
+    let projectOptions = [];
     let currentFilterId = "";
 
     const CANONICAL_FIELDS = [
@@ -838,6 +856,8 @@
       if (!res.ok) throw new Error(data.detail || "切换项目失败");
       currentProjectId = data.current_project.id;
       currentBatchId = data.current_workspace.id;
+      document.getElementById("projectName").value = data.current_project.name;
+      projectSelect.value = data.current_project.id;
       projectStatus.textContent = `当前项目：${data.current_project.name}`;
       batchImportButton.disabled = false;
       runDataQualityButton.disabled = false;
@@ -859,21 +879,25 @@
     async function refreshProjects() {
       const res = await fetch("/api/projects");
       const projects = await res.json();
-      projectList.innerHTML = "";
-      if (projects.length === 0) {
-        projectList.textContent = "暂无监测项目。";
+      projectOptions = projects;
+      projectSelect.innerHTML = '<option value="">新建项目…</option>';
+      projects.forEach((project) => {
+        const option = document.createElement("option");
+        option.value = project.id;
+        option.textContent = project.name;
+        projectSelect.appendChild(option);
+      });
+      projectSelect.value = currentProjectId || "";
+    }
+
+    projectSelect.addEventListener("change", async () => {
+      const project = projectOptions.find((item) => item.id === projectSelect.value);
+      if (!project) {
+        document.getElementById("projectName").value = "";
         return;
       }
-      projects.forEach((project) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = project.id === currentProjectId ? "" : "secondary";
-        button.textContent = project.name;
-        button.title = "查看并切换到此项目";
-        button.addEventListener("click", () => selectProject(project));
-        projectList.appendChild(button);
-      });
-    }
+      await selectProject(project);
+    });
 
     async function loadAgentRuns() {
       if (!currentProjectId || !currentBatchId) {
@@ -919,7 +943,6 @@
         const existingProjects = await existingRes.json();
         const existing = existingProjects.find((project) => project.name === name);
         if (existing) {
-          event.target.reset();
           await selectProject(existing);
           projectStatus.textContent = `已加载已有项目：${existing.name}`;
           return;
@@ -931,7 +954,6 @@
         });
         const project = await res.json();
         if (!res.ok) throw new Error(project.detail || "创建项目失败");
-        event.target.reset();
         await selectProject(project);
       } catch (err) {
         projectStatus.className = "status error";
@@ -1078,6 +1100,7 @@
           ? `重新识别完成：已替换当前标准数据，共 ${data.import_count} 个文件、${data.row_count} 行。旧筛选和分析结果需要重新计算。`
           : `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
         await loadStandardPreview();
+        if (auxiliaryState) renderAuxiliaryMapping();
       } catch (err) {
         batchImportStatus.className = "status error";
         batchImportStatus.textContent = err.message;
@@ -1104,13 +1127,44 @@
       standardPreview.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
-    document.getElementById("batchImportForm").addEventListener("submit", async (event) => {
+    document.getElementById("dataImportForm").addEventListener("submit", async (event) => {
       event.preventDefault();
       batchImportStatus.className = "status";
+      uploadStatus.className = "status";
       try {
         if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
-        batchImportStatus.textContent = "正在上传并识别...";
         const selectedNames = Array.from(event.target.elements.files.files).map((file) => file.name);
+        pendingAuxiliaryFiles = {
+          rainfall: event.target.elements.rainfall_file.files[0]
+            || pendingAuxiliaryFiles.rainfall,
+          sites: event.target.elements.site_info_file.files[0]
+            || pendingAuxiliaryFiles.sites,
+        };
+        const hasAuxiliary = Boolean(
+          pendingAuxiliaryFiles.rainfall || pendingAuxiliaryFiles.sites
+        );
+        if (selectedNames.length === 0 && !hasAuxiliary) {
+          throw new Error("请至少选择一种数据文件");
+        }
+        auxiliaryState = null;
+        if (hasAuxiliary) {
+          uploadStatus.textContent = "正在识别降雨和点位信息列名...";
+          const auxiliaryRes = await fetch(
+            `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/inspect`,
+            {method: "POST", body: auxiliaryFilesFormData()},
+          );
+          const auxiliaryData = await auxiliaryRes.json();
+          if (!auxiliaryRes.ok) {
+            throw new Error(auxiliaryData.detail || "辅助数据识别失败");
+          }
+          auxiliaryState = auxiliaryData;
+          uploadStatus.textContent = `已识别：${Object.values(auxiliaryData).map((item) => item.filename).join("、")}`;
+        }
+        if (selectedNames.length === 0) {
+          renderAuxiliaryMapping();
+          return;
+        }
+        batchImportStatus.textContent = "正在上传并识别监测数据...";
         const res = await fetch(
           `/api/projects/${currentProjectId}/batches/${currentBatchId}/batch-imports`,
           {method: "POST", body: new FormData(event.target)},
@@ -1331,6 +1385,36 @@
     });
 
     let auxiliaryState = null;
+
+    function auxiliaryFilesFormData() {
+      const form = new FormData();
+      if (pendingAuxiliaryFiles.rainfall) {
+        form.append(
+          "rainfall_file",
+          pendingAuxiliaryFiles.rainfall,
+          pendingAuxiliaryFiles.rainfall.name,
+        );
+      }
+      if (pendingAuxiliaryFiles.sites) {
+        form.append(
+          "site_info_file",
+          pendingAuxiliaryFiles.sites,
+          pendingAuxiliaryFiles.sites.name,
+        );
+      }
+      return form;
+    }
+
+    document.getElementById("rainfallFile").addEventListener("change", (event) => {
+      pendingAuxiliaryFiles.rainfall = event.target.files[0] || null;
+      document.getElementById("rainfallFileName").textContent =
+        pendingAuxiliaryFiles.rainfall?.name || "未选择";
+    });
+    document.getElementById("siteInfoFile").addEventListener("change", (event) => {
+      pendingAuxiliaryFiles.sites = event.target.files[0] || null;
+      document.getElementById("siteInfoFileName").textContent =
+        pendingAuxiliaryFiles.sites?.name || "未选择";
+    });
     const AUXILIARY_FIELDS = {
       rainfall: [
         {value: "timestamp", label: "降雨时间"},
@@ -1338,8 +1422,11 @@
       ],
       sites: [
         {value: "point_id", label: "点位编号"},
+        {value: "device_type", label: "设备类型"},
+        {value: "shape", label: "形状"},
         {value: "diameter_m", label: "管径 (m)"},
         {value: "well_depth_m", label: "井深 (m)"},
+        {value: "install_time", label: "设备安装时间"},
         {value: "pipe_type", label: "管道类型（可选）"},
       ],
     };
@@ -1382,8 +1469,7 @@
     }
 
     async function confirmAuxiliaryData() {
-      const formElement = document.getElementById("uploadForm");
-      const form = new FormData(formElement);
+      const form = auxiliaryFilesFormData();
       const mappings = {};
       Object.entries(auxiliaryState).forEach(([kind, item]) => {
         mappings[kind] = {};
@@ -1402,10 +1488,11 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "辅助数据确认失败");
         uploadStatus.className = "status";
-        uploadStatus.textContent = data.message;
+        uploadStatus.textContent = `${data.message} 已选文件：${
+          Object.values(auxiliaryState).map((item) => item.filename).join("、")
+        }`;
         auxiliaryMappingDialog.close();
         continueAuxiliaryMapping.hidden = true;
-        formElement.reset();
       } catch (err) {
         auxiliaryDialogStatus.className = "status error";
         auxiliaryDialogStatus.textContent = `生成失败：${err.message}`;
@@ -1423,29 +1510,6 @@
     );
     continueImportMapping.addEventListener("click", () => importMappingDialog.showModal());
     continueAuxiliaryMapping.addEventListener("click", () => auxiliaryMappingDialog.showModal());
-
-    document.getElementById("uploadForm").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      uploadStatus.className = "status";
-      uploadStatus.textContent = "正在识别辅助数据列名...";
-      try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
-        const form = new FormData(event.target);
-        const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/inspect`,
-          {method: "POST", body: form},
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "辅助数据识别失败");
-        auxiliaryState = data;
-        auxiliaryDialogStatus.textContent = "";
-        renderAuxiliaryMapping();
-        uploadStatus.textContent = "识别完成，请核对下方列名匹配。";
-      } catch (err) {
-        uploadStatus.className = "status error";
-        uploadStatus.textContent = err.message;
-      }
-    });
 
     async function refreshResults() {
       files.innerHTML = "";

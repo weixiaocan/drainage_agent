@@ -675,14 +675,24 @@ def create_app(
     def _auxiliary_columns(frame: pd.DataFrame, kind: str) -> list[dict[str, str | None]]:
         aliases = {
             "rainfall": {
-                "timestamp": {"timestamp", "time", "时间", "日期", "数据时间"},
+                "timestamp": {
+                    "timestamp", "time", "date", "时间", "日期", "数据时间"
+                },
                 "rain_mm": {"rain", "rain_mm", "雨量", "降雨量", "降雨量(mm)", "日降雨量(mm)"},
             },
             "sites": {
-                "point_id": {"point_id", "点位", "点位编号", "监测点位"},
+                "point_id": {
+                    "point_id", "点位", "点位编号", "监测点位",
+                    "安装点位", "安装监测点位", "监测点编号",
+                },
+                "device_type": {"device_type", "设备类型", "类型"},
+                "shape": {"shape", "形状", "管道形状", "管形状", "绑定管形状"},
                 "diameter_m": {"diameter_m", "管径", "管径(m)", "管径（m）"},
                 "well_depth_m": {"well_depth_m", "井深", "井深(m)", "井深（m）"},
-                "pipe_type": {"pipe_type", "管道类型", "管材", "设备类型"},
+                "install_time": {
+                    "install_time", "设备安装时间", "安装时间", "监测设备安装时间"
+                },
+                "pipe_type": {"pipe_type", "管道类型", "管材", "管网类型"},
             },
         }[kind]
         return [
@@ -752,33 +762,62 @@ def create_app(
             standard_root.mkdir(parents=True, exist_ok=True)
             saved: list[str] = []
             specs = [
-                ("rainfall", rainfall_file, ["timestamp", "rain_mm"], "rainfall.csv"),
                 (
-                    "sites", site_info_file,
-                    ["point_id", "diameter_m", "well_depth_m", "pipe_type"],
+                    "rainfall",
+                    rainfall_file,
+                    ["timestamp", "rain_mm"],
+                    ["timestamp", "rain_mm"],
+                    "rainfall.csv",
+                ),
+                (
+                    "sites",
+                    site_info_file,
+                    [
+                        "point_id",
+                        "device_type",
+                        "shape",
+                        "diameter_m",
+                        "well_depth_m",
+                        "install_time",
+                        "pipe_type",
+                    ],
+                    ["point_id", "diameter_m", "well_depth_m"],
                     "sites.csv",
                 ),
             ]
-            for kind, upload, required, target_name in specs:
+            for kind, upload, fields, required, target_name in specs:
                 if upload is None or not upload.filename:
                     continue
                 frame = _auxiliary_frame(await _read_upload(upload), upload.filename)
                 mapping = mapping_data.get(kind, {})
                 missing = [field for field in required if field not in mapping.values()]
-                if kind == "sites" and missing == ["pipe_type"]:
-                    frame["__pipe_type_default"] = ""
-                    mapping["__pipe_type_default"] = "pipe_type"
-                    missing = []
                 if missing:
                     raise ValueError(f"{upload.filename} 缺少字段匹配: {', '.join(missing)}")
-                normalized = pd.DataFrame({
-                    field: frame[next(source for source, target in mapping.items() if target == field)]
-                    for field in required
-                })
+                normalized = pd.DataFrame(
+                    {
+                        field: (
+                            frame[
+                                next(
+                                    source
+                                    for source, target in mapping.items()
+                                    if target == field
+                                )
+                            ]
+                            if field in mapping.values()
+                            else pd.Series([""] * len(frame), index=frame.index)
+                        )
+                        for field in fields
+                    }
+                )
                 normalized.to_csv(standard_root / target_name, index=False, encoding="utf-8")
                 saved.append(target_name)
         except (ValueError, KeyError, json.JSONDecodeError, StopIteration) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not saved:
+            raise HTTPException(
+                status_code=400,
+                detail="辅助数据文件已失效，请重新选择后再确认",
+            )
         return {"saved": saved, "message": "辅助数据已确认并生成标准文件。"}
 
     @app.post(

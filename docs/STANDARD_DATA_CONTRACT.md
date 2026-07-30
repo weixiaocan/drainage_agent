@@ -33,6 +33,22 @@ CSV 使用 UTF-8 编码，首行为以下固定顺序的字段：
 
 空值写为空 CSV 单元格。字段名、顺序和规范单位属于 v1 契约；调用方不得另行定义同义字段。
 
+## `sites.csv`
+
+点位信息经人工确认后保存为 UTF-8 CSV，字段顺序如下：
+
+| 字段 | 对应报告首表列 | 必需性 |
+| --- | --- | --- |
+| `point_id` | 监测点位 | 必需 |
+| `device_type` | 设备类型 | 可空 |
+| `shape` | 形状 | 可空 |
+| `diameter_m` | 管径(m) | 必需 |
+| `well_depth_m` | 井深(m) | 必需 |
+| `install_time` | 设备安装时间 | 可空 |
+| `pipe_type` | 管道类型 | 可空，报告首表之外的分析字段 |
+
+系统继续兼容早期仅包含 `point_id,diameter_m,well_depth_m,pipe_type` 的标准点位文件；新导入统一写入完整字段。
+
 ## `manifest.json`
 
 导入批次的 manifest 至少包含：

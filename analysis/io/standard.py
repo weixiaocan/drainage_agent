@@ -81,14 +81,23 @@ class StandardDataStore:
         if not path.is_file():
             raise StandardDataUnavailable("当前分析批次缺少标准点位资料")
         frame = pd.read_csv(path, dtype={"point_id": "string"})
-        required = ["point_id", "diameter_m", "well_depth_m", "pipe_type"]
-        if list(frame.columns) != required:
+        legacy = ["point_id", "diameter_m", "well_depth_m", "pipe_type"]
+        current = [
+            "point_id",
+            "device_type",
+            "shape",
+            "diameter_m",
+            "well_depth_m",
+            "install_time",
+            "pipe_type",
+        ]
+        if list(frame.columns) not in (legacy, current):
             raise StandardDataUnavailable(
-                "标准点位资料字段必须为 point_id,diameter_m,well_depth_m,pipe_type"
+                "标准点位资料字段不符合点位信息契约"
             )
         for column in ("diameter_m", "well_depth_m"):
             frame[column] = pd.to_numeric(frame[column], errors="coerce")
-        if frame.empty or frame[required[:3]].isna().any().any():
+        if frame.empty or frame[["point_id", "diameter_m", "well_depth_m"]].isna().any().any():
             raise StandardDataUnavailable("标准点位资料包含空值或无效数据")
         return frame
 

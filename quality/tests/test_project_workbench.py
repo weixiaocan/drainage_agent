@@ -225,7 +225,9 @@ def test_index_exposes_project_workbench(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert 'id="projectForm"' in response.text
-    assert 'id="projectList"' in response.text
+    assert 'id="projectSelect"' in response.text
+    assert 'id="projectList"' not in response.text
+    assert "创建或打开项目" in response.text
     assert 'fetch("/api/projects"' in response.text
     assert 'method: "PUT"' in response.text
 

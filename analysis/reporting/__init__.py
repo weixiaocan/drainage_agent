@@ -286,14 +286,18 @@ def _project_table(df: pd.DataFrame, columns: tuple[tuple[str, tuple[str, ...], 
 def _load_site_info_table(site_info_file: Path | None) -> pd.DataFrame:
     if not site_info_file or not site_info_file.exists():
         return pd.DataFrame()
-    raw = pd.read_excel(site_info_file)
+    raw = (
+        pd.read_csv(site_info_file)
+        if site_info_file.suffix.lower() == ".csv"
+        else pd.read_excel(site_info_file)
+    )
     columns = (
-        ("监测点位", ("监测点位", "点位编号", "安装点位", "安装监测点位"), str),
-        ("设备类型", ("设备类型", "类型"), str),
-        ("形状", ("形状", "管道形状", "管型", "绑定管形状"), str),
-        ("管径(m)", ("管径(m)", "管径", "管径（m）"), _format_number),
-        ("井深(m)", ("井深(m)", "井深", "井深（m）"), _format_number),
-        ("设备安装时间", ("设备安装时间", "安装时间"), _format_date),
+        ("监测点位", ("point_id", "监测点位", "点位编号", "安装点位", "安装监测点位"), str),
+        ("设备类型", ("device_type", "设备类型", "类型"), str),
+        ("形状", ("shape", "形状", "管道形状", "管型", "绑定管形状"), str),
+        ("管径(m)", ("diameter_m", "管径(m)", "管径", "管径（m）"), _format_number),
+        ("井深(m)", ("well_depth_m", "井深(m)", "井深", "井深（m）"), _format_number),
+        ("设备安装时间", ("install_time", "设备安装时间", "安装时间"), _format_date),
     )
     return _project_table(raw, columns)
 

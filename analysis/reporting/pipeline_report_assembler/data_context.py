@@ -117,7 +117,11 @@ def _load_site_info(path: Path, warnings: list[str]) -> pd.DataFrame:
     if not Path(path).is_file():
         warnings.append(f"点位信息文件不存在: {path}")
         return pd.DataFrame()
-    df = pd.read_excel(path)
+    df = (
+        pd.read_csv(path)
+        if Path(path).suffix.lower() == ".csv"
+        else pd.read_excel(path)
+    )
     rename_map = {}
     aliases = {
         "point_id": ("监测点编号", "监测点位", "安装监测点位", "安装点位", "点位编号"),

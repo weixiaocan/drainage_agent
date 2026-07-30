@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
@@ -262,7 +264,11 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert 'id="batchImportForm"' in response.text
+    assert 'id="dataImportForm"' in response.text
+    assert 'id="batchImportForm"' not in response.text
+    assert 'name="rainfall_file"' in response.text
+    assert 'name="site_info_file"' in response.text
+    assert "上传并智能识别全部列名" in response.text
     assert 'id="importQuestions"' in response.text
     assert 'id="importInspection"' in response.text
     assert 'id="standardPreview"' in response.text
@@ -394,6 +400,103 @@ def test_auxiliary_data_is_inspected_then_saved_to_current_batch(
         "timestamp,rain_mm",
         "2026-01-01,2.5",
     ]
+
+
+def test_site_information_matches_first_report_table_contract(
+    tmp_path: Path,
+) -> None:
+    client = _client(tmp_path)
+    project = client.post("/api/projects", json={"name": "点位表头"}).json()
+    batch = client.post(
+        f"/api/projects/{project['id']}/batches",
+        json={"name": "列名确认"},
+    ).json()
+    endpoint = (
+        f"/api/projects/{project['id']}/batches/{batch['id']}/auxiliary"
+    )
+    content = BytesIO()
+    pd.DataFrame(
+        [
+            {
+                "安装监测点位": "W1",
+                "类型": "流量计",
+                "形状": "圆管",
+                "管径(m)": 1.5,
+                "井深(m)": 5.4,
+                "设备安装时间": "2026-03-01",
+                "管道类型": "污水管",
+            }
+        ]
+    ).to_excel(content, index=False)
+    payload = content.getvalue()
+
+    inspected = client.post(
+        endpoint + "/inspect",
+        files={
+            "site_info_file": (
+                "sites.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert inspected.status_code == 200
+    columns = {
+        item["source"]: item["field"]
+        for item in inspected.json()["sites"]["columns"]
+    }
+    assert columns == {
+        "安装监测点位": "point_id",
+        "类型": "device_type",
+        "形状": "shape",
+        "管径(m)": "diameter_m",
+        "井深(m)": "well_depth_m",
+        "设备安装时间": "install_time",
+        "管道类型": "pipe_type",
+    }
+
+    confirmed = client.post(
+        endpoint + "/confirm",
+        files={
+            "site_info_file": (
+                "sites.xlsx",
+                payload,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+        data={"mappings": json.dumps({"sites": columns})},
+    )
+
+    assert confirmed.status_code == 200
+    saved = pd.read_csv(
+        tmp_path
+        / "var"
+        / "projects"
+        / project["id"]
+        / "batches"
+        / batch["id"]
+        / "standard"
+        / "sites.csv"
+    )
+    assert list(saved.columns) == [
+        "point_id",
+        "device_type",
+        "shape",
+        "diameter_m",
+        "well_depth_m",
+        "install_time",
+        "pipe_type",
+    ]
+    assert saved.iloc[0].to_dict() == {
+        "point_id": "W1",
+        "device_type": "流量计",
+        "shape": "圆管",
+        "diameter_m": 1.5,
+        "well_depth_m": 5.4,
+        "install_time": "2026-03-01",
+        "pipe_type": "污水管",
+    }
 
 
 def test_analysis_reads_confirmed_batch_data_only_through_standard_contract(
