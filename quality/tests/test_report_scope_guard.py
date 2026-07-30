@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -118,6 +119,73 @@ def test_report_args_parse_full_month_without_month_name() -> None:
     assert args["start"] == "2026-03-01"
     assert args["end"] == "2026-03-31"
     assert args["event_ids"] == [6]
+
+
+def test_report_scope_reply_lists_rainfall_events_before_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = _make_deps(tmp_path)
+    deps.current_project_id = "project-1"
+    deps.current_batch_id = "workspace-1"
+    deps.session.user_prompt_history = ["出一份完整的分析报告"]
+
+    class RainfallRunner:
+        def run(self, _request):
+            return SimpleNamespace(
+                data={
+                    "events": [
+                        {
+                            "event_id": 1,
+                            "start_time": "2026-03-07 10:00",
+                            "end_time": "2026-03-07 16:00",
+                            "total_mm": 8.5,
+                        },
+                        {
+                            "event_id": 2,
+                            "start_time": "2026-03-12 09:00",
+                            "end_time": "2026-03-12 13:00",
+                            "total_mm": 5.2,
+                        },
+                    ]
+                }
+            )
+
+    deps.analysis_runner = RainfallRunner()
+    agent = _ReportScopeGuardedAgent(_FailingInnerAgent())
+
+    options = agent.run_sync(
+        "所有，告诉我可以采用哪些降雨事件",
+        deps=deps,
+        message_history=[],
+    )
+
+    assert "已按全网、全时段、全部章节理解" in options.output
+    assert "第 1 场" in options.output
+    assert "第 2 场" in options.output
+    assert "只要旱天" not in options.output
+    captured: dict = {}
+
+    def fake_generate_report(_deps: AgentDeps, **kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "ok",
+            "summary": "报告生成完成",
+            "artifacts": ["report.docx"],
+            "data": {},
+        }
+
+    monkeypatch.setattr("agent.core.generate_report_impl", fake_generate_report)
+    generated = agent.run_sync(
+        "第 1 场",
+        deps=deps,
+        message_history=[],
+    )
+
+    assert generated.output.startswith("报告已生成。")
+    assert captured["points"] is None
+    assert captured["sections"] is None
+    assert captured["event_ids"] == [1]
 
 
 class _FailingInnerAgent:
