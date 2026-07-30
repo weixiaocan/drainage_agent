@@ -321,11 +321,16 @@
     .dialog-header .hint { margin: 0; }
     .dialog-close {
       flex: 0 0 auto;
-      width: auto;
+      width: 34px;
+      height: 34px;
       margin: 0;
+      padding: 0;
+      border-radius: 50%;
       background: white;
       color: var(--muted);
       border-color: var(--border);
+      font-size: 22px;
+      line-height: 1;
     }
     .dialog-body {
       overflow: auto;
@@ -484,9 +489,11 @@
           <h2>确认监测数据列名匹配</h2>
           <div class="hint">表头相同的 CSV 已自动归组；每组只需确认一次，系统仍会逐文件校验内容。</div>
         </div>
-        <button id="closeImportMappingDialog" class="dialog-close" type="button">暂不确认</button>
+        <button id="closeImportMappingDialog" class="dialog-close" type="button"
+                aria-label="关闭监测数据列名匹配弹窗" title="暂不确认">×</button>
       </div>
       <div class="dialog-body">
+        <div id="importDialogStatus" class="status" aria-live="polite"></div>
         <div id="importQuestions" class="inspection"></div>
         <div id="importInspection" class="inspection"></div>
       </div>
@@ -500,9 +507,11 @@
           <h2>确认辅助数据列名匹配</h2>
           <div class="hint">核对降雨数据和点位信息的字段含义，确认后写入当前分析批次。</div>
         </div>
-        <button id="closeAuxiliaryMappingDialog" class="dialog-close" type="button">暂不确认</button>
+        <button id="closeAuxiliaryMappingDialog" class="dialog-close" type="button"
+                aria-label="关闭辅助数据列名匹配弹窗" title="暂不确认">×</button>
       </div>
       <div class="dialog-body">
+        <div id="auxiliaryDialogStatus" class="status" aria-live="polite"></div>
         <div id="auxiliaryMapping" class="inspection"></div>
       </div>
     </div>
@@ -517,6 +526,7 @@
     const uploadStatus = document.getElementById("uploadStatus");
     const auxiliaryMapping = document.getElementById("auxiliaryMapping");
     const auxiliaryMappingDialog = document.getElementById("auxiliaryMappingDialog");
+    const auxiliaryDialogStatus = document.getElementById("auxiliaryDialogStatus");
     const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
@@ -528,6 +538,7 @@
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
     const importMappingDialog = document.getElementById("importMappingDialog");
+    const importDialogStatus = document.getElementById("importDialogStatus");
     const continueImportMapping = document.getElementById("continueImportMapping");
     const importInspection = document.getElementById("importInspection");
     const standardPreviewDetails = document.getElementById("standardPreviewDetails");
@@ -824,6 +835,8 @@
       importState = null;
       importQuestions.hidden = true;
       importQuestions.innerHTML = "";
+      importDialogStatus.textContent = "";
+      importDialogStatus.className = "status";
       if (importMappingDialog.open) importMappingDialog.close();
       continueImportMapping.hidden = true;
       importInspection.innerHTML = "";
@@ -1107,6 +1120,10 @@
 
     async function finalizeImport() {
       batchImportStatus.className = "status";
+      importDialogStatus.className = "status";
+      importDialogStatus.textContent = "正在生成标准数据，请稍候…";
+      const confirmButton = importInspection.querySelector(".dialog-actions button");
+      if (confirmButton) confirmButton.disabled = true;
       try {
         const imports = importState.imports.map((item) => {
           const mapping = {};
@@ -1135,6 +1152,9 @@
       } catch (err) {
         batchImportStatus.className = "status error";
         batchImportStatus.textContent = err.message;
+        importDialogStatus.className = "status error";
+        importDialogStatus.textContent = `生成失败：${err.message}`;
+        if (confirmButton) confirmButton.disabled = false;
       }
     }
 
@@ -1443,17 +1463,25 @@
         });
       });
       form.append("mappings", JSON.stringify(mappings));
-      const res = await fetch(
-        `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/confirm`,
-        {method: "POST", body: form},
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "辅助数据确认失败");
-      uploadStatus.className = "status";
-      uploadStatus.textContent = data.message;
-      auxiliaryMappingDialog.close();
-      continueAuxiliaryMapping.hidden = true;
-      formElement.reset();
+      auxiliaryDialogStatus.className = "status";
+      auxiliaryDialogStatus.textContent = "正在生成辅助标准数据，请稍候…";
+      try {
+        const res = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/auxiliary/confirm`,
+          {method: "POST", body: form},
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "辅助数据确认失败");
+        uploadStatus.className = "status";
+        uploadStatus.textContent = data.message;
+        auxiliaryMappingDialog.close();
+        continueAuxiliaryMapping.hidden = true;
+        formElement.reset();
+      } catch (err) {
+        auxiliaryDialogStatus.className = "status error";
+        auxiliaryDialogStatus.textContent = `生成失败：${err.message}`;
+        throw err;
+      }
     }
 
     document.getElementById("closeImportMappingDialog").addEventListener(
@@ -1481,6 +1509,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "辅助数据识别失败");
         auxiliaryState = data;
+        auxiliaryDialogStatus.textContent = "";
         renderAuxiliaryMapping();
         uploadStatus.textContent = "识别完成，请核对下方列名匹配。";
       } catch (err) {
