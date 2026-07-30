@@ -193,6 +193,8 @@ def test_report_scope_reply_lists_rainfall_events_before_generation(
     )
 
     assert generated.output.startswith("报告已生成。")
+    assert "产物：" not in generated.output
+    assert "report.docx" not in generated.output
     assert captured["points"] is None
     assert captured["sections"] is None
     assert captured["event_ids"] == [1]

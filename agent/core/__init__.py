@@ -528,16 +528,9 @@ def _report_tool_output(result: dict[str, Any]) -> str:
     summary = str(result.get("summary") or "")
     if status != "ok":
         return summary or str(result)
-    artifacts = result.get("artifacts") or []
-    destinations = result.get("data", {}).get("result_destinations", [])
     lines = ["报告已生成。"]
     if summary:
         lines.append(summary)
-    if artifacts:
-        lines.append("产物：" + "；".join(str(path) for path in artifacts))
-    destination_paths = [str(item.get("path")) for item in destinations if isinstance(item, dict) and item.get("path")]
-    if destination_paths:
-        lines.append("综合表：" + "；".join(destination_paths))
     return "\n".join(lines)
 
 

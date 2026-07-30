@@ -15,7 +15,7 @@ from quality.tests.test_web_app import FakeAgent, make_deps
 from quality.tests.test_filter_baselines import write_standard_flow
 from analysis.runs import AnalysisRequest
 from agent.tools.module_tools import generate_report_impl
-from web.app import create_app
+from web.app import _select_chat_artifacts, create_app
 from web.projects import ProjectRepository
 
 
@@ -443,6 +443,26 @@ def test_chat_response_contains_only_files_generated_by_that_answer(
     )
     assert second.status_code == 200
     assert second.json()["artifacts"] == []
+
+
+def test_report_chat_only_surfaces_report_and_comprehensive_workbook() -> None:
+    current = [
+        {"path": "results/rainfall/run/result.json", "name": "降雨分析结果", "size": 1},
+        {"path": "results/rdii/run/result.json", "name": "RDII 分析结果", "size": 1},
+        {"path": "reports/1-id/report_draft.docx", "name": "当前报告初稿", "size": 1},
+        {
+            "path": "reports/1-id/comprehensive_results.xlsx",
+            "name": "当前综合结果表",
+            "size": 1,
+        },
+    ]
+
+    selected = _select_chat_artifacts(current, set())
+
+    assert [item["name"] for item in selected] == [
+        "当前报告初稿",
+        "当前综合结果表",
+    ]
 
 
 def test_report_request_runs_required_analysis_when_project_has_no_results(

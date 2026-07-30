@@ -84,6 +84,19 @@ class ChatResponse(BaseModel):
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _select_chat_artifacts(
+    current: list[dict[str, Any]],
+    before_paths: set[str],
+) -> list[dict[str, Any]]:
+    created = [item for item in current if item["path"] not in before_paths]
+    report_files = [
+        item
+        for item in created
+        if str(item["path"]).startswith("reports/")
+    ]
+    return report_files or created
+
+
 class ProjectCreateRequest(BaseModel):
     name: str
 
@@ -1646,11 +1659,10 @@ def create_app(
                 session_id=request.session_id,
                 debug=request.debug,
             )
-            artifacts = [
-                item
-                for item in _current_workspace_artifacts(project_id, batch_id)
-                if item["path"] not in before_paths
-            ]
+            artifacts = _select_chat_artifacts(
+                _current_workspace_artifacts(project_id, batch_id),
+                before_paths,
+            )
             return ChatResponse(
                 session_id=turn.session_id,
                 run_id=turn.run_id,
