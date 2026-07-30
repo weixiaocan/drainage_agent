@@ -268,6 +268,9 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert 'id="batchImportForm"' not in response.text
     assert 'id="batchImportFile" name="files" type="file" accept=".csv" multiple required' in response.text
     assert 'id="flowFileNames"' in response.text
+    assert "已选择 ${names.length} 个文件" in response.text
+    assert 'names.join("、")' not in response.text
+    assert "重新识别完成：已替换当前标准数据" not in response.text
     assert "选择监测 CSV" in response.text
     assert 'name="rainfall_file"' in response.text
     assert 'name="site_info_file"' in response.text

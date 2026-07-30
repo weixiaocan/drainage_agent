@@ -1054,9 +1054,7 @@
         importQuestions.hidden = true;
         importMappingDialog.close();
         continueImportMapping.hidden = true;
-        batchImportStatus.textContent = data.replaced_existing
-          ? `重新识别完成：已替换当前标准数据，共 ${data.import_count} 个文件、${data.row_count} 行。旧筛选和分析结果需要重新计算。`
-          : `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
+        batchImportStatus.textContent = "";
         if (auxiliaryState) renderAuxiliaryMapping();
       } catch (err) {
         batchImportStatus.className = "status error";
@@ -1158,17 +1156,11 @@
 
     function renderFilterResult(data) {
       currentFilterId = data.filter_id;
-      const reasons = Object.entries(data.summary.exclusion_reasons)
-        .map(([point, items]) => `${escapeHtml(point)}：${escapeHtml(items.join("；"))}`)
-        .join("<br>");
       const download =
         `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
         `/filters/${data.filter_id}/download`;
       filterSummary.innerHTML =
-        `<p><strong>第 ${data.version} 版，等待确认</strong></p>` +
-        `<p>点位 ${data.summary.point_count} 个；保留点位日 ` +
-        `${data.summary.selected_point_days} 个。</p>` +
-        `<p>${reasons}</p><p><a href="${download}">下载筛选文件</a></p>`;
+        `<p>数据筛选已完成，请<a href="${download}">下载筛选文件</a>进行查看和修改。</p>`;
       filterRevisionFile.disabled = false;
       confirmFilterButton.disabled = false;
     }
@@ -1266,7 +1258,7 @@
     document.getElementById("batchImportFile").addEventListener("change", (event) => {
       const names = Array.from(event.target.files).map((file) => file.name);
       document.getElementById("flowFileNames").textContent =
-        names.length ? `${names.length} 个文件：${names.join("、")}` : "未选择";
+        names.length ? `已选择 ${names.length} 个文件` : "未选择";
     });
     const AUXILIARY_FIELDS = {
       rainfall: [
