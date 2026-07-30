@@ -310,12 +310,17 @@ def create_app(
     )
     app.state.deps.analysis_runner = app.state.analysis_runner
     app.state.deps.background_jobs = app.state.background_jobs
+    builtin_report_template = app.state.deps.paths.report_template_file
+    if not builtin_report_template.is_file():
+        builtin_report_template = (
+            Path(__file__).resolve().parents[1]
+            / "resources"
+            / "contract_report_template.docx"
+        )
     app.state.report_templates = ReportTemplateService(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
-        Path(__file__).resolve().parents[1]
-        / "resources"
-        / "contract_report_template.docx",
+        builtin_report_template,
     )
     app.state.deps.report_templates = app.state.report_templates
     app.state.run_records = RunRecorder(

@@ -9,8 +9,18 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 from docx import Document
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
+
+from analysis.baselines import FilterBaselineService
+from analysis.modules.patterns import analyze_patterns
+from analysis.pattern_charts import save_pattern_curve_pngs
+from analysis.reporting import build_report
+from analysis.schema import to_display_columns
 
 
 REQUIRED_PLACEHOLDERS = frozenset(
@@ -63,7 +73,10 @@ class ReportTemplateService:
         self.database = Path(database)
         self.files_root = Path(files_root).resolve()
         self.builtin_template = Path(builtin_template)
-        self.validate_path(self.builtin_template)
+        try:
+            Document(self.builtin_template)
+        except Exception as exc:
+            raise InvalidReportTemplate("内置报告模板不是有效的 DOCX 文件") from exc
         with self._connect() as connection:
             connection.execute(
                 """
@@ -162,6 +175,11 @@ class ReportTemplateService:
         project_id: str,
         batch_id: str,
         template_id: str,
+        *,
+        points: list[str] | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        sections: list[str] | None = None,
     ) -> ReportDraft:
         project_name, batch_name = self._project_batch(project_id, batch_id)
         template_path = self._template_path(project_id, template_id)
@@ -178,21 +196,62 @@ class ReportTemplateService:
         workbook_path = root / workbook_relative
         docx_path.parent.mkdir(parents=True, exist_ok=False)
 
-        document = Document(template_path)
-        replacements = {
-            "{{PROJECT_NAME}}": project_name,
-            "{{BATCH_NAME}}": batch_name,
-            "{{ANALYSIS_SUMMARY}}": "；".join(
-                f"{algorithm} 第 {result['version']} 版"
-                for algorithm, result in results
-            ),
-            "{{MANUAL_TOPOLOGY_SECTION}}": (
-                "人工补充模块：当前版本不自动生成空间拓扑关系、上下游或管网结构结论。"
-            ),
-        }
-        self._replace(document, replacements)
-        document.save(docx_path)
-        self._write_workbook(workbook_path, results)
+        tables = self._analysis_tables(results)
+        summaries = [
+            f"{algorithm} 第 {result['version']} 版"
+            for algorithm, result in results
+        ]
+        template_document = Document(template_path)
+        if template_id == "builtin" and template_document.tables:
+            baseline_flow = FilterBaselineService(
+                self.database,
+                self.files_root,
+            ).load_flow(project_id, batch_id)
+            for column in ("flow_lps", "level_m", "velocity_mps"):
+                if column in baseline_flow.columns:
+                    baseline_flow[column] = pd.to_numeric(
+                        baseline_flow[column],
+                        errors="coerce",
+                    )
+            pattern_result = analyze_patterns(baseline_flow)
+            curves = pattern_result.get("curves", {})
+            pattern_chart_paths = save_pattern_curve_pngs(
+                curves if isinstance(curves, dict) else {},
+                baseline_flow,
+                docx_path.parent,
+                "pattern_charts",
+            )
+            build_report(
+                docx_path,
+                "排水监测数据分析报告",
+                summaries,
+                template_file=template_path,
+                analysis_tables=tables,
+                site_info_file=root / "standard" / "sites.csv",
+                outputs_dir=docx_path.parent,
+                sections=sections,
+                has_rainfall_data=not tables.get("rainfall_daily", pd.DataFrame()).empty,
+                point_ids=points,
+                start=start,
+                end=end,
+                dry_curve_data=(
+                    curves if isinstance(curves, dict) else {}
+                ),
+                pattern_chart_paths=pattern_chart_paths,
+                artifact_scope=f"报告第{version}版",
+            )
+        else:
+            replacements = {
+                "{{PROJECT_NAME}}": project_name,
+                "{{BATCH_NAME}}": batch_name,
+                "{{ANALYSIS_SUMMARY}}": "；".join(summaries),
+                "{{MANUAL_TOPOLOGY_SECTION}}": (
+                    "人工补充模块：当前版本不自动生成空间拓扑关系、上下游或管网结构结论。"
+                ),
+            }
+            self._replace(template_document, replacements)
+            template_document.save(docx_path)
+        self._write_workbook(workbook_path, tables)
 
         draft = ReportDraft(
             report_id=report_id,
@@ -272,17 +331,107 @@ class ReportTemplateService:
         return [(row[0], json.loads(row[1])) for row in rows]
 
     @staticmethod
+    def _analysis_tables(
+        results: list[tuple[str, dict[str, object]]],
+    ) -> dict[str, pd.DataFrame]:
+        tables: dict[str, pd.DataFrame] = {}
+        for algorithm, result in results:
+            data = result.get("data", {})
+            if not isinstance(data, dict):
+                continue
+            if algorithm == "data_quality":
+                tables["data_collection"] = pd.DataFrame(data.get("table", []))
+            elif algorithm == "patterns":
+                tables["pattern_analysis"] = pd.DataFrame(data.get("table", []))
+            elif algorithm == "rainfall":
+                tables["rainfall_daily"] = pd.DataFrame(data.get("daily", []))
+                tables["rainfall_events"] = pd.DataFrame(data.get("events", []))
+            elif algorithm == "event_response":
+                tables["rainy_event_stats"] = pd.DataFrame(data.get("table", []))
+            elif algorithm == "rdii":
+                tables["rdii_total"] = pd.DataFrame(data.get("table", []))
+            elif algorithm == "risk":
+                tables["dry_analysis"] = pd.DataFrame(data.get("dry_analysis", []))
+                tables["dry_risk"] = pd.DataFrame(data.get("dry_risk", []))
+                tables["rainy_overflow_risk"] = pd.DataFrame(data.get("rainy_risk", []))
+        return tables
+
+    @staticmethod
     def _write_workbook(
-        path: Path, results: list[tuple[str, dict[str, object]]]
+        path: Path, tables: dict[str, pd.DataFrame]
     ) -> None:
+        sheet_specs = {
+            "data_collection": ("数据收集率统计", "data_check"),
+            "rainfall_daily": ("降雨概况", "rainfall_daily"),
+            "rainfall_events": ("降雨场次分析", "rainfall_events"),
+            "pattern_analysis": ("排污规律分析", "patterns"),
+            "rainy_event_stats": ("雨天事件统计", "event_response"),
+            "rdii_total": ("RDII总量统计", "rdii"),
+            "dry_analysis": ("旱天分析", "dry_stats"),
+            "dry_risk": ("旱天风险", "dry_risk"),
+            "rainy_overflow_risk": ("雨天溢流风险", "rainy_risk"),
+        }
         workbook = Workbook()
         workbook.remove(workbook.active)
-        for algorithm, result in results:
-            sheet = workbook.create_sheet(
-                f"{algorithm}_v{result['version']}"[:31]
-            )
-            sheet.append(["result_json"])
-            sheet.append([json.dumps(result["data"], ensure_ascii=False)])
+        for key, (sheet_name, table_type) in sheet_specs.items():
+            table = tables.get(key)
+            if table is None or table.empty:
+                continue
+            display_table = to_display_columns(table, table_type)
+            sheet = workbook.create_sheet(sheet_name)
+            for row in dataframe_to_rows(
+                display_table,
+                index=False,
+                header=True,
+            ):
+                sheet.append(row)
+            sheet.freeze_panes = "A2"
+            sheet.auto_filter.ref = sheet.dimensions
+            sheet.sheet_view.showGridLines = False
+            for cell in sheet[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="1F4E78")
+                cell.alignment = Alignment(
+                    horizontal="center",
+                    vertical="center",
+                    wrap_text=True,
+                )
+            sheet.row_dimensions[1].height = 30
+            for column_index, column_name in enumerate(
+                display_table.columns,
+                start=1,
+            ):
+                values = [
+                    str(value)
+                    for value in display_table[column_name].dropna()
+                ]
+                max_length = max(
+                    [len(str(column_name)), *[len(value) for value in values]],
+                    default=len(str(column_name)),
+                )
+                is_description = any(
+                    marker in str(column_name)
+                    for marker in ("描述", "原因", "时段")
+                )
+                width = min(
+                    60 if is_description else 24,
+                    max(12, max_length + 2),
+                )
+                sheet.column_dimensions[
+                    get_column_letter(column_index)
+                ].width = width
+                for cell in sheet.iter_cols(
+                    min_col=column_index,
+                    max_col=column_index,
+                    min_row=2,
+                ):
+                    for item in cell:
+                        item.alignment = Alignment(
+                            vertical="center",
+                            wrap_text=is_description,
+                        )
+        if not workbook.sheetnames:
+            workbook.create_sheet("分析结果")
         workbook.save(path)
 
     def _template_path(self, project_id: str, template_id: str) -> Path:

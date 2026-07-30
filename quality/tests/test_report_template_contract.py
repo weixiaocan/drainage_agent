@@ -90,7 +90,9 @@ def test_builtin_contract_generates_versioned_drafts_and_comprehensive_tables(
     workbook = load_workbook(
         projects.batch_workspace(project.id, batch.id) / first.workbook
     )
-    assert "data_quality_v1" in workbook.sheetnames
+    assert "数据收集率统计" in workbook.sheetnames
+    assert workbook["数据收集率统计"]["A1"].value == "点位编号"
+    assert workbook["数据收集率统计"]["A2"].value == "W1"
     assert reports.list_drafts(project.id, batch.id) == [first, second]
 
 
