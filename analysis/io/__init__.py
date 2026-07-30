@@ -65,7 +65,8 @@ def _apply_time_range(df: pd.DataFrame, time_range: tuple[str, str] | list[str] 
 
 def load_rain(time_range: tuple[str, str] | list[str] | None = None, root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
-    path = _data_dir(base) / "降雨数据.csv"
+    standard_path = base / "standard" / "rainfall.csv"
+    path = standard_path if standard_path.is_file() else _data_dir(base) / "降雨数据.csv"
     if not path.exists():
         return pd.DataFrame(columns=["timestamp", "rain_mm"])
     rain = normalize_rain_df(_read_csv(path))

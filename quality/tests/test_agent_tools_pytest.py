@@ -1455,6 +1455,34 @@ def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
     assert (deps.paths.workspace / "out.txt").read_text(encoding="utf-8") == "60"
 
 
+def test_run_python_loads_scoped_standard_rainfall(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    scoped_root = tmp_path / "var" / "projects" / "project1" / "batches" / "workspace1"
+    standard = scoped_root / "standard"
+    standard.mkdir(parents=True)
+    (standard / "rainfall.csv").write_text(
+        "timestamp,rain_mm\n2026-03-15 03:00:00,1.2\n",
+        encoding="utf-8",
+    )
+    deps.paths = Paths(
+        root=scoped_root,
+        data=scoped_root / "inputs",
+        outputs=scoped_root / "results",
+        workspace=scoped_root / "sessions",
+        logs=deps.paths.logs,
+        templates=scoped_root / "inputs" / "templates",
+        notes=deps.paths.notes,
+    )
+
+    result = run_python_impl(
+        deps,
+        "rain = load_rain()\nprint(len(rain), rain['rain_mm'].sum())",
+    )
+
+    assert result["status"] == "ok"
+    assert "1 1.2" in result["data"]["stdout"]
+
+
 def test_run_python_rejects_markdown_report_fallback(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     result = run_python_impl(

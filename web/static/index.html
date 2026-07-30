@@ -197,6 +197,9 @@
     .msg.agent {
       background: var(--panel);
     }
+    .msg.pending {
+      color: var(--muted);
+    }
     .msg.agent > *:first-child { margin-top: 0; }
     .msg.agent > *:last-child { margin-bottom: 0; }
     .msg.agent h1,
@@ -512,6 +515,7 @@
     let sessionId = "";
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
+    const sendBtn = document.getElementById("sendBtn");
     const uploadStatus = document.getElementById("uploadStatus");
     const auxiliaryMapping = document.getElementById("auxiliaryMapping");
     const auxiliaryMappingDialog = document.getElementById("auxiliaryMappingDialog");
@@ -736,6 +740,7 @@
         transcript.push({role, text});
         saveTranscript(transcript);
       }
+      return div;
     }
 
     function restoreTranscript() {
@@ -754,14 +759,20 @@
 
     async function send(text) {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed || sendBtn.disabled) return;
       if (!sessionId) {
         sessionId = createSessionId();
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
       }
       addMessage(trimmed, "user");
       message.value = "";
-      document.getElementById("sendBtn").disabled = true;
+      sendBtn.disabled = true;
+      message.disabled = true;
+      document.querySelectorAll("[data-prompt]").forEach((button) => {
+        button.disabled = true;
+      });
+      const pendingMessage = addMessage("正在分析…", "agent", false);
+      pendingMessage.classList.add("pending");
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -781,13 +792,20 @@
           saveTranscript(loadTranscript());
         }
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
+        pendingMessage.remove();
         addMessage(data.reply, "agent");
         refreshResults();
         loadAgentRuns();
       } catch (err) {
+        pendingMessage.remove();
         addMessage(`请求失败：${err.message}`, "agent");
       } finally {
-        document.getElementById("sendBtn").disabled = false;
+        sendBtn.disabled = false;
+        message.disabled = false;
+        document.querySelectorAll("[data-prompt]").forEach((button) => {
+          button.disabled = false;
+        });
+        message.focus();
       }
     }
 
