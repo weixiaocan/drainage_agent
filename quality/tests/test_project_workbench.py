@@ -230,6 +230,9 @@ def test_index_exposes_project_workbench(tmp_path: Path) -> None:
     assert 'id="projectSelect"' not in response.text
     assert 'id="projectList"' not in response.text
     assert "当前项目：" not in response.text
+    assert "height: 100dvh" in response.text
+    assert "grid-template-rows: auto minmax(0, 1fr) auto" in response.text
+    assert "overscroll-behavior: contain" in response.text
     assert "创建或打开项目" in response.text
     assert 'fetch("/api/projects"' in response.text
     assert 'method: "PUT"' in response.text
