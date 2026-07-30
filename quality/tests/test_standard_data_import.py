@@ -283,6 +283,7 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "/downloads/all" in response.text
     assert 'className = "message-artifacts"' in response.text
     assert "data.artifacts || []" in response.text
+    assert "data.derived_state_reset" in response.text
     assert "已选择 ${names.length} 个文件" in response.text
     assert 'names.join("、")' not in response.text
     assert "重新识别完成：已替换当前标准数据" not in response.text

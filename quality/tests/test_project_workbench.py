@@ -271,6 +271,7 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
     )
 
     assert confirmed.status_code == 200
+    assert confirmed.json()["derived_state_reset"] is True
     assert (root / "standard" / "flow.csv").is_file()
     assert not (root / "results" / "old-result.json").exists()
     assert not (root / "reports" / "old-report.docx").exists()
@@ -287,6 +288,54 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
             """
             SELECT COUNT(*) FROM archived_agent_sessions
             WHERE session_id = 'filter-session'
+            """
+        ).fetchone()[0] == 1
+
+
+def test_reconfirming_same_filter_keeps_current_chat(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "重复确认"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    write_standard_flow(root)
+    base_url = f"/api/projects/{project['id']}/batches/{workspace_id}"
+    candidate = client.post(
+        f"{base_url}/filters",
+        json={"expected_rows_per_day": 1},
+    ).json()
+    first = client.post(
+        f"{base_url}/filters/{candidate['filter_id']}/confirmation",
+        json={"confirm": True},
+    )
+    assert first.status_code == 200
+    app.state.conversations.repository.save(
+        "keep-session",
+        project["id"],
+        workspace_id,
+        [{"role": "user", "content": "保留这条消息"}],
+        app.state.deps.session,
+    )
+
+    repeated = client.post(
+        f"{base_url}/filters/{candidate['filter_id']}/confirmation",
+        json={"confirm": True},
+    )
+
+    assert repeated.status_code == 200
+    assert repeated.json()["derived_state_reset"] is False
+    with sqlite3.connect(tmp_path / "var" / "drainage.sqlite3") as connection:
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM agent_sessions
+            WHERE session_id = 'keep-session'
             """
         ).fetchone()[0] == 1
 

@@ -319,6 +319,7 @@ class FilterBaselineService:
         identity = {
             "project_id": project_id,
             "batch_id": batch_id,
+            "source_filter_id": source_filter_id,
             "standard_input": source.identity["standard_input"],
             "parameters": source.identity["parameters"],
             "file_sha256": file_sha256,

@@ -1031,6 +1031,9 @@ def create_app(
                 detail="必须明确确认筛选结果才能建立分析基线",
             )
         try:
+            candidate = app.state.filter_baselines.get_filter(
+                project_id, batch_id, filter_id
+            )
             with sqlite3.connect(
                 app.state.root / "var" / "drainage.sqlite3"
             ) as connection:
@@ -1042,12 +1045,19 @@ def create_app(
                     """,
                     (project_id, batch_id),
                 ).fetchone()
+            derived_state_reset = (
+                previous is not None
+                and candidate is not None
+                and bool(candidate.identity.get("source_filter_id"))
+            )
             baseline = app.state.filter_baselines.confirm(
                 project_id, batch_id, filter_id
             )
-            if previous is not None and previous[0] != filter_id:
+            if derived_state_reset:
                 _archive_chat_and_clear_analysis(project_id, batch_id)
-            return asdict(baseline)
+            data = asdict(baseline)
+            data["derived_state_reset"] = derived_state_reset
+            return data
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except BaselinePreconditionError as exc:

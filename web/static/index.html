@@ -1386,7 +1386,7 @@
         filterRevisionFileButtonLabel.textContent = "上传修改版";
         filterRevisionFile.value = "";
         confirmFilterButton.disabled = true;
-        if (currentWorkspaceState?.filter?.present) {
+        if (data.derived_state_reset) {
           const oldSessionId = sessionId;
           if (oldSessionId) {
             localStorage.removeItem(`drainage-agent-chat-${oldSessionId}`);
