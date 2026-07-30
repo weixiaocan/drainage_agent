@@ -280,6 +280,11 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "/batch-imports" in response.text
     assert "/auxiliary/inspect" in response.text
     assert "/auxiliary/confirm" in response.text
+    assert 'id="importMappingDialog"' in response.text
+    assert 'id="auxiliaryMappingDialog"' in response.text
+    assert 'id="continueImportMapping"' in response.text
+    assert "表头相同的 CSV 已自动归组" in response.text
+    assert "importGroups()" in response.text
 
 
 def test_multiple_monitoring_files_are_confirmed_as_one_standard_dataset(

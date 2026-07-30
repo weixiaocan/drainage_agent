@@ -292,6 +292,68 @@
       width: 100%;
       min-width: 90px;
     }
+    dialog.mapping-dialog {
+      width: min(1040px, calc(100vw - 40px));
+      max-height: calc(100vh - 48px);
+      padding: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 20px 60px rgba(32, 36, 44, 0.22);
+    }
+    dialog.mapping-dialog::backdrop {
+      background: rgba(20, 28, 36, 0.5);
+    }
+    .dialog-shell {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      max-height: calc(100vh - 48px);
+    }
+    .dialog-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    .dialog-header h2 { margin: 0 0 5px; font-size: 18px; }
+    .dialog-header .hint { margin: 0; }
+    .dialog-close {
+      flex: 0 0 auto;
+      width: auto;
+      margin: 0;
+      background: white;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+    .dialog-body {
+      overflow: auto;
+      padding: 8px 20px 20px;
+      background: var(--panel);
+    }
+    .mapping-group {
+      margin-top: 14px;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .mapping-group h3 { margin: 0 0 5px; font-size: 15px; }
+    .mapping-group .file-summary {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .dialog-actions {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 14px 0 0;
+      background: linear-gradient(transparent, var(--panel) 18%);
+    }
+    .dialog-actions button { width: auto; min-width: 150px; }
     @media (max-width: 860px) {
       .app { grid-template-columns: 1fr; }
       aside { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -342,15 +404,10 @@
           <button class="upload-btn" type="submit">智能识别列名</button>
         </form>
         <div id="uploadStatus" class="status"></div>
-        <div id="auxiliaryMapping" class="inspection" hidden></div>
+        <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
       </details>
       <div id="batchImportStatus" class="status">请先选择分析批次。</div>
-      <div id="importQuestions" class="inspection" hidden></div>
-      <div id="importMappingDetails" class="advanced" hidden>
-        <h3>列名匹配确认</h3>
-        <div class="hint">逐项核对系统识别结果；如有错误可直接修改。确认后才会生成标准数据。</div>
-        <div id="importInspection" class="inspection"></div>
-      </div>
+      <button id="continueImportMapping" class="secondary" type="button" hidden>继续确认列名匹配</button>
       <details id="standardPreviewDetails" class="advanced" hidden>
         <summary>标准数据预览</summary>
         <div id="standardPreview" class="inspection"></div>
@@ -420,6 +477,37 @@
     </main>
   </div>
 
+  <dialog id="importMappingDialog" class="mapping-dialog">
+    <div class="dialog-shell">
+      <div class="dialog-header">
+        <div>
+          <h2>确认监测数据列名匹配</h2>
+          <div class="hint">表头相同的 CSV 已自动归组；每组只需确认一次，系统仍会逐文件校验内容。</div>
+        </div>
+        <button id="closeImportMappingDialog" class="dialog-close" type="button">暂不确认</button>
+      </div>
+      <div class="dialog-body">
+        <div id="importQuestions" class="inspection"></div>
+        <div id="importInspection" class="inspection"></div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="auxiliaryMappingDialog" class="mapping-dialog">
+    <div class="dialog-shell">
+      <div class="dialog-header">
+        <div>
+          <h2>确认辅助数据列名匹配</h2>
+          <div class="hint">核对降雨数据和点位信息的字段含义，确认后写入当前分析批次。</div>
+        </div>
+        <button id="closeAuxiliaryMappingDialog" class="dialog-close" type="button">暂不确认</button>
+      </div>
+      <div class="dialog-body">
+        <div id="auxiliaryMapping" class="inspection"></div>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const sessionStorageKey = "drainage-agent-session";
     const latestChatStorageKey = "drainage-agent-chat-latest";
@@ -428,6 +516,8 @@
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
     const auxiliaryMapping = document.getElementById("auxiliaryMapping");
+    const auxiliaryMappingDialog = document.getElementById("auxiliaryMappingDialog");
+    const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
     const projectList = document.getElementById("projectList");
@@ -437,7 +527,8 @@
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
-    const importMappingDetails = document.getElementById("importMappingDetails");
+    const importMappingDialog = document.getElementById("importMappingDialog");
+    const continueImportMapping = document.getElementById("continueImportMapping");
     const importInspection = document.getElementById("importInspection");
     const standardPreviewDetails = document.getElementById("standardPreviewDetails");
     const standardPreview = document.getElementById("standardPreview");
@@ -733,7 +824,8 @@
       importState = null;
       importQuestions.hidden = true;
       importQuestions.innerHTML = "";
-      importMappingDetails.hidden = true;
+      if (importMappingDialog.open) importMappingDialog.close();
+      continueImportMapping.hidden = true;
       importInspection.innerHTML = "";
       standardPreviewDetails.hidden = true;
       standardPreview.innerHTML = "";
@@ -919,16 +1011,34 @@
     function pendingImportQuestions() {
       if (!importState) return [];
       const questions = [];
-      importState.imports.forEach((item) => {
+      importGroups().forEach((group) => {
+        const item = group.items[0];
         item.columns.forEach((column) => {
           if (!column.field) {
-            questions.push({item, column, kind: "field"});
+            questions.push({group, column, kind: "field"});
           } else if (NUMERIC_FIELDS.has(column.field) && !column.unit) {
-            questions.push({item, column, kind: "unit"});
+            questions.push({group, column, kind: "unit"});
           }
         });
       });
       return questions;
+    }
+
+    function importGroups() {
+      const groups = new Map();
+      (importState?.imports || []).forEach((item) => {
+        const signature = JSON.stringify(item.columns.map((column) => column.source));
+        if (!groups.has(signature)) groups.set(signature, {signature, items: []});
+        groups.get(signature).items.push(item);
+      });
+      return Array.from(groups.values());
+    }
+
+    function updateGroupColumn(group, source, changes) {
+      group.items.forEach((item) => {
+        const column = item.columns.find((candidate) => candidate.source === source);
+        if (column) Object.assign(column, changes);
+      });
     }
 
     function anomalyFor(item, source) {
@@ -940,45 +1050,59 @@
       const questions = pendingImportQuestions();
       importQuestions.innerHTML = "";
       importQuestions.hidden = questions.length === 0;
-      importMappingDetails.hidden = false;
 
       importQuestions.textContent = questions.length
         ? `还有 ${questions.length} 项未确认，请在下方表格中修改。`
         : "所有列名和单位均已识别，请人工核对后确认。";
       importQuestions.hidden = false;
 
-      importInspection.innerHTML = importState.imports.map((item, itemIndex) => {
-        const rows = item.columns.map((column, columnIndex) => `<tr data-item="${itemIndex}" data-column="${columnIndex}">
+      const groups = importGroups();
+      importInspection.innerHTML = groups.map((group, groupIndex) => {
+        const item = group.items[0];
+        const rows = item.columns.map((column, columnIndex) => `<tr data-column="${columnIndex}">
           <td>${escapeHtml(column.source)}</td>
           <td><select data-role="field" aria-label="${escapeHtml(column.source)} 的含义">${fieldOptions(column.field)}</select></td>
           <td>${escapeHtml(column.type)}</td>
           <td><input data-role="unit" value="${escapeHtml(column.unit || "")}" placeholder="如 L/s、m3/h、m、m/s"></td>
           <td>${column.suggested ? "AI 建议，待核对" : (anomalyFor(item, column.source) || "—")}</td>
         </tr>`).join("");
-        return `<h4>${escapeHtml(item.filename)}</h4>
-        <p>编码：${escapeHtml(item.encoding)}；数据行：${item.rowCount}</p>
+        const filenames = group.items.map((candidate) => candidate.filename);
+        const visibleFiles = filenames.slice(0, 5).map(escapeHtml).join("、");
+        const remaining = filenames.length > 5 ? ` 等 ${filenames.length} 个文件` : "";
+        return `<section class="mapping-group" data-group="${groupIndex}">
+        <h3>结构组 ${groupIndex + 1} · ${group.items.length} 个文件</h3>
+        <div class="file-summary">${visibleFiles}${remaining}；编码：${escapeHtml(item.encoding)}；共 ${group.items.reduce((sum, candidate) => sum + candidate.rowCount, 0)} 行</div>
         <table><thead><tr><th>原始列名</th><th>匹配含义</th><th>类型</th><th>源单位</th><th>提示</th></tr></thead>
-        <tbody>${rows}</tbody></table>`;
+        <tbody>${rows}</tbody></table></section>`;
       }).join("");
       importInspection.querySelectorAll("tbody tr").forEach((row) => {
-        const column = importState.imports[Number(row.dataset.item)].columns[Number(row.dataset.column)];
+        const group = groups[Number(row.closest(".mapping-group").dataset.group)];
+        const column = group.items[0].columns[Number(row.dataset.column)];
         row.querySelector('[data-role="field"]').addEventListener("change", (event) => {
-          column.field = event.target.value || null;
-          column.suggested = false;
+          updateGroupColumn(group, column.source, {
+            field: event.target.value || null,
+            suggested: false,
+          });
           renderImportState();
         });
         row.querySelector('[data-role="unit"]').addEventListener("change", (event) => {
-          column.unit = event.target.value.trim() || null;
+          updateGroupColumn(group, column.source, {
+            unit: event.target.value.trim() || null,
+          });
           renderImportState();
         });
       });
+      const actions = document.createElement("div");
+      actions.className = "dialog-actions";
       const confirm = document.createElement("button");
       confirm.type = "button";
-      confirm.className = "upload-btn";
       confirm.textContent = "确认全部匹配并生成标准数据";
       confirm.disabled = questions.length > 0;
       confirm.addEventListener("click", finalizeImport);
-      importInspection.appendChild(confirm);
+      actions.appendChild(confirm);
+      importInspection.appendChild(actions);
+      continueImportMapping.hidden = false;
+      if (!importMappingDialog.open) importMappingDialog.showModal();
     }
 
     async function finalizeImport() {
@@ -1004,6 +1128,8 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "确认映射失败");
         importQuestions.hidden = true;
+        importMappingDialog.close();
+        continueImportMapping.hidden = true;
         batchImportStatus.textContent = `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
         await loadStandardPreview();
       } catch (err) {
@@ -1270,7 +1396,6 @@
     };
 
     function renderAuxiliaryMapping() {
-      auxiliaryMapping.hidden = false;
       auxiliaryMapping.innerHTML = Object.entries(auxiliaryState).map(([kind, item]) => {
         const options = (selected) => [
           '<option value="">不导入此列</option>',
@@ -1282,9 +1407,9 @@
           `<tr data-kind="${kind}" data-column="${index}"><td>${escapeHtml(column.source)}</td>` +
           `<td><select>${options(column.field)}</select></td><td>${escapeHtml(column.type)}</td></tr>`
         ).join("");
-        return `<h4>${kind === "rainfall" ? "降雨数据" : "点位信息"}：${escapeHtml(item.filename)}</h4>
+        return `<section class="mapping-group"><h3>${kind === "rainfall" ? "降雨数据" : "点位信息"}：${escapeHtml(item.filename)}</h3>
           <p>数据行：${item.row_count}</p>
-          <table><thead><tr><th>原始列名</th><th>匹配含义</th><th>类型</th></tr></thead><tbody>${rows}</tbody></table>`;
+          <table><thead><tr><th>原始列名</th><th>匹配含义</th><th>类型</th></tr></thead><tbody>${rows}</tbody></table></section>`;
       }).join("");
       auxiliaryMapping.querySelectorAll("tbody tr").forEach((row) => {
         row.querySelector("select").addEventListener("change", (event) => {
@@ -1292,15 +1417,19 @@
             event.target.value || null;
         });
       });
+      const actions = document.createElement("div");
+      actions.className = "dialog-actions";
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "upload-btn";
       button.textContent = "确认辅助数据匹配并导入";
       button.addEventListener("click", () => confirmAuxiliaryData().catch((err) => {
         uploadStatus.className = "status error";
         uploadStatus.textContent = err.message;
       }));
-      auxiliaryMapping.appendChild(button);
+      actions.appendChild(button);
+      auxiliaryMapping.appendChild(actions);
+      continueAuxiliaryMapping.hidden = false;
+      if (!auxiliaryMappingDialog.open) auxiliaryMappingDialog.showModal();
     }
 
     async function confirmAuxiliaryData() {
@@ -1322,9 +1451,21 @@
       if (!res.ok) throw new Error(data.detail || "辅助数据确认失败");
       uploadStatus.className = "status";
       uploadStatus.textContent = data.message;
-      auxiliaryMapping.hidden = true;
+      auxiliaryMappingDialog.close();
+      continueAuxiliaryMapping.hidden = true;
       formElement.reset();
     }
+
+    document.getElementById("closeImportMappingDialog").addEventListener(
+      "click",
+      () => importMappingDialog.close(),
+    );
+    document.getElementById("closeAuxiliaryMappingDialog").addEventListener(
+      "click",
+      () => auxiliaryMappingDialog.close(),
+    );
+    continueImportMapping.addEventListener("click", () => importMappingDialog.showModal());
+    continueAuxiliaryMapping.addEventListener("click", () => auxiliaryMappingDialog.showModal());
 
     document.getElementById("uploadForm").addEventListener("submit", async (event) => {
       event.preventDefault();
