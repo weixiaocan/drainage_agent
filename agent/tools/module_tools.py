@@ -2072,16 +2072,128 @@ def generate_report_impl(
     sections: list[str] | None = None,
     event_ids: list[int] | None = None,
 ) -> ToolResult:
+    sections = sections or list(DEFAULT_REPORT_SECTIONS)
     if (
         deps.report_templates is not None
+        and deps.analysis_runner is not None
         and deps.current_project_id
         and deps.current_batch_id
     ):
-        draft = deps.report_templates.create_draft(
-            deps.current_project_id,
-            deps.current_batch_id,
-            "builtin",
+        from analysis.runs import (
+            AnalysisInputRequired,
+            AnalysisPreconditionError,
+            AnalysisRequest,
         )
+
+        project_id = deps.current_project_id
+        batch_id = deps.current_batch_id
+        wants_rainfall = _section_requested(
+            sections, REPORT_RAINFALL_SECTIONS
+        )
+        wants_patterns = _section_requested(
+            sections, REPORT_PATTERN_SECTIONS
+        )
+        wants_full_risk = _section_requested(
+            sections, REPORT_FULL_RISK_SECTIONS
+        )
+        wants_dry_risk = wants_full_risk or _section_requested(
+            sections, REPORT_DRY_RISK_SECTIONS
+        )
+        wants_rainy_risk = wants_full_risk or _section_requested(
+            sections, REPORT_RAINY_RISK_SECTIONS
+        )
+        selected_event_ids = list(
+            event_ids or deps.session.selected_event_ids
+        )
+        common = {
+            "points": points,
+            "start": start,
+            "end": end,
+        }
+        try:
+            deps.analysis_runner.run(
+                AnalysisRequest(
+                    project_id,
+                    batch_id,
+                    "data_quality",
+                    **common,
+                )
+            )
+            if wants_patterns:
+                deps.analysis_runner.run(
+                    AnalysisRequest(
+                        project_id,
+                        batch_id,
+                        "patterns",
+                        **common,
+                    )
+                )
+            rainfall_result = None
+            if wants_rainfall or wants_rainy_risk:
+                rainfall_result = deps.analysis_runner.run(
+                    AnalysisRequest(
+                        project_id,
+                        batch_id,
+                        "rainfall",
+                        **common,
+                    )
+                )
+            if wants_rainy_risk and not selected_event_ids:
+                selected_event_ids = sorted({
+                    int(row["event_id"])
+                    for row in (
+                        rainfall_result.data.get("events", [])
+                        if rainfall_result is not None
+                        else []
+                    )
+                    if row.get("event_id") is not None
+                })
+            if wants_rainy_risk and not selected_event_ids:
+                return error(
+                    "当前数据未识别到可用于雨天分析的降雨场次，无法生成包含雨天内容的报告。"
+                )
+            if wants_rainy_risk:
+                for algorithm in ("event_response", "rdii"):
+                    deps.analysis_runner.run(
+                        AnalysisRequest(
+                            project_id,
+                            batch_id,
+                            algorithm,
+                            event_ids=selected_event_ids,
+                            **common,
+                        )
+                    )
+            if wants_dry_risk or wants_rainy_risk:
+                scope = (
+                    "all"
+                    if wants_dry_risk and wants_rainy_risk
+                    else "dry"
+                    if wants_dry_risk
+                    else "rainy"
+                )
+                deps.analysis_runner.run(
+                    AnalysisRequest(
+                        project_id,
+                        batch_id,
+                        "risk",
+                        event_ids=(
+                            selected_event_ids
+                            if scope in {"all", "rainy"}
+                            else None
+                        ),
+                        scope=scope,
+                        **common,
+                    )
+                )
+            draft = deps.report_templates.create_draft(
+                project_id,
+                batch_id,
+                "builtin",
+            )
+        except AnalysisInputRequired as exc:
+            return needs_input(exc.field, str(exc), summary=str(exc))
+        except (AnalysisPreconditionError, ValueError, LookupError) as exc:
+            return error(str(exc))
         return ok(
             f"报告初稿第 {draft.version} 版已生成，需由排水监测分析人员审核。",
             artifacts=[draft.docx, draft.workbook],
@@ -2089,7 +2201,6 @@ def generate_report_impl(
             version=draft.version,
         )
     points = _normalize_point_scope(points, deps)
-    sections = sections or list(DEFAULT_REPORT_SECTIONS)
     selected_event_ids = list(event_ids or deps.session.selected_event_ids)
     unavailable = sorted(set(selected_event_ids).intersection(deps.session.unavailable_event_ids))
     if unavailable:

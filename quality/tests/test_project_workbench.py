@@ -14,6 +14,7 @@ TestClient = fastapi_testclient.TestClient
 from quality.tests.test_web_app import FakeAgent, make_deps
 from quality.tests.test_filter_baselines import write_standard_flow
 from analysis.runs import AnalysisRequest
+from agent.tools.module_tools import generate_report_impl
 from web.app import create_app
 from web.projects import ProjectRepository
 
@@ -442,6 +443,45 @@ def test_chat_response_contains_only_files_generated_by_that_answer(
     )
     assert second.status_code == 200
     assert second.json()["artifacts"] == []
+
+
+def test_report_request_runs_required_analysis_when_project_has_no_results(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "自动报告"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    write_standard_flow(root)
+    base_url = f"/api/projects/{project['id']}/batches/{workspace_id}"
+    candidate = client.post(
+        f"{base_url}/filters",
+        json={"expected_rows_per_day": 1},
+    ).json()
+    assert client.post(
+        f"{base_url}/filters/{candidate['filter_id']}/confirmation",
+        json={"confirm": True},
+    ).status_code == 200
+
+    result = generate_report_impl(
+        app.state.deps,
+        sections=["数据体检", "排污规律"],
+    )
+
+    assert result["status"] == "ok"
+    assert app.state.analysis_runner.current(
+        project["id"], workspace_id, "data_quality"
+    ) is not None
+    assert app.state.analysis_runner.current(
+        project["id"], workspace_id, "patterns"
+    ) is not None
+    assert len(result["artifacts"]) == 2
 
 
 def test_project_upload_rejects_executable_and_preserves_existing_file(

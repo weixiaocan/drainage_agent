@@ -129,7 +129,7 @@ def test_prompt_requires_report_scope_and_nonempty_rainy_risk() -> None:
     assert "时间范围传给 `start/end`" in prompt
     assert "不得省略后退回全网或全时段" in prompt
     assert "默认生成全套标准章节，包含雨天风险" in prompt
-    assert "不能生成雨天风险空白的报告" in prompt
+    assert "自动使用报告时间范围内识别到的全部降雨场次" in prompt
 
 
 def test_prompt_documents_exception_and_quality_reminders() -> None:
