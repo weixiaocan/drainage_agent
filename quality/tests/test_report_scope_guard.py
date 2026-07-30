@@ -42,6 +42,16 @@ def test_generic_report_request_asks_without_carryable_history() -> None:
     assert needs_report_scope_confirmation("生成分析报告。", [])
 
 
+def test_new_generic_report_request_does_not_reuse_old_completed_scope() -> None:
+    history = [
+        "生成完整的数据分析报告",
+        "所有，告诉我可以采用哪些降雨事件",
+        "第 1 场",
+    ]
+
+    assert needs_report_scope_confirmation("生成完整的数据分析报告", history)
+
+
 def test_non_report_request_is_not_intercepted() -> None:
     assert not needs_report_scope_confirmation("再看一下 W4 的排污规律。", [])
 
@@ -128,7 +138,7 @@ def test_report_scope_reply_lists_rainfall_events_before_generation(
     deps = _make_deps(tmp_path)
     deps.current_project_id = "project-1"
     deps.current_batch_id = "workspace-1"
-    deps.session.user_prompt_history = ["出一份完整的分析报告"]
+    deps.session.pending_report_scope_messages = ["出一份完整的分析报告"]
 
     class RainfallRunner:
         def run(self, _request):
@@ -186,6 +196,28 @@ def test_report_scope_reply_lists_rainfall_events_before_generation(
     assert captured["points"] is None
     assert captured["sections"] is None
     assert captured["event_ids"] == [1]
+    assert deps.session.pending_report_scope_messages == []
+
+
+def test_reopened_project_starts_fresh_report_scope_round(
+    tmp_path: Path,
+) -> None:
+    deps = _make_deps(tmp_path)
+    deps.session.user_prompt_history = [
+        "生成完整的数据分析报告",
+        "所有，告诉我可以采用哪些降雨事件",
+        "第 1 场",
+    ]
+    agent = _ReportScopeGuardedAgent(_FailingInnerAgent())
+
+    result = agent.run_sync(
+        "生成完整的数据分析报告",
+        deps=deps,
+        message_history=[],
+    )
+
+    assert result.output == "我需要先确认报告范围：要包含哪些点位、哪段时间、哪些模块/章节？如果包含雨天风险，也请说明采用哪些降雨事件。"
+    assert deps.session.pending_report_scope_messages == ["生成完整的数据分析报告"]
 
 
 class _FailingInnerAgent:

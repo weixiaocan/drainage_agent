@@ -270,9 +270,7 @@ def needs_report_scope_confirmation(message: str, history: list[str]) -> bool:
         return False
     if _has_explicit_report_scope(message):
         return False
-    if not history:
-        return True
-    return _history_has_mixed_report_scope(history)
+    return True
 
 
 def _has_pending_report_scope_confirmation(history: list[str]) -> bool:
@@ -285,8 +283,11 @@ def _has_pending_report_scope_confirmation(history: list[str]) -> bool:
 def _has_report_point_scope(message: str) -> bool:
     if re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, flags=re.IGNORECASE):
         return True
-    compact = re.sub(r"\s+", "", message)
-    return compact.startswith("所有") or any(
+    has_all_scope_reply = any(
+        re.sub(r"\s+", "", line).startswith("所有")
+        for line in message.splitlines()
+    )
+    return has_all_scope_reply or any(
         keyword in message
         for keyword in ("全网", "19个点", "19 个点", "全部点位", "所有点位")
     )
@@ -331,14 +332,37 @@ def _rainfall_event_options_output(deps: AgentDeps) -> str:
             )
         )
         events = result.data.get("events", [])
+        standard_data = getattr(deps.analysis_runner, "standard_data", None)
+        if standard_data is not None and events:
+            import pandas as pd
+
+            from analysis.modules.event_response import analyze_event_response
+
+            flow = standard_data.load_flow(
+                deps.current_project_id,
+                deps.current_batch_id,
+            )
+            event_frame = pd.DataFrame(events)
+            events = [
+                event
+                for event in events
+                if not analyze_event_response(
+                    flow,
+                    event_frame,
+                    [int(event["event_id"])],
+                ).empty
+            ]
     if not events:
-        return "当前降雨数据中没有识别到可用于报告的降雨事件。"
+        return (
+            "降雨数据中识别到了事件，但这些事件与当前监测数据的时间范围没有重叠，"
+            "因此目前没有可用于报告的降雨事件。"
+        )
     lines = ["已按全网、全时段、全部章节理解。当前可采用的降雨事件："]
     for event in events:
         event_id = event.get("event_id")
         start = str(event.get("start_time") or "")
         end = str(event.get("end_time") or "")
-        total = event.get("total_mm")
+        total = event.get("total_rain_mm", event.get("total_mm"))
         detail = f"第 {event_id} 场：{start} 至 {end}"
         if total is not None:
             detail += f"，总雨量 {total} mm"
@@ -547,21 +571,42 @@ class _ReportScopeGuardedAgent:
                 if _looks_like_ambiguous_filter_confirmation(message):
                     return _PreflightResult(FILTER_CONFIRMATION_CLARIFICATION, history)
             if needs_report_scope_confirmation(message, prior_user_prompts):
+                deps.session.pending_report_scope_messages = [message]
                 return _PreflightResult(REPORT_SCOPE_CONFIRMATION_PROMPT, history)
+            pending_report_scope = deps.session.pending_report_scope_messages
             if (
-                _has_pending_report_scope_confirmation(prior_user_prompts)
+                pending_report_scope
                 and _requests_rainfall_event_options(message)
             ):
+                pending_report_scope.append(message)
                 return _PreflightResult(
                     _rainfall_event_options_output(deps),
                     history,
                     [_FakeToolMessage("analyze_rainfall", {})],
                 )
+            if pending_report_scope:
+                pending_scope_text = "\n".join([*pending_report_scope, message])
+                if (
+                    _has_explicit_report_scope(pending_scope_text)
+                    and _has_report_point_scope(pending_scope_text)
+                ):
+                    args = _report_args_from_message(pending_scope_text)
+                    result = generate_report_impl(deps, **args)
+                    deps.session.pending_report_scope_messages = []
+                    return _PreflightResult(
+                        _report_tool_output(result),
+                        history,
+                        [_FakeToolMessage("generate_report", args)],
+                    )
+                if _has_explicit_report_scope(message):
+                    pending_report_scope.append(message)
+                    return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
             if _should_direct_generate_report(message, prior_user_prompts):
                 args = _report_args_from_message(
                     _pending_report_scope_text(message, prior_user_prompts)
                 )
                 result = generate_report_impl(deps, **args)
+                deps.session.pending_report_scope_messages = []
                 return _PreflightResult(
                     _report_tool_output(result),
                     history,

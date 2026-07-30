@@ -154,27 +154,28 @@ class AnalysisRunner:
         self, request: AnalysisRequest, flow: Any
     ) -> AnalysisResult:
         parameters = self._normalize_parameters(request)
-        if parameters["points"]:
-            flow = flow[flow["point_id"].astype(str).isin(parameters["points"])]
-        if parameters["start"] is not None:
-            flow = flow[flow["timestamp"] >= parameters["start"]]
-        if parameters["end"] is not None:
-            flow = flow[flow["timestamp"] <= parameters["end"]]
-        if request.algorithm != "data_quality":
-            flow = self.baselines.load_flow(
-                request.project_id,
-                request.batch_id,
-            )
+
+        def scoped(frame: Any) -> Any:
+            result = frame
             if parameters["points"]:
-                flow = flow[
-                    flow["point_id"].astype(str).isin(parameters["points"])
+                result = result[
+                    result["point_id"].astype(str).isin(parameters["points"])
                 ]
             if parameters["start"] is not None:
-                flow = flow[flow["timestamp"] >= parameters["start"]]
+                result = result[result["timestamp"] >= parameters["start"]]
             if parameters["end"] is not None:
-                flow = flow[flow["timestamp"] <= parameters["end"]]
+                result = result[result["timestamp"] <= parameters["end"]]
+            return result.copy()
+
+        raw_flow = scoped(flow)
+        baseline_flow = None
+        if request.algorithm in {"patterns", "rdii", "risk"}:
+            baseline_flow = scoped(self.baselines.load_flow(
+                request.project_id,
+                request.batch_id,
+            ))
             for column in ("flow_lps", "level_m", "velocity_mps"):
-                flow[column] = flow[column].astype(float)
+                baseline_flow[column] = baseline_flow[column].astype(float)
         identity = {
             "standard_input": {
                 "contract_version": 1,
@@ -220,10 +221,10 @@ class AnalysisRunner:
         run_id = uuid.uuid4().hex
         created_at = datetime.now(timezone.utc).isoformat()
         if request.algorithm == "data_quality":
-            data = {"table": check_data(flow).to_dict(orient="records")}
+            data = {"table": check_data(raw_flow).to_dict(orient="records")}
         elif request.algorithm == "patterns":
             data = {
-                "table": analyze_patterns(flow)["patterns"].to_dict(
+                "table": analyze_patterns(baseline_flow)["patterns"].to_dict(
                     orient="records"
                 )
             }
@@ -255,7 +256,7 @@ class AnalysisRunner:
                 raise AnalysisPreconditionError(str(exc)) from exc
             events = analyze_rainfall(rainfall)["events"]
             table = analyze_event_response(
-                flow, events, parameters["event_ids"]
+                raw_flow, events, parameters["event_ids"]
             )
             if table.empty:
                 raise AnalysisPreconditionError(
@@ -271,8 +272,8 @@ class AnalysisRunner:
             rainfall = self._load_rainfall(request)
             events = analyze_rainfall(rainfall)["events"]
             rdii = analyze_rdii(
-                flow,
-                build_dry_curves(flow),
+                raw_flow,
+                build_dry_curves(baseline_flow),
                 events,
                 parameters["event_ids"],
             )
@@ -299,7 +300,7 @@ class AnalysisRunner:
                 )
             except StandardDataUnavailable as exc:
                 raise AnalysisPreconditionError(str(exc)) from exc
-            dry_stats = dry_statistics(flow, sites)
+            dry_stats = dry_statistics(baseline_flow, sites)
             rainfall = None
             events = None
             if parameters["scope"] in {"rainy", "all"}:
@@ -309,7 +310,7 @@ class AnalysisRunner:
                 dry_stats,
                 scope=parameters["scope"],
                 sites=sites,
-                flow=flow,
+                flow=raw_flow,
                 events=events,
                 event_ids=parameters["event_ids"],
             )
@@ -508,7 +509,7 @@ class AnalysisRunner:
     def _baseline_identity(
         self, project_id: str, batch_id: str, algorithm: str
     ) -> dict[str, Any]:
-        if algorithm == "data_quality":
+        if algorithm in {"data_quality", "rainfall", "event_response"}:
             return {"kind": "none", "identity": None}
         baseline = self.baselines.current_baseline(project_id, batch_id)
         if baseline is None:

@@ -142,6 +142,50 @@ def test_runner_preserves_event_ids_and_point_scope_for_event_response(
     assert result.identity["parameters"]["event_ids"] == [1]
 
 
+def test_rain_event_uses_raw_flow_when_rain_day_is_excluded_from_dry_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database = tmp_path / "state" / "drainage.sqlite3"
+    files_root = tmp_path / "projects"
+    projects = ProjectRepository(database, files_root)
+    project = projects.create("雨旱数据分流项目")
+    batch = projects.create_batch(project.id, "雨旱数据分流批次")
+    workspace = projects.batch_workspace(project.id, batch.id)
+    write_standard_flow(workspace)
+    _write_rainfall(workspace)
+    baselines = FilterBaselineService(database, files_root)
+    filtered = baselines.run_filter(
+        FilterRequest(project.id, batch.id, expected_rows_per_day=1)
+    )
+    baselines.confirm(project.id, batch.id, filtered.filter_id)
+    baseline_flow = baselines.load_flow(project.id, batch.id)
+    baseline_flow = baseline_flow[
+        baseline_flow["timestamp"].dt.strftime("%Y-%m-%d") != "2026-03-02"
+    ].copy()
+    monkeypatch.setattr(
+        FilterBaselineService,
+        "load_flow",
+        lambda _self, _project_id, _batch_id: baseline_flow.copy(),
+    )
+    assert "2026-03-02" not in set(
+        baseline_flow["timestamp"].dt.strftime("%Y-%m-%d")
+    )
+
+    result = AnalysisRunner(database, files_root).run(
+        AnalysisRequest(
+            project.id,
+            batch.id,
+            "event_response",
+            points=["W1"],
+            event_ids=[1],
+        )
+    )
+
+    assert result.data["table"][0]["point_id"] == "W1"
+    assert result.identity["baseline"] == {"kind": "none", "identity": None}
+
+
 def test_runner_executes_rdii_with_selected_events_and_confirmed_baseline(
     tmp_path: Path,
 ) -> None:
