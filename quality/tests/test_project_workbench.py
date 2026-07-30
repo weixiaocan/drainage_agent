@@ -229,6 +229,7 @@ def test_index_exposes_project_workbench(tmp_path: Path) -> None:
     assert 'id="projectNames"' in response.text
     assert 'id="projectSelect"' not in response.text
     assert 'id="projectList"' not in response.text
+    assert "当前项目：" not in response.text
     assert "创建或打开项目" in response.text
     assert 'fetch("/api/projects"' in response.text
     assert 'method: "PUT"' in response.text

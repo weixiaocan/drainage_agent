@@ -266,6 +266,9 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert response.headers["cache-control"] == "no-store"
     assert 'id="dataImportForm"' in response.text
     assert 'id="batchImportForm"' not in response.text
+    assert 'id="batchImportFile" name="files" type="file" accept=".csv" multiple required' in response.text
+    assert 'id="flowFileNames"' in response.text
+    assert "选择监测 CSV" in response.text
     assert 'name="rainfall_file"' in response.text
     assert 'name="site_info_file"' in response.text
     assert "上传并智能识别全部列名" in response.text

@@ -118,6 +118,7 @@
       font-size: 12px;
       overflow-wrap: anywhere;
     }
+    .required { color: var(--danger); }
     input[type="text"] {
       width: 100%;
       border: 1px solid var(--border);
@@ -393,13 +394,16 @@
         <datalist id="projectNames"></datalist>
         <button class="upload-btn" type="submit">创建或打开项目</button>
       </form>
-      <div id="projectStatus" class="status">当前项目：未选择</div>
 
       <h2><span class="step-no">2</span>数据导入</h2>
       <div class="hint">监测、降雨和点位数据统一在这里选择；点击一次即可识别全部列名，再按数据类型人工确认。也可以<a href="/api/standard-flow-template" download>下载监测数据标准模板</a>填写后上传。</div>
       <form id="dataImportForm">
-        <label for="batchImportFile">原始监测 CSV（可多选）</label>
-        <input id="batchImportFile" name="files" type="file" accept=".csv" multiple>
+        <label>原始监测 CSV（可多选） <span class="required">*</span></label>
+        <div class="file-picker">
+          <input id="batchImportFile" name="files" type="file" accept=".csv" multiple required>
+          <label for="batchImportFile">选择监测 CSV</label>
+          <span id="flowFileNames">未选择</span>
+        </div>
         <label>降雨 CSV</label>
         <div class="file-picker">
           <input id="rainfallFile" name="rainfall_file" type="file" accept=".csv">
@@ -416,7 +420,7 @@
       </form>
       <div id="uploadStatus" class="status"></div>
       <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
-      <div id="batchImportStatus" class="status">请先选择监测项目。</div>
+      <div id="batchImportStatus" class="status"></div>
       <button id="continueImportMapping" class="secondary" type="button" hidden>继续确认列名匹配</button>
       <h2><span class="step-no">3</span>筛选确认与分析基线</h2>
       <button id="runFilterButton" class="upload-btn" type="button" disabled>
@@ -514,7 +518,6 @@
     const auxiliaryDialogStatus = document.getElementById("auxiliaryDialogStatus");
     const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
     const files = document.getElementById("files");
-    const projectStatus = document.getElementById("projectStatus");
     const projectNameInput = document.getElementById("projectName");
     const projectNames = document.getElementById("projectNames");
     const batchImportButton = document.getElementById("batchImportButton");
@@ -824,14 +827,13 @@
       sessionId = localStorage.getItem(projectSessionStorageKey(currentProjectId)) || "";
       restoreTranscript();
       projectNameInput.value = data.current_project.name;
-      projectStatus.textContent = `当前项目：${data.current_project.name}`;
       batchImportButton.disabled = false;
       runFilterButton.disabled = false;
       filterRevisionFile.disabled = true;
       confirmFilterButton.disabled = true;
       currentFilterId = "";
       filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
-      batchImportStatus.textContent = "可上传原始监测 CSV；重新导入会替换当前标准数据。";
+      batchImportStatus.textContent = "";
       resetImportArea();
       await loadAgentRuns();
       await refreshProjects();
@@ -893,7 +895,6 @@
 
     document.getElementById("projectForm").addEventListener("submit", async (event) => {
       event.preventDefault();
-      projectStatus.className = "status";
       try {
         const name = event.target.elements.name.value.trim();
         const existingRes = await fetch("/api/projects");
@@ -901,7 +902,6 @@
         const existing = existingProjects.find((project) => project.name === name);
         if (existing) {
           await selectProject(existing);
-          projectStatus.textContent = `已加载已有项目：${existing.name}`;
           return;
         }
         const res = await fetch("/api/projects", {
@@ -913,8 +913,9 @@
         if (!res.ok) throw new Error(project.detail || "创建项目失败");
         await selectProject(project);
       } catch (err) {
-        projectStatus.className = "status error";
-        projectStatus.textContent = err.message;
+        projectNameInput.setCustomValidity(err.message);
+        projectNameInput.reportValidity();
+        projectNameInput.setCustomValidity("");
       }
     });
 
@@ -1082,8 +1083,8 @@
         const hasAuxiliary = Boolean(
           pendingAuxiliaryFiles.rainfall || pendingAuxiliaryFiles.sites
         );
-        if (selectedNames.length === 0 && !hasAuxiliary) {
-          throw new Error("请至少选择一种数据文件");
+        if (selectedNames.length === 0) {
+          throw new Error("请选择必需的原始监测 CSV");
         }
         auxiliaryState = null;
         if (hasAuxiliary) {
@@ -1098,10 +1099,6 @@
           }
           auxiliaryState = auxiliaryData;
           uploadStatus.textContent = `已识别：${Object.values(auxiliaryData).map((item) => item.filename).join("、")}`;
-        }
-        if (selectedNames.length === 0) {
-          renderAuxiliaryMapping();
-          return;
         }
         batchImportStatus.textContent = "正在上传并识别监测数据...";
         const res = await fetch(
@@ -1265,6 +1262,11 @@
       pendingAuxiliaryFiles.sites = event.target.files[0] || null;
       document.getElementById("siteInfoFileName").textContent =
         pendingAuxiliaryFiles.sites?.name || "未选择";
+    });
+    document.getElementById("batchImportFile").addEventListener("change", (event) => {
+      const names = Array.from(event.target.files).map((file) => file.name);
+      document.getElementById("flowFileNames").textContent =
+        names.length ? `${names.length} 个文件：${names.join("、")}` : "未选择";
     });
     const AUXILIARY_FIELDS = {
       rainfall: [
