@@ -839,6 +839,75 @@ def create_app(
         )
         return {"saved": saved, "message": "辅助数据已确认并生成标准文件。"}
 
+    def _archive_chat_and_clear_analysis(
+        project_id: str,
+        batch_id: str,
+    ) -> None:
+        database = app.state.root / "var" / "drainage.sqlite3"
+        archived_at = datetime.now(timezone.utc).isoformat()
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS archived_agent_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    batch_id TEXT NOT NULL,
+                    history_json TEXT NOT NULL,
+                    state_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    archived_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO archived_agent_sessions
+                SELECT session_id, project_id, batch_id, history_json,
+                       state_json, created_at, updated_at, ?
+                FROM agent_sessions
+                WHERE project_id = ? AND batch_id = ?
+                """,
+                (archived_at, project_id, batch_id),
+            )
+            for table in (
+                "agent_sessions",
+                "current_analysis_results",
+                "analysis_runs",
+                "background_jobs",
+                "report_drafts",
+            ):
+                connection.execute(
+                    f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
+                    (project_id, batch_id),
+                )
+            run_ids = [
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT run_id FROM agent_runs
+                    WHERE project_id = ? AND batch_id = ?
+                    """,
+                    (project_id, batch_id),
+                )
+            ]
+            if run_ids:
+                placeholders = ",".join("?" for _ in run_ids)
+                connection.execute(
+                    f"DELETE FROM agent_run_steps WHERE run_id IN ({placeholders})",
+                    run_ids,
+                )
+            connection.execute(
+                "DELETE FROM agent_runs WHERE project_id = ? AND batch_id = ?",
+                (project_id, batch_id),
+            )
+        root = app.state.projects.batch_workspace(project_id, batch_id)
+        for directory in ("results", "reports", "jobs", "sessions"):
+            target = (root / directory).resolve()
+            if target.is_relative_to(root.resolve()) and target.is_dir():
+                shutil.rmtree(target)
+            target.mkdir(parents=True, exist_ok=True)
+
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}/filters",
         status_code=201,
@@ -958,11 +1027,23 @@ def create_app(
                 detail="必须明确确认筛选结果才能建立分析基线",
             )
         try:
-            return asdict(
-                app.state.filter_baselines.confirm(
-                    project_id, batch_id, filter_id
-                )
+            with sqlite3.connect(
+                app.state.root / "var" / "drainage.sqlite3"
+            ) as connection:
+                previous = connection.execute(
+                    """
+                    SELECT filter_id FROM analysis_baselines
+                    WHERE project_id = ? AND batch_id = ?
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (project_id, batch_id),
+                ).fetchone()
+            baseline = app.state.filter_baselines.confirm(
+                project_id, batch_id, filter_id
             )
+            if previous is not None and previous[0] != filter_id:
+                _archive_chat_and_clear_analysis(project_id, batch_id)
+            return asdict(baseline)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except BaselinePreconditionError as exc:
@@ -1278,6 +1359,7 @@ def create_app(
                 {
                     "present": True,
                     "version": baseline.version,
+                    "filter_id": baseline.filter_id,
                     "path": baseline.artifact,
                 }
                 if baseline is not None
@@ -1290,68 +1372,19 @@ def create_app(
         if app.state.projects.get(project_id) is None:
             raise HTTPException(status_code=404, detail="监测项目不存在")
         workspace = app.state.projects.get_or_create_workspace(project_id)
+        _archive_chat_and_clear_analysis(project_id, workspace.id)
         database = app.state.root / "var" / "drainage.sqlite3"
-        archived_at = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(database) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS archived_agent_sessions (
-                    session_id TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
-                    batch_id TEXT NOT NULL,
-                    history_json TEXT NOT NULL,
-                    state_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    archived_at TEXT NOT NULL
-                )
-                """
-            )
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO archived_agent_sessions
-                SELECT session_id, project_id, batch_id, history_json,
-                       state_json, created_at, updated_at, ?
-                FROM agent_sessions
-                WHERE project_id = ? AND batch_id = ?
-                """,
-                (archived_at, project_id, workspace.id),
-            )
             for table in (
-                "agent_sessions",
-                "current_analysis_results",
-                "analysis_runs",
                 "current_analysis_baselines",
                 "analysis_baselines",
                 "filter_results",
-                "background_jobs",
-                "report_drafts",
                 "data_imports",
             ):
                 connection.execute(
                     f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
                     (project_id, workspace.id),
                 )
-            run_ids = [
-                row[0]
-                for row in connection.execute(
-                    """
-                    SELECT run_id FROM agent_runs
-                    WHERE project_id = ? AND batch_id = ?
-                    """,
-                    (project_id, workspace.id),
-                )
-            ]
-            if run_ids:
-                placeholders = ",".join("?" for _ in run_ids)
-                connection.execute(
-                    f"DELETE FROM agent_run_steps WHERE run_id IN ({placeholders})",
-                    run_ids,
-                )
-            connection.execute(
-                "DELETE FROM agent_runs WHERE project_id = ? AND batch_id = ?",
-                (project_id, workspace.id),
-            )
         root = app.state.projects.batch_workspace(project_id, workspace.id)
         for directory in (
             "inputs", "standard", "baseline", "results",

@@ -886,9 +886,12 @@
         const download =
           `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${state.filter.path}`;
         filterSummary.innerHTML =
-          `<p>当前筛选结果已确认，可<a href="${download}">下载查看</a>；重新运行将替换当前筛选结果。</p>`;
+          `<p>当前筛选结果已确认，可<a href="${download}">下载查看</a>；重新上传将替换当前筛选结果。</p>`;
+        currentFilterId = state.filter.filter_id;
         filterRevisionFileName.textContent = "当前已确认：筛选结果.xlsx";
         filterRevisionFileButtonLabel.textContent = "上传修改版";
+        filterRevisionFile.disabled = false;
+        confirmFilterButton.disabled = true;
       } else {
         filterSummary.textContent = state.has_data
           ? "尚未生成筛选结果。"
@@ -1304,6 +1307,15 @@
         if (!currentFilterId) throw new Error("没有可确认的筛选文件");
         const file = filterRevisionFile.files[0];
         if (file) {
+          if (
+            currentWorkspaceState?.filter?.present
+            && !window.confirm(
+              "重新上传筛选文件将替换当前筛选结果，归档当前聊天，" +
+              "并清空已有分析结果、报告和运行记录。是否继续？"
+            )
+          ) {
+            return;
+          }
           filterSummary.textContent = "正在上传并校验修改后的筛选文件...";
           const form = new FormData();
           form.append("file", file);
@@ -1336,6 +1348,17 @@
         filterRevisionFileButtonLabel.textContent = "上传修改版";
         filterRevisionFile.value = "";
         confirmFilterButton.disabled = true;
+        if (currentWorkspaceState?.filter?.present) {
+          const oldSessionId = sessionId;
+          if (oldSessionId) {
+            localStorage.removeItem(`drainage-agent-chat-${oldSessionId}`);
+          }
+          localStorage.removeItem(projectSessionStorageKey(currentProjectId));
+          sessionId = "";
+          restoreTranscript();
+          await refreshResults();
+        }
+        await loadWorkspaceState();
       } catch (err) {
         filterSummary.textContent = err.message;
       }
@@ -1389,6 +1412,7 @@
         || (currentWorkspaceState?.filter?.present
           ? "当前已确认：筛选结果.xlsx"
           : "待确认：自动筛选结果.xlsx");
+      confirmFilterButton.disabled = !event.target.files[0];
     });
     const AUXILIARY_FIELDS = {
       rainfall: [

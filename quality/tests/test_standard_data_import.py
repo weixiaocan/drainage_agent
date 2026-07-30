@@ -272,6 +272,9 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert 'id="filterRevisionFileButtonLabel"' in response.text
     assert '"当前已确认：筛选结果.xlsx"' in response.text
     assert '"上传修改版"' in response.text
+    assert "重新上传将替换当前筛选结果" in response.text
+    assert "并清空已有分析结果、报告和运行记录" in response.text
+    assert "state.filter.filter_id" in response.text
     assert "已选择 ${names.length} 个文件" in response.text
     assert 'names.join("、")' not in response.text
     assert "重新识别完成：已替换当前标准数据" not in response.text

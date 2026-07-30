@@ -9,6 +9,7 @@ fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
 from quality.tests.test_web_app import FakeAgent, make_deps
+from quality.tests.test_filter_baselines import write_standard_flow
 from web.app import create_app
 from web.projects import ProjectRepository
 
@@ -207,6 +208,81 @@ def test_reimport_reset_archives_chat_and_clears_current_artifacts(
             """
             SELECT COUNT(*) FROM archived_agent_sessions
             WHERE session_id = 'session-1'
+            """
+        ).fetchone()[0] == 1
+
+
+def test_revised_filter_archives_chat_and_clears_derived_results(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "筛选修改"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    write_standard_flow(root)
+    base_url = f"/api/projects/{project['id']}/batches/{workspace_id}"
+    first_filter = client.post(
+        f"{base_url}/filters",
+        json={"expected_rows_per_day": 1},
+    ).json()
+    first_baseline = client.post(
+        f"{base_url}/filters/{first_filter['filter_id']}/confirmation",
+        json={"confirm": True},
+    )
+    assert first_baseline.status_code == 200
+    app.state.conversations.repository.save(
+        "filter-session",
+        project["id"],
+        workspace_id,
+        [{"role": "user", "content": "旧筛选数据问题"}],
+        app.state.deps.session,
+    )
+    (root / "results").mkdir(exist_ok=True)
+    (root / "results" / "old-result.json").write_text("{}", encoding="utf-8")
+    (root / "reports").mkdir(exist_ok=True)
+    (root / "reports" / "old-report.docx").write_text("old", encoding="utf-8")
+    downloaded = client.get(
+        f"{base_url}/filters/{first_filter['filter_id']}/download"
+    )
+    revision = client.post(
+        f"{base_url}/filters/{first_filter['filter_id']}/revisions",
+        files={
+            "file": (
+                "modified.xlsx",
+                downloaded.content,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    ).json()
+
+    confirmed = client.post(
+        f"{base_url}/filters/{revision['filter_id']}/confirmation",
+        json={"confirm": True},
+    )
+
+    assert confirmed.status_code == 200
+    assert (root / "standard" / "flow.csv").is_file()
+    assert not (root / "results" / "old-result.json").exists()
+    assert not (root / "reports" / "old-report.docx").exists()
+    state = client.get(f"/api/projects/{project['id']}/workspace/state").json()
+    assert state["filter"]["filter_id"] == revision["filter_id"]
+    with sqlite3.connect(tmp_path / "var" / "drainage.sqlite3") as connection:
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM agent_sessions
+            WHERE session_id = 'filter-session'
+            """
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            """
+            SELECT COUNT(*) FROM archived_agent_sessions
+            WHERE session_id = 'filter-session'
             """
         ).fetchone()[0] == 1
 
