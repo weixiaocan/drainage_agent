@@ -5,7 +5,9 @@ import io
 import os
 import shutil
 import sqlite3
+import tempfile
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -16,6 +18,7 @@ import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
 from analysis.io.standard import STANDARD_FLOW_COLUMNS
 from analysis.baselines import (
@@ -78,6 +81,7 @@ class ChatResponse(BaseModel):
     session_id: str
     run_id: str
     reply: str
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProjectCreateRequest(BaseModel):
@@ -1244,16 +1248,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="文件不存在")
         return FileResponse(path, filename=path.name)
 
-    @app.get("/api/projects/{project_id}/workspace/artifacts")
-    def list_project_artifacts(project_id: str) -> dict[str, object]:
-        if app.state.projects.get(project_id) is None:
-            raise HTTPException(status_code=404, detail="监测项目不存在")
-        workspace = app.state.projects.get_or_create_workspace(project_id)
-        root = app.state.projects.batch_workspace(project_id, workspace.id)
+    def _current_workspace_artifacts(
+        project_id: str,
+        workspace_id: str,
+    ) -> list[dict[str, Any]]:
+        root = app.state.projects.batch_workspace(project_id, workspace_id)
         files: list[dict[str, Any]] = []
         current_results = {
             algorithm: app.state.analysis_runner.current(
-                project_id, workspace.id, algorithm
+                project_id, workspace_id, algorithm
             )
             for algorithm in (
                 "data_quality", "patterns", "rainfall",
@@ -1280,7 +1283,7 @@ def create_app(
                         "size": path.stat().st_size,
                     })
         baseline = app.state.filter_baselines.current_baseline(
-            project_id, workspace.id
+            project_id, workspace_id
         )
         if baseline is not None:
             path = root / baseline.artifact
@@ -1291,7 +1294,7 @@ def create_app(
                     "size": path.stat().st_size,
                 })
         for draft in app.state.report_templates.list_drafts(
-            project_id, workspace.id
+            project_id, workspace_id
         )[-1:]:
             for artifact, label in (
                 (draft.docx, "当前报告初稿"),
@@ -1304,10 +1307,92 @@ def create_app(
                         "name": label,
                         "size": path.stat().st_size,
                     })
+        return files
+
+    @app.get("/api/projects/{project_id}/workspace/artifacts")
+    def list_project_artifacts(project_id: str) -> dict[str, object]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
         return {
             "workspace_id": workspace.id,
-            "files": files,
+            "files": _current_workspace_artifacts(project_id, workspace.id),
         }
+
+    def _project_zip(
+        project_id: str,
+        *,
+        results_only: bool,
+    ) -> FileResponse:
+        project = app.state.projects.get(project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        workspace = app.state.projects.get_or_create_workspace(project_id)
+        root = app.state.projects.batch_workspace(project_id, workspace.id)
+        temporary = tempfile.NamedTemporaryFile(
+            prefix=f"drainage-{project_id}-",
+            suffix=".zip",
+            delete=False,
+        )
+        temporary_path = Path(temporary.name)
+        temporary.close()
+        with zipfile.ZipFile(
+            temporary_path,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as archive:
+            if results_only:
+                paths = [
+                    item["path"]
+                    for item in _current_workspace_artifacts(
+                        project_id, workspace.id
+                    )
+                    if not str(item["path"]).startswith("baseline/")
+                ]
+                for artifact in dict.fromkeys(paths):
+                    path = root / artifact
+                    if path.is_file():
+                        archive.write(path, arcname=artifact)
+            else:
+                archive.writestr(
+                    "project.json",
+                    json.dumps(
+                        {
+                            "id": project.id,
+                            "name": project.name,
+                            "workspace_id": workspace.id,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                )
+                for directory in (
+                    "inputs", "standard", "baseline", "results", "reports",
+                ):
+                    folder = root / directory
+                    if not folder.is_dir():
+                        continue
+                    for path in folder.rglob("*"):
+                        if path.is_file():
+                            archive.write(
+                                path,
+                                arcname=path.relative_to(root).as_posix(),
+                            )
+        suffix = "results" if results_only else "all"
+        return FileResponse(
+            temporary_path,
+            media_type="application/zip",
+            filename=f"{project.name}-{suffix}.zip",
+            background=BackgroundTask(temporary_path.unlink, missing_ok=True),
+        )
+
+    @app.get("/api/projects/{project_id}/downloads/all")
+    def download_project_all(project_id: str) -> FileResponse:
+        return _project_zip(project_id, results_only=False)
+
+    @app.get("/api/projects/{project_id}/downloads/results")
+    def download_project_results(project_id: str) -> FileResponse:
+        return _project_zip(project_id, results_only=True)
 
     @app.get("/api/projects/{project_id}/workspace/state")
     def get_project_workspace_state(project_id: str) -> dict[str, object]:
@@ -1540,6 +1625,10 @@ def create_app(
                 detail="当前监测项目或分析批次不存在",
             )
         try:
+            before_paths = {
+                item["path"]
+                for item in _current_workspace_artifacts(project_id, batch_id)
+            }
             turn = app.state.conversations.run(
                 project_id=project_id,
                 batch_id=batch_id,
@@ -1547,10 +1636,16 @@ def create_app(
                 session_id=request.session_id,
                 debug=request.debug,
             )
+            artifacts = [
+                item
+                for item in _current_workspace_artifacts(project_id, batch_id)
+                if item["path"] not in before_paths
+            ]
             return ChatResponse(
                 session_id=turn.session_id,
                 run_id=turn.run_id,
                 reply=turn.reply,
+                artifacts=artifacts,
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

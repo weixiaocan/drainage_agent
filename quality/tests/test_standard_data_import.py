@@ -275,6 +275,14 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "重新上传将替换当前筛选结果" in response.text
     assert "并清空已有分析结果、报告和运行记录" in response.text
     assert "state.filter.filter_id" in response.text
+    assert "当前项目结果文件" not in response.text
+    assert 'id="refreshResults"' not in response.text
+    assert 'id="downloadProjectResults"' in response.text
+    assert 'id="downloadProjectAll"' in response.text
+    assert "/downloads/results" in response.text
+    assert "/downloads/all" in response.text
+    assert 'className = "message-artifacts"' in response.text
+    assert "data.artifacts || []" in response.text
     assert "已选择 ${names.length} 个文件" in response.text
     assert 'names.join("、")' not in response.text
     assert "重新识别完成：已替换当前标准数据" not in response.text

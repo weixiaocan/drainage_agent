@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 import sqlite3
+import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +13,7 @@ TestClient = fastapi_testclient.TestClient
 
 from quality.tests.test_web_app import FakeAgent, make_deps
 from quality.tests.test_filter_baselines import write_standard_flow
+from analysis.runs import AnalysisRequest
 from web.app import create_app
 from web.projects import ProjectRepository
 
@@ -285,6 +289,110 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
             WHERE session_id = 'filter-session'
             """
         ).fetchone()[0] == 1
+
+
+def test_project_downloads_offer_all_files_and_results_only(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "项目下载"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    write_standard_flow(root)
+    run = client.post(
+        f"/api/projects/{project['id']}/batches/{workspace_id}"
+        "/analysis-runs/data_quality",
+        json={"points": ["W1"], "force_rerun": False},
+    )
+    assert run.status_code == 200
+
+    all_files = client.get(f"/api/projects/{project['id']}/downloads/all")
+    results = client.get(
+        f"/api/projects/{project['id']}/downloads/results"
+    )
+
+    assert all_files.status_code == 200
+    assert results.status_code == 200
+    assert all_files.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(all_files.content)) as archive:
+        all_names = set(archive.namelist())
+    with zipfile.ZipFile(io.BytesIO(results.content)) as archive:
+        result_names = set(archive.namelist())
+    result_path = run.json()["artifacts"][0]
+    assert "project.json" in all_names
+    assert "standard/flow.csv" in all_names
+    assert result_path in all_names
+    assert result_path in result_names
+    assert "standard/flow.csv" not in result_names
+
+
+def test_chat_response_contains_only_files_generated_by_that_answer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "回答文件"}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    write_standard_flow(
+        app.state.projects.batch_workspace(project["id"], workspace_id)
+    )
+
+    def run_with_artifact(**kwargs: object) -> SimpleNamespace:
+        result = app.state.analysis_runner.run(
+            AnalysisRequest(
+                project_id=project["id"],
+                batch_id=workspace_id,
+                algorithm="data_quality",
+            )
+        )
+        return SimpleNamespace(
+            session_id=str(kwargs["session_id"]),
+            run_id=result.run_id,
+            reply="分析完成",
+        )
+
+    monkeypatch.setattr(app.state.conversations, "run", run_with_artifact)
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "检查数据",
+            "session_id": "answer-session",
+            "project_id": project["id"],
+            "batch_id": workspace_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["artifacts"] == [
+        {
+            "path": response.json()["artifacts"][0]["path"],
+            "name": "数据质量结果",
+            "size": response.json()["artifacts"][0]["size"],
+        }
+    ]
+    second = client.post(
+        "/api/chat",
+        json={
+            "message": "再描述一次",
+            "session_id": "answer-session",
+            "project_id": project["id"],
+            "batch_id": workspace_id,
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["artifacts"] == []
 
 
 def test_project_upload_rejects_executable_and_preserves_existing_file(

@@ -55,6 +55,30 @@
       background: var(--panel);
       border-bottom: 1px solid var(--border);
     }
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .project-downloads {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .project-downloads a,
+    .message-artifacts a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .project-downloads a {
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--soft);
+      font-size: 13px;
+    }
     h1 {
       margin: 0;
       font-size: 20px;
@@ -260,6 +284,14 @@
       border-top: 1px solid var(--border);
       margin: 14px 0;
     }
+    .message-artifacts {
+      display: grid;
+      gap: 6px;
+      margin-top: 12px;
+      padding-top: 11px;
+      border-top: 1px solid var(--border);
+      font-size: 14px;
+    }
     .composer {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -286,18 +318,6 @@
       min-height: 18px;
     }
     .status.error { color: var(--danger); }
-    .files {
-      display: grid;
-      gap: 6px;
-      margin-top: 8px;
-      font-size: 13px;
-    }
-    .files a {
-      color: var(--primary);
-      text-decoration: none;
-      overflow-wrap: anywhere;
-    }
-    .files a:hover { text-decoration: underline; }
     .inspection {
       margin-top: 10px;
       overflow-x: auto;
@@ -463,11 +483,6 @@
         <button class="secondary" data-prompt="列出已有结果">列出已有结果</button>
       </div>
 
-      <h2>当前项目结果文件</h2>
-      <div class="hint">这里只显示当前项目工作空间中的分析结果和已确认筛选文件。</div>
-      <button class="secondary" id="refreshResults" type="button">刷新列表</button>
-      <div id="files" class="files"></div>
-
       <details class="advanced">
         <summary>排查与运行记录</summary>
         <label class="check">
@@ -480,9 +495,15 @@
     </aside>
 
     <main>
-      <header>
-        <h1>对话分析</h1>
-        <div class="sub">完成左侧项目选择和数据导入后，直接描述要做的分析。</div>
+      <header class="chat-header">
+        <div>
+          <h1>对话分析</h1>
+          <div class="sub">完成左侧项目选择和数据导入后，直接描述要做的分析。</div>
+        </div>
+        <div id="projectDownloads" class="project-downloads" hidden>
+          <a id="downloadProjectResults" href="#">下载分析结果</a>
+          <a id="downloadProjectAll" href="#">下载项目全部文件</a>
+        </div>
       </header>
       <section id="chat" class="chat">
         <div class="msg agent">已就绪。请先在左侧第 1 步创建或选择监测项目。</div>
@@ -539,7 +560,9 @@
     const auxiliaryMappingDialog = document.getElementById("auxiliaryMappingDialog");
     const auxiliaryDialogStatus = document.getElementById("auxiliaryDialogStatus");
     const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
-    const files = document.getElementById("files");
+    const projectDownloads = document.getElementById("projectDownloads");
+    const downloadProjectResults = document.getElementById("downloadProjectResults");
+    const downloadProjectAll = document.getElementById("downloadProjectAll");
     const projectNameInput = document.getElementById("projectName");
     const projectNames = document.getElementById("projectNames");
     const batchImportButton = document.getElementById("batchImportButton");
@@ -747,11 +770,24 @@
       return fragment;
     }
 
-    function addMessage(text, role, persist = true) {
+    function addMessage(text, role, persist = true, artifacts = []) {
       const div = document.createElement("div");
       div.className = `msg ${role}`;
       if (role === "agent") {
         div.appendChild(renderMarkdown(text));
+        if (artifacts.length > 0) {
+          const artifactList = document.createElement("div");
+          artifactList.className = "message-artifacts";
+          artifacts.forEach((item) => {
+            const link = document.createElement("a");
+            link.href =
+              `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
+            link.textContent = `下载：${item.name}`;
+            link.download = "";
+            artifactList.appendChild(link);
+          });
+          div.appendChild(artifactList);
+        }
       } else {
         div.textContent = text;
       }
@@ -759,7 +795,7 @@
       chat.scrollTop = chat.scrollHeight;
       if (persist) {
         const transcript = loadTranscript();
-        transcript.push({role, text});
+        transcript.push({role, text, artifacts});
         saveTranscript(transcript);
       }
       return div;
@@ -774,7 +810,7 @@
       }
       transcript.forEach((item) => {
         if (item && typeof item.text === "string" && ["user", "agent"].includes(item.role)) {
-          addMessage(item.text, item.role, false);
+          addMessage(item.text, item.role, false, item.artifacts || []);
         }
       });
     }
@@ -815,8 +851,7 @@
         }
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
         pendingMessage.remove();
-        addMessage(data.reply, "agent");
-        refreshResults();
+        addMessage(data.reply, "agent", true, data.artifacts || []);
         loadAgentRuns();
       } catch (err) {
         pendingMessage.remove();
@@ -910,6 +945,11 @@
       sessionId = localStorage.getItem(projectSessionStorageKey(currentProjectId)) || "";
       restoreTranscript();
       projectNameInput.value = data.current_project.name;
+      projectDownloads.hidden = false;
+      downloadProjectResults.href =
+        `/api/projects/${currentProjectId}/downloads/results`;
+      downloadProjectAll.href =
+        `/api/projects/${currentProjectId}/downloads/all`;
       batchImportButton.disabled = false;
       runFilterButton.disabled = false;
       filterRevisionFile.disabled = true;
@@ -919,7 +959,6 @@
       resetImportArea();
       await loadWorkspaceState();
       await loadAgentRuns();
-      await refreshResults();
       await refreshProjects();
     }
 
@@ -1197,7 +1236,6 @@
             sites: {present: false},
             filter: {present: false},
           };
-          await refreshResults();
         }
         auxiliaryState = null;
         if (hasAuxiliary) {
@@ -1356,7 +1394,6 @@
           localStorage.removeItem(projectSessionStorageKey(currentProjectId));
           sessionId = "";
           restoreTranscript();
-          await refreshResults();
         }
         await loadWorkspaceState();
       } catch (err) {
@@ -1511,34 +1548,6 @@
     continueImportMapping.addEventListener("click", () => importMappingDialog.showModal());
     continueAuxiliaryMapping.addEventListener("click", () => auxiliaryMappingDialog.showModal());
 
-    async function refreshResults() {
-      files.innerHTML = "";
-      if (!currentProjectId || !currentBatchId) {
-        files.textContent = "请先选择监测项目。";
-        return;
-      }
-      const res = await fetch(`/api/projects/${currentProjectId}/workspace/artifacts`);
-      const data = await res.json();
-      if (!res.ok) {
-        files.textContent = data.detail || "结果文件加载失败。";
-        return;
-      }
-      currentBatchId = data.workspace_id;
-      if (data.files.length === 0) {
-        files.textContent = "暂无结果文件。";
-        return;
-      }
-      data.files.forEach((item) => {
-        const a = document.createElement("a");
-        a.href = `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
-        a.textContent = `${item.name} (${item.size} bytes)`;
-        a.title = item.path;
-        a.target = "_blank";
-        files.appendChild(a);
-      });
-    }
-
-    document.getElementById("refreshResults").addEventListener("click", refreshResults);
     restoreTranscript();
     fetch("/api/projects/selection")
       .then((response) => response.json())
@@ -1549,7 +1558,6 @@
           await refreshProjects();
         }
       });
-    refreshResults();
   </script>
 </body>
 </html>
