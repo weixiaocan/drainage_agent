@@ -1153,42 +1153,6 @@ def create_app(
         files: list[dict[str, Any]] = []
         for directory in ("results", "baseline", "jobs"):
             files.extend(_list_files(root, root / directory))
-        return {"workspace_id": workspace.id, "files": files}
-
-    @app.get("/api/projects/{project_id}/workspace/artifacts")
-    def list_project_artifacts(project_id: str) -> dict[str, object]:
-        if app.state.projects.get(project_id) is None:
-            raise HTTPException(status_code=404, detail="监测项目不存在")
-        workspace = app.state.projects.get_or_create_workspace(project_id)
-        root = app.state.projects.batch_workspace(project_id, workspace.id)
-        files: list[dict[str, Any]] = []
-        for directory in ("results", "baseline", "jobs"):
-            files.extend(_list_files(root, root / directory))
-        return {"workspace_id": workspace.id, "files": files}
-
-    @app.get("/api/projects/{project_id}/workspace/artifacts")
-    def list_project_artifacts(project_id: str) -> dict[str, object]:
-        if app.state.projects.get(project_id) is None:
-            raise HTTPException(status_code=404, detail="监测项目不存在")
-        workspace = app.state.projects.get_or_create_workspace(project_id)
-        root = app.state.projects.batch_workspace(project_id, workspace.id)
-        files: list[dict[str, Any]] = []
-        for directory in ("results", "baseline", "jobs"):
-            files.extend(_list_files(root, root / directory))
-        return {
-            "workspace_id": workspace.id,
-            "files": files,
-        }
-
-    @app.get("/api/projects/{project_id}/workspace/artifacts")
-    def list_project_artifacts(project_id: str) -> dict[str, object]:
-        if app.state.projects.get(project_id) is None:
-            raise HTTPException(status_code=404, detail="监测项目不存在")
-        workspace = app.state.projects.get_or_create_workspace(project_id)
-        root = app.state.projects.batch_workspace(project_id, workspace.id)
-        files: list[dict[str, Any]] = []
-        for directory in ("results", "baseline", "jobs"):
-            files.extend(_list_files(root, root / directory))
         return {
             "workspace_id": workspace.id,
             "files": files,

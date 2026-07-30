@@ -384,15 +384,13 @@
       <div class="sub">本地排水监测数据分析网页</div>
 
       <h2><span class="step-no">1</span>监测项目</h2>
-      <div class="hint">项目名称就是本次分析结果的文件夹名称。选择已有项目会继续使用其中的数据和结果。</div>
+      <div class="hint">输入新名称创建项目，或从输入框建议中选择已有项目继续分析。</div>
       <form id="projectForm">
-        <label for="projectSelect">选择已有项目</label>
-        <select id="projectSelect">
-          <option value="">新建项目…</option>
-        </select>
         <label for="projectName">项目名称</label>
-        <input id="projectName" name="name" type="text" required maxlength="120"
-               placeholder="输入新名称，或从上方选择">
+        <input id="projectName" name="name" type="text" list="projectNames"
+               required maxlength="120" autocomplete="off"
+               placeholder="输入或选择项目">
+        <datalist id="projectNames"></datalist>
         <button class="upload-btn" type="submit">创建或打开项目</button>
       </form>
       <div id="projectStatus" class="status">当前项目：未选择</div>
@@ -420,11 +418,6 @@
       <button id="continueAuxiliaryMapping" class="secondary" type="button" hidden>继续确认辅助数据</button>
       <div id="batchImportStatus" class="status">请先选择监测项目。</div>
       <button id="continueImportMapping" class="secondary" type="button" hidden>继续确认列名匹配</button>
-      <details id="standardPreviewDetails" class="advanced" hidden>
-        <summary>标准数据预览</summary>
-        <div id="standardPreview" class="inspection"></div>
-      </details>
-
       <h2><span class="step-no">3</span>筛选确认与分析基线</h2>
       <button id="runFilterButton" class="upload-btn" type="button" disabled>
         运行自动筛选
@@ -432,34 +425,21 @@
       <div id="filterSummary" class="inspection">请先生成并确认标准数据。</div>
       <label for="filterRevisionFile">修改后的筛选文件</label>
       <input id="filterRevisionFile" type="file" accept=".xlsx" disabled>
-      <button id="uploadFilterRevisionButton" type="button" disabled>
-        上传修改版本并校验
-      </button>
       <button id="confirmFilterButton" class="upload-btn" type="button" disabled>
-        明确确认当前筛选文件
+        确认筛选结果
       </button>
-
-      <h2><span class="step-no">4</span>数据质量检查</h2>
-      <label class="check">
-        <input id="forceDataQualityRerun" type="checkbox">
-        明确重新运行并创建新版本
-      </label>
-      <button id="runDataQualityButton" class="upload-btn" type="button" disabled>
-        运行数据质量检查
-      </button>
-      <div id="dataQualityResult" class="inspection">请先选择已有标准数据的监测项目。</div>
-      <div id="analysisJobHistory" class="inspection">当前项目暂无后台作业。</div>
 
       <h2>快捷指令</h2>
       <div class="quick">
         <button class="secondary" data-prompt="描述当前数据">描述当前数据</button>
-        <button class="secondary" data-prompt="统计数据收集率">统计数据收集率</button>
+        <button class="secondary" data-prompt="检查当前数据质量">检查数据质量</button>
         <button class="secondary" data-prompt="只看降雨场次">只看降雨场次</button>
         <button class="secondary" data-prompt="分析旱天风险">分析旱天风险</button>
         <button class="secondary" data-prompt="列出已有结果">列出已有结果</button>
       </div>
 
-      <h2>结果文件</h2>
+      <h2>当前项目结果文件</h2>
+      <div class="hint">这里只显示当前项目工作空间中的分析结果和已确认筛选文件。</div>
       <button class="secondary" id="refreshResults" type="button">刷新列表</button>
       <div id="files" class="files"></div>
 
@@ -535,7 +515,8 @@
     const continueAuxiliaryMapping = document.getElementById("continueAuxiliaryMapping");
     const files = document.getElementById("files");
     const projectStatus = document.getElementById("projectStatus");
-    const projectSelect = document.getElementById("projectSelect");
+    const projectNameInput = document.getElementById("projectName");
+    const projectNames = document.getElementById("projectNames");
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
@@ -543,17 +524,10 @@
     const importDialogStatus = document.getElementById("importDialogStatus");
     const continueImportMapping = document.getElementById("continueImportMapping");
     const importInspection = document.getElementById("importInspection");
-    const standardPreviewDetails = document.getElementById("standardPreviewDetails");
-    const standardPreview = document.getElementById("standardPreview");
-    const runDataQualityButton = document.getElementById("runDataQualityButton");
-    const forceDataQualityRerun = document.getElementById("forceDataQualityRerun");
-    const dataQualityResult = document.getElementById("dataQualityResult");
     const runFilterButton = document.getElementById("runFilterButton");
     const filterSummary = document.getElementById("filterSummary");
     const filterRevisionFile = document.getElementById("filterRevisionFile");
-    const uploadFilterRevisionButton = document.getElementById("uploadFilterRevisionButton");
     const confirmFilterButton = document.getElementById("confirmFilterButton");
-    const analysisJobHistory = document.getElementById("analysisJobHistory");
     const agentRuns = document.getElementById("agentRuns");
     const deepDebug = document.getElementById("deepDebug");
     const welcomeMessage = "已就绪。请先在左侧第 1 步创建或选择监测项目。";
@@ -839,8 +813,6 @@
       if (importMappingDialog.open) importMappingDialog.close();
       continueImportMapping.hidden = true;
       importInspection.innerHTML = "";
-      standardPreviewDetails.hidden = true;
-      standardPreview.innerHTML = "";
     }
 
     async function selectProject(project) {
@@ -851,22 +823,16 @@
       currentBatchId = data.current_workspace.id;
       sessionId = localStorage.getItem(projectSessionStorageKey(currentProjectId)) || "";
       restoreTranscript();
-      document.getElementById("projectName").value = data.current_project.name;
-      projectSelect.value = data.current_project.id;
+      projectNameInput.value = data.current_project.name;
       projectStatus.textContent = `当前项目：${data.current_project.name}`;
       batchImportButton.disabled = false;
-      runDataQualityButton.disabled = false;
       runFilterButton.disabled = false;
       filterRevisionFile.disabled = true;
-      uploadFilterRevisionButton.disabled = true;
       confirmFilterButton.disabled = true;
       currentFilterId = "";
       filterSummary.textContent = "运行自动筛选后将在此显示摘要和剔除原因。";
-      dataQualityResult.textContent = "请先确认当前项目的标准数据。";
       batchImportStatus.textContent = "可上传原始监测 CSV；重新导入会替换当前标准数据。";
       resetImportArea();
-      await loadStandardPreview();
-      await loadAnalysisJobs();
       await loadAgentRuns();
       await refreshProjects();
     }
@@ -875,23 +841,19 @@
       const res = await fetch("/api/projects");
       const projects = await res.json();
       projectOptions = projects;
-      projectSelect.innerHTML = '<option value="">新建项目…</option>';
+      projectNames.innerHTML = "";
       projects.forEach((project) => {
         const option = document.createElement("option");
-        option.value = project.id;
-        option.textContent = project.name;
-        projectSelect.appendChild(option);
+        option.value = project.name;
+        projectNames.appendChild(option);
       });
-      projectSelect.value = currentProjectId || "";
     }
 
-    projectSelect.addEventListener("change", async () => {
-      const project = projectOptions.find((item) => item.id === projectSelect.value);
-      if (!project) {
-        document.getElementById("projectName").value = "";
-        return;
-      }
-      await selectProject(project);
+    projectNameInput.addEventListener("change", async () => {
+      const project = projectOptions.find(
+        (item) => item.name === projectNameInput.value.trim()
+      );
+      if (project) await selectProject(project);
     });
 
     async function loadAgentRuns() {
@@ -1094,7 +1056,6 @@
         batchImportStatus.textContent = data.replaced_existing
           ? `重新识别完成：已替换当前标准数据，共 ${data.import_count} 个文件、${data.row_count} 行。旧筛选和分析结果需要重新计算。`
           : `导入完成：${data.import_count} 个文件、${data.row_count} 行监测数据。`;
-        await loadStandardPreview();
         if (auxiliaryState) renderAuxiliaryMapping();
       } catch (err) {
         batchImportStatus.className = "status error";
@@ -1103,23 +1064,6 @@
         importDialogStatus.textContent = `生成失败：${err.message}`;
         if (confirmButton) confirmButton.disabled = false;
       }
-    }
-
-    async function loadStandardPreview() {
-      if (!currentProjectId || !currentBatchId) return;
-      const res = await fetch(`/api/projects/${currentProjectId}/batches/${currentBatchId}/standard/flow`);
-      const data = await res.json();
-      if (res.status === 409) {
-        standardPreviewDetails.hidden = true;
-        return;
-      }
-      if (!res.ok) throw new Error(data.detail || "读取标准数据失败");
-      standardPreviewDetails.hidden = false;
-      const header = data.columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("");
-      const rows = data.rows.map((row) =>
-        `<tr>${data.columns.map((column) => `<td>${escapeHtml(String(row[column] ?? ""))}</td>`).join("")}</tr>`
-      ).join("");
-      standardPreview.innerHTML = `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
     document.getElementById("dataImportForm").addEventListener("submit", async (event) => {
@@ -1215,90 +1159,6 @@
       }
     });
 
-    function jobStatusText(job) {
-      if (job.status === "queued") return `排队中：${job.step}（${job.progress}%）`;
-      if (job.status === "running") return `运行中：${job.step}（${job.progress}%）`;
-      if (job.status === "succeeded") return "已成功：可以查看分析结果";
-      return `失败：${job.error_summary || "未提供失败原因"}`;
-    }
-
-    async function loadAnalysisJobs() {
-      if (!currentProjectId || !currentBatchId) return;
-      const res = await fetch(
-        `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs`
-      );
-      if (!res.ok) return;
-      const jobs = await res.json();
-      analysisJobHistory.innerHTML = jobs.length
-        ? jobs.map((job) =>
-            `<p><code>${escapeHtml(job.job_id)}</code> · ${escapeHtml(jobStatusText(job))}` +
-            (job.result_url
-              ? ` · <a href="${escapeHtml(job.result_url)}" target="_blank">打开结果</a>`
-              : "") +
-            "</p>"
-          ).join("")
-        : "当前项目暂无后台作业。";
-    }
-
-    async function waitForAnalysisJob(job) {
-      const endpoint =
-        `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs/${job.job_id}`;
-      while (job.status === "queued" || job.status === "running") {
-        dataQualityResult.textContent = jobStatusText(job);
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        const res = await fetch(endpoint);
-        job = await res.json();
-        if (!res.ok) throw new Error(job.detail || "后台作业查询失败");
-      }
-      await loadAnalysisJobs();
-      if (job.status === "failed") {
-        throw new Error(job.error_summary || "数据质量检查失败");
-      }
-      const resultRes = await fetch(job.result_url);
-      const result = await resultRes.json();
-      if (!resultRes.ok) throw new Error(result.detail || "分析结果读取失败");
-      return result;
-    }
-
-    runDataQualityButton.addEventListener("click", async () => {
-      dataQualityResult.className = "inspection";
-      try {
-        if (!currentProjectId || !currentBatchId) throw new Error("请先选择监测项目");
-        runDataQualityButton.disabled = true;
-        dataQualityResult.textContent = "正在提交后台数据质量检查...";
-        const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}/analysis-jobs/data_quality`,
-          {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-              points: [],
-              force_rerun: forceDataQualityRerun.checked,
-            }),
-          },
-        );
-        const submitted = await res.json();
-        if (!res.ok) throw new Error(submitted.detail || "数据质量检查提交失败");
-        const data = await waitForAnalysisJob(submitted);
-        const rows = data.data.table.map((row) =>
-          `<tr><td>${escapeHtml(String(row.point_id))}</td>` +
-          `<td>${row.record_count}</td><td>${row.monitoring_days}</td>` +
-          `<td>${row.theoretical_count}</td>` +
-          `<td>${(row.collection_rate * 100).toFixed(1)}%</td></tr>`
-        ).join("");
-        const source = data.reused ? "复用已有结果" : "生成新结果";
-        dataQualityResult.innerHTML =
-          `<p><strong>第 ${data.version} 版</strong>（${source}）</p>` +
-          "<table><thead><tr><th>点位</th><th>记录数</th><th>监测天数</th>" +
-          `<th>理论记录数</th><th>收集率</th></tr></thead><tbody>${rows}</tbody></table>`;
-      } catch (err) {
-        dataQualityResult.className = "inspection status error";
-        dataQualityResult.textContent = err.message;
-      } finally {
-        runDataQualityButton.disabled = !currentBatchId;
-      }
-    });
-
     function renderFilterResult(data) {
       currentFilterId = data.filter_id;
       const reasons = Object.entries(data.summary.exclusion_reasons)
@@ -1313,7 +1173,6 @@
         `${data.summary.selected_point_days} 个。</p>` +
         `<p>${reasons}</p><p><a href="${download}">下载筛选文件</a></p>`;
       filterRevisionFile.disabled = false;
-      uploadFilterRevisionButton.disabled = false;
       confirmFilterButton.disabled = false;
     }
 
@@ -1337,28 +1196,25 @@
       }
     });
 
-    uploadFilterRevisionButton.addEventListener("click", async () => {
-      try {
-        const file = filterRevisionFile.files[0];
-        if (!currentFilterId || !file) throw new Error("请选择修改后的 xlsx 文件");
-        const form = new FormData();
-        form.append("file", file);
-        const res = await fetch(
-          `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
-          `/filters/${currentFilterId}/revisions`,
-          {method: "POST", body: form},
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "筛选文件校验失败");
-        renderFilterResult(data);
-      } catch (err) {
-        filterSummary.textContent = err.message;
-      }
-    });
-
     confirmFilterButton.addEventListener("click", async () => {
       try {
         if (!currentFilterId) throw new Error("没有可确认的筛选文件");
+        const file = filterRevisionFile.files[0];
+        if (file) {
+          filterSummary.textContent = "正在上传并校验修改后的筛选文件...";
+          const form = new FormData();
+          form.append("file", file);
+          const revisionRes = await fetch(
+            `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
+            `/filters/${currentFilterId}/revisions`,
+            {method: "POST", body: form},
+          );
+          const revision = await revisionRes.json();
+          if (!revisionRes.ok) {
+            throw new Error(revision.detail || "筛选文件校验失败");
+          }
+          currentFilterId = revision.filter_id;
+        }
         const res = await fetch(
           `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
           `/filters/${currentFilterId}/confirmation`,

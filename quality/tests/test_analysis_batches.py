@@ -138,6 +138,6 @@ def test_index_exposes_project_first_workbench(tmp_path: Path) -> None:
     assert 'id="batchForm"' not in response.text
     assert 'id="batchList"' not in response.text
     assert "分析批次" not in response.text
-    assert "项目名称就是本次分析结果的文件夹名称" in response.text
+    assert "输入新名称创建项目" in response.text
     assert "/batches" in response.text
     assert "/selection" in response.text

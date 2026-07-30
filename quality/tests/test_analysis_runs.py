@@ -323,11 +323,9 @@ def test_web_workbench_exposes_data_quality_run_controls(tmp_path: Path) -> None
     ).get("/")
 
     assert response.status_code == 200
-    assert 'id="runDataQualityButton"' in response.text
-    assert 'id="forceDataQualityRerun"' in response.text
-    assert 'id="dataQualityResult"' in response.text
-    assert "/analysis-jobs/data_quality" in response.text
-    assert 'id="analysisJobHistory"' in response.text
+    assert 'id="runDataQualityButton"' not in response.text
+    assert 'id="dataQualityResult"' not in response.text
+    assert 'data-prompt="检查当前数据质量"' in response.text
 
 
 def test_agent_adapter_uses_the_same_analysis_runner_result(tmp_path: Path) -> None:

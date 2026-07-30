@@ -344,6 +344,9 @@ def test_web_workbench_exposes_filter_confirmation_controls(tmp_path: Path) -> N
     assert 'id="filterSummary"' in response.text
     assert 'id="filterRevisionFile"' in response.text
     assert 'id="confirmFilterButton"' in response.text
+    assert 'id="uploadFilterRevisionButton"' not in response.text
+    assert "确认筛选结果" in response.text
+    assert "正在上传并校验修改后的筛选文件" in response.text
     assert "/filters" in response.text
 
 

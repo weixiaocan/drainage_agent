@@ -271,14 +271,13 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "上传并智能识别全部列名" in response.text
     assert 'id="importQuestions"' in response.text
     assert 'id="importInspection"' in response.text
-    assert 'id="standardPreview"' in response.text
+    assert 'id="standardPreview"' not in response.text
     assert "编码" in response.text
     assert "原始列名" in response.text
     assert "类型" in response.text
     assert "源单位" in response.text
     assert "/imports" in response.text
     assert "/mapping" in response.text
-    assert "/standard/flow" in response.text
     assert "/api/standard-flow-template" in response.text
     assert 'name="files"' in response.text
     assert "multiple" in response.text
