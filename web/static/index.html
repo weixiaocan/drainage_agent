@@ -525,9 +525,7 @@
   </dialog>
 
   <script>
-    const sessionStorageKey = "drainage-agent-session";
-    const latestChatStorageKey = "drainage-agent-chat-latest";
-    let sessionId = localStorage.getItem(sessionStorageKey) || "";
+    let sessionId = "";
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const uploadStatus = document.getElementById("uploadStatus");
@@ -592,6 +590,10 @@
       return sessionId ? `drainage-agent-chat-${sessionId}` : "";
     }
 
+    function projectSessionStorageKey(projectId) {
+      return `drainage-agent-project-session-${projectId}`;
+    }
+
     function parseStoredTranscript(raw) {
       try {
         const value = JSON.parse(raw || "[]");
@@ -612,17 +614,9 @@
 
     function loadTranscript() {
       const key = chatStorageKey();
-      const sessionTranscript = key ? parseStoredTranscript(localStorage.getItem(key)).messages : [];
-      if (sessionTranscript.length > 0) {
-        return sessionTranscript;
-      }
-
-      const latest = parseStoredTranscript(localStorage.getItem(latestChatStorageKey));
-      if (latest.session_id && !sessionId) {
-        sessionId = latest.session_id;
-        localStorage.setItem(sessionStorageKey, sessionId);
-      }
-      return latest.messages;
+      return key
+        ? parseStoredTranscript(localStorage.getItem(key)).messages
+        : [];
     }
 
     function saveTranscript(messages) {
@@ -631,7 +625,6 @@
       if (key) {
         localStorage.setItem(key, payload);
       }
-      localStorage.setItem(latestChatStorageKey, payload);
     }
 
     function escapeHtml(value) {
@@ -787,7 +780,7 @@
       if (!trimmed) return;
       if (!sessionId) {
         sessionId = createSessionId();
-        localStorage.setItem(sessionStorageKey, sessionId);
+        localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
       }
       addMessage(trimmed, "user");
       message.value = "";
@@ -810,7 +803,7 @@
           sessionId = data.session_id;
           saveTranscript(loadTranscript());
         }
-        localStorage.setItem(sessionStorageKey, sessionId);
+        localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
         addMessage(data.reply, "agent");
         refreshResults();
         loadAgentRuns();
@@ -856,6 +849,8 @@
       if (!res.ok) throw new Error(data.detail || "切换项目失败");
       currentProjectId = data.current_project.id;
       currentBatchId = data.current_workspace.id;
+      sessionId = localStorage.getItem(projectSessionStorageKey(currentProjectId)) || "";
+      restoreTranscript();
       document.getElementById("projectName").value = data.current_project.name;
       projectSelect.value = data.current_project.id;
       projectStatus.textContent = `当前项目：${data.current_project.name}`;
