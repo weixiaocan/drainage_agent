@@ -1447,6 +1447,24 @@ def test_record_note_success(tmp_path: Path) -> None:
     assert "sample note" in deps.paths.notes.read_text(encoding="utf-8")
 
 
+def test_record_note_with_batch_scoped_root(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    batch_root = tmp_path / "var" / "projects" / "p1" / "batches" / "b1"
+    deps.paths = Paths(
+        root=batch_root,
+        data=batch_root / "inputs",
+        outputs=batch_root / "results",
+        workspace=batch_root / "sessions",
+        logs=deps.paths.logs,
+        templates=batch_root / "inputs" / "templates",
+        notes=deps.paths.notes,
+    )
+    result = record_note_impl(deps, "scoped note")
+    assert result["status"] == "ok"
+    assert "scoped note" in deps.paths.notes.read_text(encoding="utf-8")
+    assert result["artifacts"] == [deps.paths.notes.name]
+
+
 def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
