@@ -89,12 +89,11 @@ def _select_chat_artifacts(
     before_paths: set[str],
 ) -> list[dict[str, Any]]:
     created = [item for item in current if item["path"] not in before_paths]
-    report_files = [
+    return [
         item
         for item in created
         if str(item["path"]).startswith("reports/")
     ]
-    return report_files or created
 
 
 class ProjectCreateRequest(BaseModel):

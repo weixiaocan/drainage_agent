@@ -463,7 +463,7 @@ def test_project_downloads_offer_all_files_and_results_only(
     assert "standard/flow.csv" not in result_names
 
 
-def test_chat_response_contains_only_files_generated_by_that_answer(
+def test_chat_response_does_not_attach_intermediate_analysis_results(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -506,13 +506,7 @@ def test_chat_response_contains_only_files_generated_by_that_answer(
     )
 
     assert response.status_code == 200
-    assert response.json()["artifacts"] == [
-        {
-            "path": response.json()["artifacts"][0]["path"],
-            "name": "数据质量结果",
-            "size": response.json()["artifacts"][0]["size"],
-        }
-    ]
+    assert response.json()["artifacts"] == []
     second = client.post(
         "/api/chat",
         json={
@@ -544,6 +538,15 @@ def test_report_chat_only_surfaces_report_and_comprehensive_workbook() -> None:
         "当前报告初稿",
         "当前综合结果表",
     ]
+
+
+def test_non_report_chat_surfaces_no_downloads() -> None:
+    current = [
+        {"path": "results/rainfall/run/result.json", "name": "降雨分析结果", "size": 1},
+        {"path": "results/rdii/run/result.json", "name": "RDII 分析结果", "size": 1},
+    ]
+
+    assert _select_chat_artifacts(current, set()) == []
 
 
 def test_report_request_runs_required_analysis_when_project_has_no_results(
