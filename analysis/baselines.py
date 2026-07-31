@@ -62,6 +62,9 @@ class AnalysisBaseline:
     confirmed_at: str
 
 
+FILTER_ARTIFACT = "exports/筛选结果.xlsx"
+
+
 class FilterBaselineService:
     """Shared Web and Agent boundary for filter confirmation and baselines."""
 
@@ -135,10 +138,11 @@ class FilterBaselineService:
         parameters = self._parameters(request)
         version = self._next_filter_version(request.project_id, request.batch_id)
         filter_id = uuid.uuid4().hex
-        artifact = f"baseline/filters/{version}-{filter_id}/filter_result.xlsx"
+        artifact = FILTER_ARTIFACT
         artifact_path = (
             self._batch_root(request.project_id, request.batch_id) / artifact
         )
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
         selected = run_data_filter(
             flow,
             pd.DataFrame(columns=["timestamp", "rain_mm"]),
@@ -311,9 +315,9 @@ class FilterBaselineService:
 
         version = self._next_filter_version(project_id, batch_id)
         filter_id = uuid.uuid4().hex
-        artifact = f"baseline/filters/{version}-{filter_id}/filter_result.xlsx"
+        artifact = FILTER_ARTIFACT
         artifact_path = self._batch_root(project_id, batch_id) / artifact
-        artifact_path.parent.mkdir(parents=True, exist_ok=False)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_bytes(content)
         file_sha256 = self._sha256(artifact_path)
         identity = {
@@ -378,18 +382,13 @@ class FilterBaselineService:
 
         version = self._next_baseline_version(project_id, batch_id)
         baseline_id = uuid.uuid4().hex
-        artifact = (
-            f"baseline/versions/{version}-{baseline_id}/analysis_baseline.xlsx"
-        )
-        baseline_path = self._batch_root(project_id, batch_id) / artifact
-        baseline_path.parent.mkdir(parents=True, exist_ok=False)
-        shutil.copyfile(candidate_path, baseline_path)
+        artifact = candidate.artifact
         bound_identity = {
             "project_id": project_id,
             "batch_id": batch_id,
             "standard_input": candidate.identity["standard_input"],
             "parameters": candidate.identity["parameters"],
-            "file_sha256": self._sha256(baseline_path),
+            "file_sha256": candidate.identity["file_sha256"],
         }
         identity_digest = hashlib.sha256(
             json.dumps(

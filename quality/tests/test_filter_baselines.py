@@ -92,7 +92,7 @@ def test_filter_uses_confirmed_standard_v1_and_waits_for_confirmation(
     assert result.identity["batch_id"] == batch.id
     assert result.identity["standard_input"]["contract_version"] == 1
     assert result.identity["parameters"]["expected_rows_per_day"] == 1
-    assert result.artifact.endswith("/filter_result.xlsx")
+    assert result.artifact == "exports/筛选结果.xlsx"
     assert (workspace / result.artifact).is_file()
     assert FilterBaselineService(database, files_root).current_baseline(
         project.id, batch.id
@@ -194,7 +194,7 @@ def test_filter_never_falls_back_to_raw_input(tmp_path: Path) -> None:
         )
 
 
-def test_uploaded_revision_is_validated_and_confirmed_as_immutable_baseline(
+def test_uploaded_revision_is_validated_and_confirmed_as_baseline(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "state" / "drainage.sqlite3"
@@ -240,7 +240,7 @@ def test_uploaded_revision_is_validated_and_confirmed_as_immutable_baseline(
     baseline_path = workspace / baseline.artifact
     assert baseline_path.is_file()
     assert baseline_path.read_bytes() == edited.read_bytes()
-    assert baseline.artifact != revision.artifact
+    assert baseline.artifact == revision.artifact == "exports/筛选结果.xlsx"
     selected_flow = service.load_flow(project.id, batch.id)
     assert set(selected_flow["timestamp"].dt.strftime("%Y-%m-%d")) == {
         "2026-03-03",
