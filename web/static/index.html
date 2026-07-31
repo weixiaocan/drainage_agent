@@ -67,17 +67,18 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .project-downloads a,
-    .message-artifacts a {
-      color: var(--accent);
+    .project-downloads a {
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--primary-dark);
+      font-size: 13px;
       text-decoration: none;
     }
-    .project-downloads a {
-      padding: 7px 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      background: var(--soft);
-      font-size: 13px;
+    .project-downloads a:hover {
+      border-color: var(--primary);
+      background: #e1eff4;
     }
     h1 {
       margin: 0;
@@ -208,33 +209,93 @@
       margin-top: 4px;
     }
     .chat {
-      padding: 22px 24px;
+      padding: 26px 28px;
       min-height: 0;
       overflow-y: auto;
       overscroll-behavior: contain;
+      display: flex;
+      flex-direction: column;
     }
     .msg {
-      max-width: 920px;
-      margin: 0 0 14px;
-      padding: 12px 14px;
-      border-radius: 8px;
-      line-height: 1.55;
-      border: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto 18px;
+      line-height: 1.6;
     }
-    .msg.user {
-      margin-left: auto;
-      background: #eaf3f7;
-      border-color: #c8e2eb;
-      white-space: pre-wrap;
+    .msg.user { flex-direction: row-reverse; }
+    .msg-avatar {
+      flex: 0 0 auto;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 650;
+      margin-top: 2px;
     }
-    .msg.agent {
-      background: var(--panel);
+    .msg.agent .msg-avatar {
+      background: var(--primary);
+      color: #fff;
     }
-    .msg.pending {
+    .msg.user .msg-avatar {
+      background: #dce5ee;
       color: var(--muted);
     }
-    .msg.agent > *:first-child { margin-top: 0; }
-    .msg.agent > *:last-child { margin-bottom: 0; }
+    .msg-main { min-width: 0; max-width: calc(100% - 40px); }
+    .msg.user .msg-main {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .msg-meta {
+      margin: 0 0 5px 2px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+    }
+    .msg-body {
+      min-width: 0;
+      padding: 11px 15px;
+      border: 1px solid var(--border);
+      border-radius: 4px 16px 16px 16px;
+      background: var(--panel);
+      box-shadow: 0 1px 3px rgba(32, 36, 44, 0.05);
+    }
+    .msg.user .msg-body {
+      border: none;
+      border-radius: 16px 4px 16px 16px;
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 1px 3px rgba(23, 107, 135, 0.28);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .msg.pending .msg-body { padding: 14px 16px; }
+    .typing {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .typing i {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #9fb0bf;
+      animation: typing-blink 1.2s infinite ease-in-out;
+    }
+    .typing i:nth-child(2) { animation-delay: 0.15s; }
+    .typing i:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes typing-blink {
+      0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-2px); }
+    }
+    .msg.agent .msg-body > *:first-child { margin-top: 0; }
+    .msg.agent .msg-body > *:last-child { margin-bottom: 0; }
     .msg.agent h1,
     .msg.agent h2,
     .msg.agent h3,
@@ -285,22 +346,49 @@
       margin: 14px 0;
     }
     .message-artifacts {
-      display: grid;
-      gap: 6px;
-      margin-top: 12px;
-      padding-top: 11px;
-      border-top: 1px solid var(--border);
-      font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
     }
+    .message-artifacts a {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--primary-dark);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .message-artifacts a:hover {
+      border-color: var(--primary);
+      background: #e1eff4;
+    }
+    .message-artifacts svg { flex: 0 0 auto; }
     .composer {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-      padding: 16px 24px;
-      border-top: 1px solid var(--border);
-      background: var(--panel);
+      padding: 12px 24px 18px;
+      background: var(--bg);
       position: relative;
       z-index: 1;
+    }
+    .composer-box {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 8px 8px 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 2px 8px rgba(32, 36, 44, 0.06);
+    }
+    .composer-box:focus-within {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(23, 107, 135, 0.12);
     }
     textarea {
       min-height: 46px;
@@ -311,6 +399,28 @@
       padding: 10px;
       font: inherit;
     }
+    .composer-box textarea {
+      flex: 1;
+      min-height: 24px;
+      padding: 7px 0;
+      border: none;
+      border-radius: 0;
+      resize: none;
+      outline: none;
+      background: transparent;
+    }
+    .composer-box button {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      border: none;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .composer-box button:disabled { opacity: 0.55; }
     .status {
       margin-top: 10px;
       color: var(--muted);
@@ -506,11 +616,26 @@
         </div>
       </header>
       <section id="chat" class="chat">
-        <div class="msg agent">已就绪。请先在左侧第 1 步创建或选择监测项目。</div>
+        <div class="msg agent">
+          <div class="msg-avatar">析</div>
+          <div class="msg-main">
+            <div class="msg-meta">排水分析助手</div>
+            <div class="msg-body"><p>已就绪。请先在左侧第 1 步创建或选择监测项目。</p></div>
+          </div>
+        </div>
       </section>
       <form id="chatForm" class="composer">
-        <textarea id="message" placeholder="例如：只看 3 月 7 日这场雨的场次统计"></textarea>
-        <button id="sendBtn" type="submit">发送</button>
+        <div class="composer-box">
+          <textarea id="message" rows="1"
+                    placeholder="描述你的分析需求，例如：只看 3 月 7 日这场雨的场次统计"></textarea>
+          <button id="sendBtn" type="submit" title="发送" aria-label="发送">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                 stroke-linejoin="round">
+              <path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/>
+            </svg>
+          </button>
+        </div>
       </form>
     </main>
   </div>
@@ -770,27 +895,52 @@
       return fragment;
     }
 
+    const DOWNLOAD_ICON =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+      '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+
     function addMessage(text, role, persist = true, artifacts = []) {
       const div = document.createElement("div");
       div.className = `msg ${role}`;
+      const avatar = document.createElement("div");
+      avatar.className = "msg-avatar";
+      avatar.textContent = role === "user" ? "你" : "析";
+      div.appendChild(avatar);
+      const main = document.createElement("div");
+      main.className = "msg-main";
       if (role === "agent") {
-        div.appendChild(renderMarkdown(text));
-        if (artifacts.length > 0) {
-          const artifactList = document.createElement("div");
-          artifactList.className = "message-artifacts";
-          artifacts.forEach((item) => {
-            const link = document.createElement("a");
-            link.href =
-              `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
-            link.textContent = `下载：${item.name}`;
-            link.download = "";
-            artifactList.appendChild(link);
-          });
-          div.appendChild(artifactList);
-        }
-      } else {
-        div.textContent = text;
+        const meta = document.createElement("div");
+        meta.className = "msg-meta";
+        meta.textContent = "排水分析助手";
+        main.appendChild(meta);
       }
+      const body = document.createElement("div");
+      body.className = "msg-body";
+      if (role === "agent") {
+        body.appendChild(renderMarkdown(text));
+      } else {
+        body.textContent = text;
+      }
+      main.appendChild(body);
+      if (role === "agent" && artifacts.length > 0) {
+        const artifactList = document.createElement("div");
+        artifactList.className = "message-artifacts";
+        artifacts.forEach((item) => {
+          const link = document.createElement("a");
+          link.href =
+            `/api/projects/${currentProjectId}/batches/${currentBatchId}/files/${item.path}`;
+          link.download = "";
+          link.innerHTML = DOWNLOAD_ICON;
+          const label = document.createElement("span");
+          label.textContent = item.name;
+          link.appendChild(label);
+          artifactList.appendChild(link);
+        });
+        main.appendChild(artifactList);
+      }
+      div.appendChild(main);
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
       if (persist) {
@@ -824,13 +974,16 @@
       }
       addMessage(trimmed, "user");
       message.value = "";
+      message.style.height = "";
       sendBtn.disabled = true;
       message.disabled = true;
       document.querySelectorAll("[data-prompt]").forEach((button) => {
         button.disabled = true;
       });
-      const pendingMessage = addMessage("正在分析…", "agent", false);
+      const pendingMessage = addMessage("", "agent", false);
       pendingMessage.classList.add("pending");
+      pendingMessage.querySelector(".msg-body").innerHTML =
+        '<span class="typing" aria-label="正在分析"><i></i><i></i><i></i></span>';
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -876,6 +1029,11 @@
         event.preventDefault();
         send(message.value);
       }
+    });
+
+    message.addEventListener("input", () => {
+      message.style.height = "auto";
+      message.style.height = `${Math.min(message.scrollHeight, 160)}px`;
     });
 
     document.querySelectorAll("[data-prompt]").forEach((button) => {
@@ -1174,6 +1332,15 @@
         );
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "确认映射失败");
+        if (data.derived_state_reset) {
+          const oldSessionId = sessionId;
+          if (oldSessionId) {
+            localStorage.removeItem(`drainage-agent-chat-${oldSessionId}`);
+          }
+          localStorage.removeItem(projectSessionStorageKey(currentProjectId));
+          sessionId = "";
+          restoreTranscript();
+        }
         importQuestions.hidden = true;
         importMappingDialog.close();
         continueImportMapping.hidden = true;
@@ -1210,32 +1377,10 @@
         }
         if (currentWorkspaceState?.has_data) {
           const confirmed = window.confirm(
-            `重新上传将替换 ${projectNameInput.value} 的当前数据，归档旧对话，` +
-            "并清空已有筛选、分析结果和报告。是否继续？"
+            `重新上传将只替换 ${projectNameInput.value} 的监测数据；` +
+            "现有降雨和点位信息会保留，旧对话、筛选、分析结果和报告将在确认列名后清空。是否继续？"
           );
           if (!confirmed) return;
-          const resetRes = await fetch(
-            `/api/projects/${currentProjectId}/workspace/reset`,
-            {method: "POST"},
-          );
-          const resetData = await resetRes.json();
-          if (!resetRes.ok) {
-            throw new Error(resetData.detail || "项目当前数据重置失败");
-          }
-          const oldSessionId = sessionId;
-          if (oldSessionId) {
-            localStorage.removeItem(`drainage-agent-chat-${oldSessionId}`);
-          }
-          localStorage.removeItem(projectSessionStorageKey(currentProjectId));
-          sessionId = "";
-          restoreTranscript();
-          currentWorkspaceState = {
-            has_data: false,
-            flow: {present: false},
-            rainfall: {present: false},
-            sites: {present: false},
-            filter: {present: false},
-          };
         }
         auxiliaryState = null;
         if (hasAuxiliary) {

@@ -103,7 +103,7 @@ def test_index_renders_agent_markdown(client: TestClient) -> None:
     assert response.status_code == 200
     assert "function renderMarkdown(text)" in response.text
     assert 'role === "agent"' in response.text
-    assert "div.appendChild(renderMarkdown(text));" in response.text
+    assert "body.appendChild(renderMarkdown(text));" in response.text
 
 
 def test_index_sends_message_on_enter(client: TestClient) -> None:

@@ -326,7 +326,8 @@ def test_web_workbench_exposes_data_quality_run_controls(tmp_path: Path) -> None
     assert 'id="runDataQualityButton"' not in response.text
     assert 'id="dataQualityResult"' not in response.text
     assert 'data-prompt="检查当前数据质量"' in response.text
-    assert 'addMessage("正在分析…", "agent", false)' in response.text
+    assert 'addMessage("", "agent", false)' in response.text
+    assert 'class="typing"' in response.text
     assert "pendingMessage.remove()" in response.text
 
 
