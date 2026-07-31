@@ -17,7 +17,6 @@ class Paths:
     workspace: Path
     logs: Path
     templates: Path
-    notes: Path
 
     @classmethod
     def from_root(cls, root: Path) -> "Paths":
@@ -29,7 +28,6 @@ class Paths:
             workspace=root / "var" / "workspace",
             logs=root / "var" / "logs",
             templates=root / "resources" / "templates",
-            notes=root / "docs" / "PROJECT_NOTES.md",
         )
 
     @property
@@ -108,7 +106,6 @@ class AgentDeps:
     settings: AgentSettings
     logger: logging.Logger
     session: SessionState = field(default_factory=SessionState)
-    project_notes: str = ""
     trace: Any | None = None
     analysis_runner: Any | None = None
     filter_baselines: Any | None = None
@@ -121,9 +118,6 @@ class AgentDeps:
 def ensure_directories(paths: Paths) -> None:
     for path in (paths.data, paths.flow_dir, paths.outputs, paths.workspace, paths.logs, paths.templates):
         path.mkdir(parents=True, exist_ok=True)
-    paths.notes.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.notes.exists():
-        paths.notes.write_text("# Project Notes\n\n", encoding="utf-8")
 
 
 def build_deps(root: Path | None = None) -> AgentDeps:
@@ -131,5 +125,4 @@ def build_deps(root: Path | None = None) -> AgentDeps:
     load_dotenv(paths.root / ".env")
     ensure_directories(paths)
     logger = logging.getLogger("drainage_agent")
-    notes = paths.notes.read_text(encoding="utf-8") if paths.notes.exists() else ""
-    return AgentDeps(paths=paths, settings=AgentSettings.from_env(), logger=logger, project_notes=notes)
+    return AgentDeps(paths=paths, settings=AgentSettings.from_env(), logger=logger)

@@ -12,7 +12,6 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 from agent.deps import AgentDeps
 from .logging_utils import summarize_tool_result, trace_event
 from agent.tools.inspect_tools import list_results_impl
-from agent.tools.memory_tool import record_note_impl
 from agent.tools.module_tools import (
     analyze_event_response_impl,
     analyze_patterns_impl,
@@ -631,12 +630,9 @@ class _ReportScopeGuardedAgent:
             deps.session.current_user_prompt = None
 
 
-def load_system_prompt(root: Path, project_notes: str = "") -> str:
+def load_system_prompt(root: Path) -> str:
     prompt_path = root / "agent" / "prompts" / "system.md"
-    prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
-    if project_notes.strip():
-        prompt += "\n\n## Project Notes\n\n" + project_notes.strip() + "\n"
-    return prompt
+    return prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
 
 
 def build_agent(deps: AgentDeps) -> Any:
@@ -662,7 +658,7 @@ def build_agent(deps: AgentDeps) -> Any:
         agent = Agent(
             model,
             deps_type=AgentDeps,
-            system_prompt=load_system_prompt(deps.paths.root, deps.project_notes),
+            system_prompt=load_system_prompt(deps.paths.root),
             model_settings=ModelSettings(request_limit=100),
             capabilities=[ProcessHistory(compact_history)],
         )
@@ -863,12 +859,6 @@ def build_agent(deps: AgentDeps) -> Any:
             """执行长尾现场 Python 分析，预置 analysis.io 数据访问函数。"""
             args = {"code": code}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
-
-        @agent.tool
-        def record_note(ctx: RunContext[AgentDeps], note: str) -> dict:
-            """写入项目记忆。"""
-            args = {"note": note}
-            return traced_tool(ctx, "record_note", args, lambda: record_note_impl(ctx.deps, **args))
 
         return _ReportScopeGuardedAgent(agent)
     except ImportError as exc:

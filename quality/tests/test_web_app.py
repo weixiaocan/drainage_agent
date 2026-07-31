@@ -40,7 +40,6 @@ def make_deps(root: Path) -> AgentDeps:
         settings=AgentSettings(model="test", base_url=None, api_key=None),
         logger=logging.getLogger("test.web"),
         session=SessionState(),
-        project_notes="",
     )
 
 

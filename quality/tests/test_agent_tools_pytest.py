@@ -16,7 +16,6 @@ from analysis.reporting import build_report
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.inspect_tools import list_results_impl
 from agent.tools.manifest import record_result
-from agent.tools.memory_tool import record_note_impl
 from agent.tools.module_tools import (
     analyze_event_response_impl,
     analyze_patterns_impl,
@@ -46,7 +45,6 @@ def make_deps(root: Path) -> AgentDeps:
         settings=AgentSettings(model="test", base_url=None, api_key=None),
         logger=logging.getLogger("test.agent_tools"),
         session=session,
-        project_notes="",
     )
 
 
@@ -1440,31 +1438,6 @@ def test_full_network_aliases_and_complete_list_use_short_full_network_filename(
     assert "W2" not in multi_files[0].name and "W3" not in multi_files[0].name
 
 
-def test_record_note_success(tmp_path: Path) -> None:
-    deps = make_deps(tmp_path)
-    result = record_note_impl(deps, "sample note")
-    assert result["status"] == "ok"
-    assert "sample note" in deps.paths.notes.read_text(encoding="utf-8")
-
-
-def test_record_note_with_batch_scoped_root(tmp_path: Path) -> None:
-    deps = make_deps(tmp_path)
-    batch_root = tmp_path / "var" / "projects" / "p1" / "batches" / "b1"
-    deps.paths = Paths(
-        root=batch_root,
-        data=batch_root / "inputs",
-        outputs=batch_root / "results",
-        workspace=batch_root / "sessions",
-        logs=deps.paths.logs,
-        templates=batch_root / "inputs" / "templates",
-        notes=deps.paths.notes,
-    )
-    result = record_note_impl(deps, "scoped note")
-    assert result["status"] == "ok"
-    assert "scoped note" in deps.paths.notes.read_text(encoding="utf-8")
-    assert result["artifacts"] == [deps.paths.notes.name]
-
-
 def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
@@ -1489,7 +1462,6 @@ def test_run_python_loads_scoped_standard_rainfall(tmp_path: Path) -> None:
         workspace=scoped_root / "sessions",
         logs=deps.paths.logs,
         templates=scoped_root / "inputs" / "templates",
-        notes=deps.paths.notes,
     )
 
     result = run_python_impl(

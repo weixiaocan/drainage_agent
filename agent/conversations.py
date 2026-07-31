@@ -244,7 +244,6 @@ class ConversationRunner:
             workspace=batch_root / "sessions",
             logs=self.base_deps.paths.logs,
             templates=batch_root / "inputs" / "templates",
-            notes=self.base_deps.paths.notes,
         )
         scoped.session = session
         scoped.session.current_run_id = run_id

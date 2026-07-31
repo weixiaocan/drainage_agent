@@ -26,8 +26,6 @@ def fresh_root(root: Path) -> Path:
     shutil.copytree(PROJECT / "agent" / "prompts", root / "agent" / "prompts")
     for d in ("outputs", "workspace", "logs"):
         (root / "var" / d).mkdir(parents=True)
-    (root / "docs").mkdir()
-    (root / "docs" / "PROJECT_NOTES.md").write_text("# Project Notes\n\n", "utf-8")
     return root
 
 
@@ -41,9 +39,6 @@ def preserve_artifacts(root: Path, case_id: str) -> Path:
         source = root / "var" / name
         if source.exists():
             shutil.copytree(source, destination / name)
-    notes = root / "docs" / "PROJECT_NOTES.md"
-    if notes.exists():
-        shutil.copy2(notes, destination / notes.name)
     return destination
 
 

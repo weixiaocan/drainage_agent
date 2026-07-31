@@ -91,7 +91,6 @@ var/workspace/         run_python 可写目录
 var/logs/              运行 trace
 quality/tests/         pytest 测试
 quality/eval/          回归评测
-docs/PROJECT_NOTES.md  项目记忆
 ```
 
 ## Tools
@@ -106,7 +105,6 @@ docs/PROJECT_NOTES.md  项目记忆
 - `generate_report`
 - `list_results`
 - `run_python`
-- `record_note`
 
 ## Documentation
 

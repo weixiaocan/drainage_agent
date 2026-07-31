@@ -283,7 +283,6 @@ def _make_deps(root: Path) -> AgentDeps:
         settings=AgentSettings(model="test", base_url=None, api_key=None),
         logger=logging.getLogger("test.report_scope_guard"),
         session=SessionState(),
-        project_notes="",
     )
 
 
