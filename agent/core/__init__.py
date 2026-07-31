@@ -273,8 +273,8 @@ def needs_report_scope_confirmation(message: str, history: list[str]) -> bool:
     return True
 
 
-def _has_pending_report_scope_confirmation(history: list[str]) -> bool:
-    for index in range(len(history) - 1, -1, -1):
+def _has_pending_report_scope_confirmation(history: list[str], start: int = 0) -> bool:
+    for index in range(len(history) - 1, start - 1, -1):
         if needs_report_scope_confirmation(history[index], history[:index]):
             return True
     return False
@@ -304,8 +304,8 @@ def _requests_rainfall_event_options(message: str) -> bool:
     )
 
 
-def _pending_report_scope_text(message: str, history: list[str]) -> str:
-    for index in range(len(history) - 1, -1, -1):
+def _pending_report_scope_text(message: str, history: list[str], start: int = 0) -> str:
+    for index in range(len(history) - 1, start - 1, -1):
         if needs_report_scope_confirmation(history[index], history[:index]):
             return "\n".join([*history[index + 1 :], message])
     return message
@@ -371,9 +371,9 @@ def _rainfall_event_options_output(deps: AgentDeps) -> str:
     return "\n".join(lines)
 
 
-def needs_pending_report_scope_completion(message: str, history: list[str]) -> bool:
+def needs_pending_report_scope_completion(message: str, history: list[str], start: int = 0) -> bool:
     return (
-        _has_pending_report_scope_confirmation(history)
+        _has_pending_report_scope_confirmation(history, start)
         and _has_explicit_report_scope(message)
         and not _has_report_point_scope(message)
     )
@@ -508,19 +508,25 @@ def _report_args_from_message(message: str) -> dict[str, Any]:
     }
 
 
-def _should_direct_generate_report(message: str, history: list[str]) -> bool:
+def _should_direct_generate_report(message: str, history: list[str], start: int = 0) -> bool:
     is_direct_report = (
         _is_report_request(message)
         and _has_explicit_report_scope(message)
         and not needs_report_scope_confirmation(message, history)
     )
     is_report_scope_reply = (
-        _has_pending_report_scope_confirmation(history)
-        and _has_explicit_report_scope(_pending_report_scope_text(message, history))
-        and _has_report_point_scope(_pending_report_scope_text(message, history))
+        _has_pending_report_scope_confirmation(history, start)
+        and _has_explicit_report_scope(_pending_report_scope_text(message, history, start))
+        and _has_report_point_scope(_pending_report_scope_text(message, history, start))
         and not _requests_rainfall_event_options(message)
     )
     return is_direct_report or is_report_scope_reply
+
+
+def _mark_report_scope_resolved(deps: AgentDeps) -> None:
+    deps.session.pending_report_scope_messages = []
+    # 当前消息在 finally 里才追加到历史，+1 把它也计入已完成轮次
+    deps.session.report_scope_resolved_count = len(deps.session.user_prompt_history) + 1
 
 
 def _report_tool_output(result: dict[str, Any]) -> str:
@@ -547,10 +553,15 @@ class _ReportScopeGuardedAgent:
                 if _is_clear_filter_confirmation(message):
                     original_request = deps.session.pending_filter_result_request or ""
                     confirmed_path = confirm_pending_filter_result(deps)
-                    if original_request and _should_direct_generate_report(original_request, prior_user_prompts):
+                    if original_request and _should_direct_generate_report(
+                        original_request,
+                        prior_user_prompts,
+                        deps.session.report_scope_resolved_count,
+                    ):
                         args = _report_args_from_message(original_request)
                         result = generate_report_impl(deps, **args)
                         deps.session.pending_filter_result_request = None
+                        _mark_report_scope_resolved(deps)
                         return _PreflightResult(
                             _report_tool_output(result),
                             history,
@@ -585,7 +596,7 @@ class _ReportScopeGuardedAgent:
                 ):
                     args = _report_args_from_message(pending_scope_text)
                     result = generate_report_impl(deps, **args)
-                    deps.session.pending_report_scope_messages = []
+                    _mark_report_scope_resolved(deps)
                     return _PreflightResult(
                         _report_tool_output(result),
                         history,
@@ -594,18 +605,19 @@ class _ReportScopeGuardedAgent:
                 if _has_explicit_report_scope(message):
                     pending_report_scope.append(message)
                     return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
-            if _should_direct_generate_report(message, prior_user_prompts):
+            resolved_count = deps.session.report_scope_resolved_count
+            if _should_direct_generate_report(message, prior_user_prompts, resolved_count):
                 args = _report_args_from_message(
-                    _pending_report_scope_text(message, prior_user_prompts)
+                    _pending_report_scope_text(message, prior_user_prompts, resolved_count)
                 )
                 result = generate_report_impl(deps, **args)
-                deps.session.pending_report_scope_messages = []
+                _mark_report_scope_resolved(deps)
                 return _PreflightResult(
                     _report_tool_output(result),
                     history,
                     [_FakeToolMessage("generate_report", args)],
                 )
-            if needs_pending_report_scope_completion(message, prior_user_prompts):
+            if needs_pending_report_scope_completion(message, prior_user_prompts, resolved_count):
                 return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
             return self._inner.run_sync(message, deps=deps, message_history=history)
         except FilterConfirmationRequired as exc:

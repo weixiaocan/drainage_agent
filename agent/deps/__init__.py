@@ -91,6 +91,7 @@ class SessionState:
     pending_filter_result_request: str | None = None
     pending_filter_result_message: str | None = None
     pending_report_scope_messages: list[str] = field(default_factory=list)
+    report_scope_resolved_count: int = 0
     confirmed_filter_result_path: str | None = None
     confirmed_filter_result_identity: str | None = None
     confirmed_filter_result_params: dict[str, Any] = field(default_factory=dict)

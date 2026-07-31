@@ -201,6 +201,54 @@ def test_report_scope_reply_lists_rainfall_events_before_generation(
     assert deps.session.pending_report_scope_messages == []
 
 
+def test_follow_up_question_after_completed_report_does_not_regenerate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    deps = _make_deps(tmp_path)
+    generate_calls: list[dict] = []
+
+    def fake_generate_report(_deps: AgentDeps, **kwargs):
+        generate_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "summary": "报告生成完成",
+            "artifacts": ["report.docx"],
+            "data": {},
+        }
+
+    monkeypatch.setattr("agent.core.generate_report_impl", fake_generate_report)
+
+    class RecordingInnerAgent:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        def run_sync(self, message, *, deps, message_history=None):
+            self.messages.append(message)
+            return SimpleNamespace(output=f"LLM 回答：{message}")
+
+    inner = RecordingInnerAgent()
+    agent = _ReportScopeGuardedAgent(inner)
+
+    asked = agent.run_sync("生成分析报告", deps=deps, message_history=[])
+    assert asked.output.startswith("我需要先确认报告范围")
+
+    generated = agent.run_sync(
+        "包含所有点位，全时段，采用第 6 场降雨", deps=deps, message_history=[]
+    )
+    assert generated.output.startswith("报告已生成。")
+    assert len(generate_calls) == 1
+
+    follow_up = agent.run_sync("数据分析结果总体情况如何", deps=deps, message_history=[])
+    assert follow_up.output == "LLM 回答：数据分析结果总体情况如何"
+    assert inner.messages == ["数据分析结果总体情况如何"]
+    assert len(generate_calls) == 1
+
+    download = agent.run_sync("我要下载各点位的排污规律曲线图", deps=deps, message_history=[])
+    assert download.output == "LLM 回答：我要下载各点位的排污规律曲线图"
+    assert len(generate_calls) == 1
+
+
 def test_reopened_project_starts_fresh_report_scope_round(
     tmp_path: Path,
 ) -> None:
