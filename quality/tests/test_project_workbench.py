@@ -549,6 +549,137 @@ def test_non_report_chat_surfaces_no_downloads() -> None:
     assert _select_chat_artifacts(current, set()) == []
 
 
+def _chat_project(client: TestClient, app, name: str) -> tuple[dict, str]:
+    project = client.post("/api/projects", json={"name": name}).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    return project, selected["current_workspace"]["id"]
+
+
+def test_chat_zips_turn_created_files_on_explicit_download_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project, workspace_id = _chat_project(client, app, "打包下载")
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+
+    def run_with_charts(**kwargs: object) -> SimpleNamespace:
+        charts = root / "results" / "特征曲线图"
+        charts.mkdir(parents=True, exist_ok=True)
+        (charts / "W1_曲线.png").write_bytes(b"png1")
+        (charts / "W2_曲线.png").write_bytes(b"png2")
+        internals = root / "results" / "patterns" / "run1"
+        internals.mkdir(parents=True, exist_ok=True)
+        (internals / "result.json").write_text("{}", encoding="utf-8")
+        return SimpleNamespace(
+            session_id=str(kwargs["session_id"]),
+            run_id="run123456789",
+            reply="统计图已生成。",
+        )
+
+    monkeypatch.setattr(app.state.conversations, "run", run_with_charts)
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "给我可以下载的统计图",
+            "project_id": project["id"],
+            "batch_id": workspace_id,
+        },
+    )
+
+    assert response.status_code == 200
+    artifacts = response.json()["artifacts"]
+    assert len(artifacts) == 1
+    assert artifacts[0]["name"] == "本轮生成文件打包.zip"
+    with zipfile.ZipFile(root / artifacts[0]["path"]) as archive:
+        assert set(archive.namelist()) == {"W1_曲线.png", "W2_曲线.png"}
+
+
+def test_chat_attaches_preexisting_file_cited_in_reply(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project, workspace_id = _chat_project(client, app, "引用旧文件")
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    chart = root / "results" / "patterns" / "dry_day_24h_curve.png"
+    chart.parent.mkdir(parents=True, exist_ok=True)
+    chart.write_bytes(b"png-bytes")
+
+    def run_citing(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            session_id=str(kwargs["session_id"]),
+            run_id="run987654321",
+            reply="统计图在这里：results/patterns/dry_day_24h_curve.png",
+        )
+
+    monkeypatch.setattr(app.state.conversations, "run", run_citing)
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "给我可以下载的统计图",
+            "project_id": project["id"],
+            "batch_id": workspace_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["artifacts"] == [
+        {
+            "path": "results/patterns/dry_day_24h_curve.png",
+            "name": "dry_day_24h_curve.png",
+            "size": len(b"png-bytes"),
+        }
+    ]
+
+
+def test_chat_without_download_request_attaches_no_created_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project, workspace_id = _chat_project(client, app, "无下载请求")
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+
+    def run_with_charts(**kwargs: object) -> SimpleNamespace:
+        charts = root / "results" / "特征曲线图"
+        charts.mkdir(parents=True, exist_ok=True)
+        (charts / "W1_曲线.png").write_bytes(b"png1")
+        return SimpleNamespace(
+            session_id=str(kwargs["session_id"]),
+            run_id="run555555555",
+            reply="统计图已生成。",
+        )
+
+    monkeypatch.setattr(app.state.conversations, "run", run_with_charts)
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "画一下各点位的统计图",
+            "project_id": project["id"],
+            "batch_id": workspace_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["artifacts"] == []
+
+
 def test_report_request_runs_required_analysis_when_project_has_no_results(
     tmp_path: Path,
 ) -> None:

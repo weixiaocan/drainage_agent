@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import io
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -93,6 +94,91 @@ def _select_chat_artifacts(
         item
         for item in created
         if str(item["path"]).startswith("reports/")
+    ]
+
+
+_DOWNLOAD_REQUEST_MARKERS = ("下载", "导出", "打包", "zip")
+_CHAT_DELIVERABLE_SUFFIXES = {".png", ".jpg", ".jpeg", ".csv", ".xlsx", ".zip"}
+_CHAT_DELIVERABLE_EXCLUDED_PREFIXES = (
+    "standard/",
+    "inputs/",
+    "baseline/",
+    "sessions/",
+    "reports/",
+)
+_REPLY_PATH_PATTERN = re.compile(
+    r"[\w\-./一-鿿()]+?\.(?:png|jpe?g|csv|xlsx|zip)",
+    re.IGNORECASE,
+)
+
+
+def _requests_file_download(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in _DOWNLOAD_REQUEST_MARKERS)
+
+
+def _workspace_file_paths(root: Path) -> set[str]:
+    if not root.exists():
+        return set()
+    return {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _is_chat_deliverable(rel_path: str) -> bool:
+    if rel_path.startswith(_CHAT_DELIVERABLE_EXCLUDED_PREFIXES):
+        return False
+    if PurePath(rel_path).name == "result.json":
+        return False
+    return PurePath(rel_path).suffix.lower() in _CHAT_DELIVERABLE_SUFFIXES
+
+
+def _select_requested_downloads(
+    root: Path,
+    before_files: set[str],
+    reply_text: str,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    created = _workspace_file_paths(root) - before_files
+    cited = {
+        match.group(0).lstrip("./")
+        for match in _REPLY_PATH_PATTERN.finditer(reply_text)
+    }
+    deliverable = sorted(
+        path
+        for path in (created | cited)
+        if _is_chat_deliverable(path) and (root / path).is_file()
+    )
+    if not deliverable:
+        return []
+    if len(deliverable) == 1:
+        rel = deliverable[0]
+        return [
+            {
+                "path": rel,
+                "name": PurePath(rel).name,
+                "size": (root / rel).stat().st_size,
+            }
+        ]
+    zip_rel = f"exports/chat-{run_id[:8]}.zip"
+    zip_path = root / zip_rel
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    used_names: set[str] = set()
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for rel in deliverable:
+            name = PurePath(rel).name
+            if name in used_names:
+                name = f"{PurePath(rel).parent.name}_{name}"
+            used_names.add(name)
+            archive.write(root / rel, arcname=name)
+    return [
+        {
+            "path": zip_rel,
+            "name": "本轮生成文件打包.zip",
+            "size": zip_path.stat().st_size,
+        }
     ]
 
 
@@ -1686,10 +1772,12 @@ def create_app(
                 detail="当前监测项目或分析批次不存在",
             )
         try:
+            workspace_root = app.state.projects.batch_workspace(project_id, batch_id)
             before_paths = {
                 item["path"]
                 for item in _current_workspace_artifacts(project_id, batch_id)
             }
+            before_files = _workspace_file_paths(workspace_root)
             turn = app.state.conversations.run(
                 project_id=project_id,
                 batch_id=batch_id,
@@ -1701,6 +1789,13 @@ def create_app(
                 _current_workspace_artifacts(project_id, batch_id),
                 before_paths,
             )
+            if not artifacts and _requests_file_download(message):
+                artifacts = _select_requested_downloads(
+                    workspace_root,
+                    before_files,
+                    turn.reply,
+                    turn.run_id,
+                )
             return ChatResponse(
                 session_id=turn.session_id,
                 run_id=turn.run_id,

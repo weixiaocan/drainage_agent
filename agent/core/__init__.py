@@ -746,7 +746,7 @@ def build_agent(deps: AgentDeps) -> Any:
             end: str | None = None,
             force_rerun: bool = False,
         ) -> dict:
-            """检查数据收集率、缺失、异常概况与格式问题。"""
+            """检查数据收集率、缺失、异常概况与格式问题。export=true 时生成可下载的 CSV 结果表。"""
             args = {
                 "points": points,
                 "export": export,
@@ -764,7 +764,7 @@ def build_agent(deps: AgentDeps) -> Any:
             rainfall_gap_hours: int = 12,
             export: bool = False,
         ) -> dict:
-            """分析降雨日统计、降雨场次和降雨输出。output: all/daily/events/charts。"""
+            """分析降雨日统计、降雨场次和降雨输出。output: all/daily/events/charts。export=true 时生成可下载的 CSV 结果表和 PNG 图表。"""
             args = {
                 "time_range": time_range,
                 "output": output,
@@ -780,7 +780,7 @@ def build_agent(deps: AgentDeps) -> Any:
             points: list[str] | None = None,
             export: bool = False,
         ) -> dict:
-            """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。"""
+            """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表。"""
             args = {"event_ids": event_ids, "points": points, "export": export}
             return traced_tool(ctx, "analyze_event_response", args, lambda: analyze_event_response_impl(ctx.deps, **args))
 
@@ -793,7 +793,7 @@ def build_agent(deps: AgentDeps) -> Any:
             start: str | None = None,
             end: str | None = None,
         ) -> dict:
-            """分析排污规律并生成旱天特征曲线底料。"""
+            """分析排污规律并生成旱天特征曲线底料。export=true 时生成可下载的 CSV 结果表和各点位旱天特征曲线 PNG 图。"""
             args = {"points": points, "start": start, "end": end, "output": output, "export": export}
             return traced_tool(ctx, "analyze_patterns", args, lambda: analyze_patterns_impl(ctx.deps, **args))
 
@@ -805,7 +805,7 @@ def build_agent(deps: AgentDeps) -> Any:
             output: str = "all",
             export: bool = False,
         ) -> dict:
-            """计算指定降雨事件的 RDII 指标；event_ids 未给时返回 needs_input。"""
+            """计算指定降雨事件的 RDII 指标；event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表和 RDII 曲线 PNG 图。"""
             args = {"event_ids": event_ids, "points": points, "output": output, "export": export}
             return traced_tool(ctx, "analyze_rdii", args, lambda: analyze_rdii_impl(ctx.deps, **args))
 
@@ -819,7 +819,7 @@ def build_agent(deps: AgentDeps) -> Any:
             start: str | None = None,
             end: str | None = None,
         ) -> dict:
-            """评估运行风险。scope: all/dry/rainy。"""
+            """评估运行风险。scope: all/dry/rainy。export=true 时生成可下载的 CSV 结果表。"""
             args = {
                 "scope": scope,
                 "event_ids": event_ids,
