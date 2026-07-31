@@ -442,6 +442,9 @@ def test_project_downloads_offer_all_files_and_results_only(
         json={"points": ["W1"], "force_rerun": False},
     )
     assert run.status_code == 200
+    chart = root / "exports" / "特征曲线图" / "W1_曲线.png"
+    chart.parent.mkdir(parents=True, exist_ok=True)
+    chart.write_bytes(b"png")
 
     all_files = client.get(f"/api/projects/{project['id']}/downloads/all")
     results = client.get(
@@ -459,7 +462,8 @@ def test_project_downloads_offer_all_files_and_results_only(
     assert "project.json" in all_names
     assert "standard/flow.csv" in all_names
     assert result_path in all_names
-    assert result_path in result_names
+    assert result_path not in result_names
+    assert "exports/特征曲线图/W1_曲线.png" in result_names
     assert "standard/flow.csv" not in result_names
 
 

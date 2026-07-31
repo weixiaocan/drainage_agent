@@ -240,7 +240,7 @@ class ConversationRunner:
         scoped.paths = Paths(
             root=batch_root,
             data=batch_root / "inputs",
-            outputs=batch_root / "results",
+            outputs=batch_root / "exports",
             workspace=batch_root / "sessions",
             logs=self.base_deps.paths.logs,
             templates=batch_root / "inputs" / "templates",

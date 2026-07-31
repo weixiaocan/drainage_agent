@@ -1489,17 +1489,16 @@ def create_app(
             compression=zipfile.ZIP_DEFLATED,
         ) as archive:
             if results_only:
-                paths = [
-                    item["path"]
-                    for item in _current_workspace_artifacts(
-                        project_id, workspace.id
-                    )
-                    if not str(item["path"]).startswith("baseline/")
-                ]
-                for artifact in dict.fromkeys(paths):
-                    path = root / artifact
-                    if path.is_file():
-                        archive.write(path, arcname=artifact)
+                for user_dir in ("exports", "reports"):
+                    base = root / user_dir
+                    if not base.is_dir():
+                        continue
+                    for path in sorted(base.rglob("*")):
+                        if path.is_file():
+                            archive.write(
+                                path,
+                                arcname=path.relative_to(root).as_posix(),
+                            )
             else:
                 archive.writestr(
                     "project.json",
