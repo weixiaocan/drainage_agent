@@ -19,9 +19,9 @@ from analysis.modules.rdii import analyze_rdii
 from analysis.reporting import build_report
 from analysis.modules.risk import assess_risk
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
+from analysis.exports import save_rdii_curve_pngs as _save_rdii_curve_pngs
 from agent.tools.module_tools import (
     _save_pattern_curve_pngs,
-    _save_rdii_curve_pngs,
     analyze_patterns_impl,
     analyze_rdii_impl,
     analyze_rainfall_impl,

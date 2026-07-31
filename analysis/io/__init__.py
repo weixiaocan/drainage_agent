@@ -79,6 +79,18 @@ def load_flow(
     root: Path | None = None,
 ) -> pd.DataFrame:
     base = root or project_root()
+    standard_path = base / "standard" / "flow.csv"
+    if standard_path.is_file():
+        flow = pd.read_csv(
+            standard_path,
+            dtype={"device_id": "string", "point_id": "string"},
+        )
+        flow["timestamp"] = pd.to_datetime(flow["timestamp"], errors="coerce")
+        flow = flow.dropna(subset=["timestamp"])
+        selected = _normalize_points(points)
+        if selected is not None:
+            flow = flow[flow["point_id"].astype(str).isin(selected)]
+        return _apply_time_range(flow, time_range).reset_index(drop=True)
     flow_dir = _data_dir(base) / "flow"
     selected_points = _normalize_points(points)
     frames: list[pd.DataFrame] = []
@@ -179,6 +191,9 @@ def load_filtered_flow(
 
 def load_sites(root: Path | None = None) -> pd.DataFrame:
     base = root or project_root()
+    standard_path = base / "standard" / "sites.csv"
+    if standard_path.is_file():
+        return pd.read_csv(standard_path, dtype={"point_id": "string"})
     path = _data_dir(base) / "点位信息.xlsx"
     if not path.exists():
         return pd.DataFrame()

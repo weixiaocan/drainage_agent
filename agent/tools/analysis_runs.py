@@ -48,6 +48,7 @@ def submit_data_quality_analysis(
     start: str | None = None,
     end: str | None = None,
     force_rerun: bool = False,
+    export: bool = False,
 ) -> ToolResult:
     """Submit data quality work through the shared background job service."""
     job = jobs.submit(
@@ -59,6 +60,7 @@ def submit_data_quality_analysis(
             start=start,
             end=end,
             force_rerun=force_rerun,
+            exports=("table_csv",) if export else (),
         )
     )
     return ok(

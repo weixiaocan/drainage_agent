@@ -14,6 +14,7 @@ import pandas as pd
 
 from agent.deps import AgentDeps
 from agent.tools.manifest import data_fingerprint, load_manifest, record_result
+from analysis.exports import save_rainfall_png_charts, save_rdii_curve_pngs
 from agent.types import FilterConfirmationRequired, ToolResult, error, needs_confirmation, needs_input, ok
 from analysis import io
 from analysis.modules.dry_curves import build_dry_curves, dry_statistics
@@ -367,208 +368,6 @@ def _add_rainfall_excel_charts(path: Path, daily: pd.DataFrame) -> None:
     sheet.add_chart(pie_chart, "A28")
 
     workbook.save(path)
-
-
-def _save_rainfall_png_charts(
-    daily: pd.DataFrame,
-    output_dir: Path,
-    scope_prefix: str,
-) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    paths = {
-        "daily_bar": output_dir / f"{scope_prefix}_日降雨量时间序列图.png",
-        "rainy_ratio": output_dir / f"{scope_prefix}_降雨日占比饼图.png",
-    }
-    if daily.empty:
-        return {key: str(value) for key, value in paths.items()}
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
-    except Exception:
-        return {key: str(value) for key, value in paths.items()}
-
-    plot_df = daily.copy()
-    plot_df["date"] = pd.to_datetime(plot_df["date"], errors="coerce")
-    plot_df["rain_mm"] = pd.to_numeric(plot_df["rain_mm"], errors="coerce").fillna(0)
-    plt.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimHei", "Microsoft YaHei", "DejaVu Sans"]
-    plt.rcParams["axes.unicode_minus"] = False
-
-    fig, ax = plt.subplots(figsize=(9.2, 4.8), dpi=180)
-    labels = [d.strftime("%Y-%m-%d") if not pd.isna(d) else "" for d in plot_df["date"]]
-    ax.bar(range(len(plot_df)), plot_df["rain_mm"], color="#5B9BD5", edgecolor="#2F5597", linewidth=0.6)
-    ax.set_xticks(range(len(plot_df)))
-    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7.5)
-    ax.set_ylabel("降雨量(mm)")
-    ax.set_xlabel("日期")
-    ax.set_title("日降雨量时间序列")
-    ax.grid(False)
-    fig.tight_layout()
-    fig.savefig(paths["daily_bar"], bbox_inches="tight")
-    plt.close(fig)
-
-    rainy_days = int(plot_df["rain_mm"].gt(0).sum())
-    non_rainy_days = int(len(plot_df) - rainy_days)
-    total_days = max(1, rainy_days + non_rainy_days)
-    labels = ["降雨日", "非降雨日"]
-
-    def autopct(pct: float) -> str:
-        count = int(round(pct * total_days / 100.0))
-        label = labels.pop(0)
-        return f"{label}\n{count}天\n{pct:.0f}%"
-
-    fig, ax = plt.subplots(figsize=(4.8, 4.8), dpi=180)
-    ax.pie(
-        [rainy_days, non_rainy_days],
-        labels=["", ""],
-        autopct=autopct,
-        pctdistance=0.58,
-        startangle=90,
-        colors=["#5B9BD5", "#ED7D31"],
-        wedgeprops={"edgecolor": "white", "linewidth": 1.0},
-        textprops={"fontsize": 10, "color": "black", "ha": "center"},
-    )
-    ax.axis("equal")
-    fig.tight_layout()
-    fig.savefig(paths["rainy_ratio"], bbox_inches="tight")
-    plt.close(fig)
-    return {key: str(value) for key, value in paths.items()}
-
-
-def _save_rdii_curve_pngs(
-    rdii_curve_data: dict[int, dict[str, pd.DataFrame]],
-    rain: pd.DataFrame,
-    events: pd.DataFrame,
-    output_dir: Path,
-    delay_hours: float = 12.0,
-    selected_events: list[int] | None = None,
-) -> dict[int, dict[str, str]]:
-    saved: dict[int, dict[str, str]] = {}
-    if not rdii_curve_data or rain.empty or events.empty:
-        return saved
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg")
-        import matplotlib as mpl
-        from matplotlib import gridspec
-        import matplotlib.pyplot as plt
-    except Exception:
-        return saved
-
-    mpl.rcParams["font.sans-serif"] = ["Noto Sans CJK SC", "SimHei"]
-    mpl.rcParams["font.serif"] = ["Noto Serif CJK SC", "SimHei"]
-    mpl.rcParams["axes.unicode_minus"] = False
-
-    rain_df = rain.copy()
-    rain_df["timestamp"] = pd.to_datetime(rain_df["timestamp"], errors="coerce")
-    rain_df = rain_df.dropna(subset=["timestamp"]).sort_values("timestamp").set_index("timestamp")
-    if "rain_mm" not in rain_df.columns:
-        return saved
-
-    event_ids = sorted(int(event_id) for event_id in rdii_curve_data.keys())
-    if selected_events:
-        wanted = {int(event_id) for event_id in selected_events}
-        event_ids = [event_id for event_id in event_ids if event_id in wanted]
-
-    for event_id in event_ids:
-        event_rows = events[events["event_id"].astype(int) == int(event_id)]
-        if event_rows.empty:
-            continue
-        event = event_rows.iloc[0]
-        start = pd.to_datetime(event["start_time"], errors="coerce")
-        end = pd.to_datetime(event["end_time"], errors="coerce")
-        if pd.isna(start) or pd.isna(end):
-            continue
-        plot_end = end + pd.Timedelta(hours=delay_hours)
-        event_rain = rain_df.loc[start:plot_end, "rain_mm"].copy()
-
-        event_saved: dict[str, str] = {}
-        for point_id, rdii_df in rdii_curve_data.get(event_id, {}).items():
-            data_to_plot = rdii_df.copy()
-            if data_to_plot.empty:
-                continue
-            data_to_plot.index = pd.to_datetime(data_to_plot.index, errors="coerce")
-            data_to_plot = data_to_plot[~data_to_plot.index.isna()].sort_index()
-            rename_map = {
-                "rain_flow_lps": "雨天流量",
-                "dry_flow_lps": "旱天流量",
-                "rdii_lps": "RDII",
-            }
-            data_to_plot = data_to_plot.rename(columns=rename_map)
-            keep_cols = [col for col in ("雨天流量", "旱天流量", "RDII") if col in data_to_plot.columns]
-            if not keep_cols:
-                continue
-
-            event_dir = output_dir / "rdii_curve" / f"event{event_id}_{start.month}_{start.day}"
-            event_dir.mkdir(parents=True, exist_ok=True)
-            fig = plt.figure(figsize=(10, 5))
-            grid = gridspec.GridSpec(2, 1, height_ratios=[1, 3])
-            ax_flow = plt.subplot(grid[1])
-            ax_rain = plt.subplot(grid[0])
-            ax_rain.get_xaxis().set_visible(False)
-            fig.subplots_adjust(hspace=0)
-
-            data_to_plot[keep_cols].plot(ax=ax_flow, legend=True)
-            ax_flow.set_xlabel('时间', fontsize='large')
-            ax_flow.set_ylabel('流量/(L/s)', fontsize='large')
-
-            rain_to_plot = _regularize_rain_series_for_plot(event_rain)
-            if len(rain_to_plot) > 500:
-                rain_to_plot = rain_to_plot.resample("10min").sum()
-                rain_to_plot = _regularize_rain_series_for_plot(rain_to_plot)
-            ax_rain.bar(range(len(rain_to_plot)), rain_to_plot.to_numpy(dtype=float), width=0.8)
-            ax_rain.set_ylabel('降雨/mm', fontsize='large')
-            if len(rain_to_plot) > 100:
-                n_ticks = min(10, len(rain_to_plot))
-                step = len(rain_to_plot) // n_ticks
-                tick_positions = list(range(0, len(rain_to_plot), step))
-                ax_rain.set_xticks(tick_positions)
-                ax_rain.set_xticklabels(
-                    [rain_to_plot.index[i].strftime('%m-%d %H:%M') for i in tick_positions],
-                    rotation=45,
-                    ha='right',
-                )
-
-            image_path = event_dir / f"{point_id}_event{event_id}.png"
-            fig.savefig(image_path, dpi=300, bbox_inches="tight")
-            plt.cla()
-            plt.clf()
-            plt.close(fig)
-            event_saved[str(point_id)] = str(image_path)
-
-        if event_saved:
-            saved[event_id] = event_saved
-
-    return saved
-
-
-def _regularize_rain_series_for_plot(series: pd.Series) -> pd.Series:
-    if series.empty:
-        return series
-    result = pd.to_numeric(series, errors="coerce").fillna(0.0).copy()
-    index = pd.DatetimeIndex(pd.to_datetime(result.index, errors="coerce"))
-    valid = ~index.isna()
-    result = result[valid]
-    index = pd.DatetimeIndex(index[valid])
-    if result.empty:
-        return result
-
-    freq = index.freq or pd.infer_freq(index)
-    if freq is None and len(index) > 1:
-        deltas = index.to_series().diff().dropna()
-        positive_deltas = deltas[deltas > pd.Timedelta(0)]
-        if not positive_deltas.empty:
-            freq = positive_deltas.min()
-    if freq is not None:
-        full_index = pd.date_range(index.min(), index.max(), freq=freq)
-        result.index = index
-        result = result.groupby(level=0).sum().reindex(full_index, fill_value=0.0)
-        return result
-
-    result.index = index
-    return result
 
 
 def _save_pattern_curve_pngs(
@@ -1303,22 +1102,6 @@ def check_data_impl(
     end: str | None = None,
     force_rerun: bool = False,
 ) -> ToolResult:
-    if (
-        deps.background_jobs is not None
-        and deps.current_project_id is not None
-        and deps.current_batch_id is not None
-    ):
-        from agent.tools.analysis_runs import submit_data_quality_analysis
-
-        return submit_data_quality_analysis(
-            deps.background_jobs,
-            project_id=deps.current_project_id,
-            batch_id=deps.current_batch_id,
-            points=points,
-            start=start,
-            end=end,
-            force_rerun=force_rerun,
-        )
     windowed = start is not None or end is not None
 
     def work() -> tuple[str, dict[str, Any]]:
@@ -1399,26 +1182,6 @@ def analyze_rainfall_impl(
     rainfall_gap_hours: int = 12,
     export: bool = False,
 ) -> ToolResult:
-    if (
-        deps.background_jobs is not None
-        and deps.analysis_runner is not None
-        and deps.current_project_id
-        and deps.current_batch_id
-    ):
-        from analysis.runs import AnalysisRequest
-        from agent.tools.core_analysis import submit_core_analysis
-
-        return submit_core_analysis(
-            deps.background_jobs,
-            deps.analysis_runner,
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "rainfall",
-                start=time_range[0] if time_range else None,
-                end=time_range[1] if time_range else None,
-            ),
-        )
     params = {
         "time_range": time_range or [],
         "output": output,
@@ -1455,7 +1218,7 @@ def analyze_rainfall_impl(
             if destination["kind"] == "combined_xlsx":
                 _remove_sheet(deps.paths.combined_xlsx, "日降雨量统计")
                 _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
-            chart_paths = _save_rainfall_png_charts(
+            chart_paths = save_rainfall_png_charts(
                 result["daily"],
                 deps.paths.outputs / "降雨分析图",
                 _range_result_prefix(None, deps, range_start, range_end),
@@ -1502,27 +1265,6 @@ def analyze_patterns_impl(
     end: str | None = None,
     report_charts: bool = False,
 ) -> ToolResult:
-    if (
-        deps.background_jobs is not None
-        and deps.analysis_runner is not None
-        and deps.current_project_id
-        and deps.current_batch_id
-    ):
-        from analysis.runs import AnalysisRequest
-        from agent.tools.core_analysis import submit_core_analysis
-
-        return submit_core_analysis(
-            deps.background_jobs,
-            deps.analysis_runner,
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "patterns",
-                points=points,
-                start=start,
-                end=end,
-            ),
-        )
     params = {
         "points": points or [],
         "start": start,
@@ -1596,26 +1338,6 @@ def analyze_event_response_impl(
     points: list[str] | None = None,
     export: bool = False,
 ) -> ToolResult:
-    if (
-        deps.background_jobs is not None
-        and deps.analysis_runner is not None
-        and deps.current_project_id
-        and deps.current_batch_id
-    ):
-        from analysis.runs import AnalysisRequest
-        from agent.tools.core_analysis import submit_core_analysis
-
-        return submit_core_analysis(
-            deps.background_jobs,
-            deps.analysis_runner,
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "event_response",
-                points=points,
-                event_ids=event_ids,
-            ),
-        )
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
@@ -1668,26 +1390,6 @@ def analyze_rdii_impl(
     output: str = "all",
     export: bool = False,
 ) -> ToolResult:
-    if (
-        deps.background_jobs is not None
-        and deps.analysis_runner is not None
-        and deps.current_project_id
-        and deps.current_batch_id
-    ):
-        from analysis.runs import AnalysisRequest
-        from agent.tools.core_analysis import submit_core_analysis
-
-        return submit_core_analysis(
-            deps.background_jobs,
-            deps.analysis_runner,
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "rdii",
-                points=points,
-                event_ids=event_ids,
-            ),
-        )
     precheck = _require_event_ids(deps, event_ids)
     if precheck:
         return precheck
@@ -1726,7 +1428,7 @@ def analyze_rdii_impl(
             }
         rain = io.load_rain(root=deps.paths.root)
         if is_full_network(points, deps):
-            chart_paths = _save_rdii_curve_pngs(
+            chart_paths = save_rdii_curve_pngs(
                 result["rdii_curve_data"],
                 rain,
                 events,
@@ -1765,29 +1467,6 @@ def assess_risk_impl(
     end: str | None = None,
 ) -> ToolResult:
     scope = {"旱天": "dry", "雨天": "rainy", "全部": "all"}.get(scope, scope)
-    if (
-        deps.background_jobs is not None
-        and deps.analysis_runner is not None
-        and deps.current_project_id
-        and deps.current_batch_id
-    ):
-        from analysis.runs import AnalysisRequest
-        from agent.tools.core_analysis import submit_core_analysis
-
-        return submit_core_analysis(
-            deps.background_jobs,
-            deps.analysis_runner,
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "risk",
-                points=points,
-                start=start,
-                end=end,
-                event_ids=event_ids,
-                scope=scope,
-            ),
-        )
     if scope in {"rainy", "all"}:
         precheck = _require_event_ids(deps, event_ids)
         if precheck:

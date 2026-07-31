@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from analysis.exports import render_exports
 from analysis.io import StandardDataStore, StandardDataUnavailable
 from analysis.modules.event_response import analyze_event_response
 from analysis.modules.dry_curves import build_dry_curves, dry_statistics
@@ -28,6 +29,12 @@ ALGORITHM_VERSIONS = {
     "rdii": "1",
     "risk": "1",
 }
+
+
+def _export_scope_prefix(request: "AnalysisRequest") -> str:
+    points_part = "全网" if not request.points else f"{len(request.points)}点"
+    time_part = "全时段" if not (request.start or request.end) else "指定时段"
+    return f"{points_part}_{time_part}"
 
 
 class AnalysisPreconditionError(ValueError):
@@ -53,6 +60,10 @@ class AnalysisRequest:
     event_ids: list[int] | None = None
     scope: str = "all"
     force_rerun: bool = False
+    exports: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "exports", tuple(self.exports))
 
 
 @dataclass(frozen=True)
@@ -194,6 +205,7 @@ class AnalysisRunner:
                 "end": self._identity_timestamp(parameters["end"]),
                 "event_ids": parameters["event_ids"],
                 "scope": parameters["scope"],
+                "exports": sorted(request.exports),
             },
             "algorithm": {
                 "name": request.algorithm,
@@ -220,14 +232,18 @@ class AnalysisRunner:
         )
         run_id = uuid.uuid4().hex
         created_at = datetime.now(timezone.utc).isoformat()
+        export_context: dict[str, Any] = {}
         if request.algorithm == "data_quality":
-            data = {"table": check_data(raw_flow).to_dict(orient="records")}
+            table = check_data(raw_flow)
+            data = {"table": table.to_dict(orient="records")}
+            export_context["tables"] = {"table": table}
         elif request.algorithm == "patterns":
-            data = {
-                "table": analyze_patterns(baseline_flow)["patterns"].to_dict(
-                    orient="records"
-                )
-            }
+            patterns_result = analyze_patterns(baseline_flow)
+            table = patterns_result["patterns"]
+            data = {"table": table.to_dict(orient="records")}
+            export_context["tables"] = {"table": table}
+            export_context["curves"] = patterns_result["curves"]
+            export_context["dry_flow"] = baseline_flow
         elif request.algorithm == "rainfall":
             try:
                 rainfall = self.standard_data.load_rainfall(
@@ -242,6 +258,8 @@ class AnalysisRunner:
             }
             for row in data["daily"]:
                 row["date"] = str(row["date"]).split("T", 1)[0]
+            export_context["tables"] = dict(rainfall_result)
+            export_context["daily"] = rainfall_result["daily"]
         elif request.algorithm == "event_response":
             if not parameters["event_ids"]:
                 raise AnalysisInputRequired(
@@ -263,6 +281,7 @@ class AnalysisRunner:
                     "所选降雨场次、点位或时间范围没有数据覆盖"
                 )
             data = {"table": self._json_records(table)}
+            export_context["tables"] = {"table": table}
         elif request.algorithm == "rdii":
             if not parameters["event_ids"]:
                 raise AnalysisInputRequired(
@@ -283,6 +302,11 @@ class AnalysisRunner:
                     "所选降雨场次、点位或时间范围没有数据覆盖"
                 )
             data = {"table": self._json_records(table)}
+            export_context["tables"] = {"table": table}
+            export_context["rdii_curve_data"] = rdii["rdii_curve_data"]
+            export_context["rain"] = rainfall
+            export_context["events"] = events
+            export_context["event_ids"] = parameters["event_ids"]
         else:
             if parameters["scope"] not in {"dry", "rainy", "all"}:
                 raise ValueError("风险范围 scope 必须为 dry、rainy 或 all")
@@ -319,6 +343,20 @@ class AnalysisRunner:
                 "dry_risk": self._json_records(risk["dry_risk"]),
                 "rainy_risk": self._json_records(risk["rainy_risk"]),
             }
+            export_context["tables"] = {
+                "dry_analysis": dry_stats,
+                "dry_risk": risk["dry_risk"],
+                "rainy_risk": risk["rainy_risk"],
+            }
+        export_paths: list[str] = []
+        if request.exports:
+            export_paths = render_exports(
+                self._batch_root(request.project_id, request.batch_id),
+                request.algorithm,
+                run_id,
+                request.exports,
+                {**export_context, "scope_prefix": _export_scope_prefix(request)},
+            )
         artifact_relative = f"results/{request.algorithm}/{run_id}/result.json"
         result = AnalysisResult(
             run_id=run_id,
@@ -330,7 +368,7 @@ class AnalysisRunner:
             reused=False,
             identity=identity,
             data=data,
-            artifacts=[artifact_relative],
+            artifacts=[artifact_relative, *export_paths],
             created_at=created_at,
         )
         artifact = self._batch_root(request.project_id, request.batch_id) / artifact_relative
