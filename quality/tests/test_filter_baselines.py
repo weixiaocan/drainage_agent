@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import sqlite3
 from copy import copy
 from pathlib import Path
 
@@ -13,10 +15,13 @@ from analysis.baselines import (
     FilterRequest,
 )
 from analysis.runs import AnalysisRequest, AnalysisRunner
+from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.filter_baselines import (
     confirm_filter_baseline,
     run_filter_analysis,
 )
+from agent.tools.inspect_tools import list_results_impl
+from agent.tools.module_tools import data_filter_impl
 from analysis.io.standard import STANDARD_FLOW_COLUMNS, STANDARD_FLOW_UNITS
 from web.projects import ProjectRepository
 
@@ -92,6 +97,82 @@ def test_filter_uses_confirmed_standard_v1_and_waits_for_confirmation(
     assert FilterBaselineService(database, files_root).current_baseline(
         project.id, batch.id
     ) is None
+
+
+def _confirmed_baseline_setup(
+    tmp_path: Path,
+) -> tuple[FilterBaselineService, object, object]:
+    database = tmp_path / "state" / "drainage.sqlite3"
+    files_root = tmp_path / "projects"
+    projects = ProjectRepository(database, files_root)
+    project = projects.create("基线项目")
+    batch = projects.create_batch(project.id, "基线批次")
+    write_standard_flow(projects.batch_workspace(project.id, batch.id))
+    service = FilterBaselineService(database, files_root)
+    candidate = service.run_filter(
+        FilterRequest(
+            project_id=project.id,
+            batch_id=batch.id,
+            expected_rows_per_day=1,
+        )
+    )
+    service.confirm(project.id, batch.id, candidate.filter_id)
+    return service, project, batch
+
+
+def _agent_deps(
+    root: Path,
+    service: FilterBaselineService,
+    project_id: str,
+    batch_id: str,
+) -> AgentDeps:
+    paths = Paths.from_root(root)
+    ensure_directories(paths)
+    return AgentDeps(
+        paths=paths,
+        settings=AgentSettings(model="test", base_url=None, api_key=None),
+        logger=logging.getLogger("test.filter_baselines"),
+        session=SessionState(),
+        filter_baselines=service,
+        current_project_id=project_id,
+        current_batch_id=batch_id,
+    )
+
+
+def _filter_count(service: FilterBaselineService) -> int:
+    with sqlite3.connect(service.database) as connection:
+        return connection.execute("SELECT COUNT(*) FROM filter_results").fetchone()[0]
+
+
+def test_data_filter_returns_existing_confirmed_baseline(tmp_path: Path) -> None:
+    service, project, batch = _confirmed_baseline_setup(tmp_path)
+    deps = _agent_deps(tmp_path / "agent", service, project.id, batch.id)
+
+    result = data_filter_impl(deps, expected_rows_per_day=1)
+
+    assert result["status"] == "ok"
+    assert "已存在确认" in result["summary"]
+    assert _filter_count(service) == 1
+
+
+def test_data_filter_reruns_only_when_user_explicitly_requests(tmp_path: Path) -> None:
+    service, project, batch = _confirmed_baseline_setup(tmp_path)
+    deps = _agent_deps(tmp_path / "agent", service, project.id, batch.id)
+    deps.session.current_user_prompt = "数据换过了，请重新筛选"
+
+    result = data_filter_impl(deps, expected_rows_per_day=1)
+
+    assert result["status"] == "needs_confirmation"
+    assert _filter_count(service) == 2
+
+
+def test_list_results_reports_confirmed_baseline(tmp_path: Path) -> None:
+    service, project, batch = _confirmed_baseline_setup(tmp_path)
+    deps = _agent_deps(tmp_path / "agent", service, project.id, batch.id)
+
+    result = list_results_impl(deps)
+
+    assert "已确认第 1 版分析基线" in result["summary"]
 
 
 def test_filter_never_falls_back_to_raw_input(tmp_path: Path) -> None:

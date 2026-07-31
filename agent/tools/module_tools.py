@@ -766,6 +766,13 @@ def _load_curves(deps: AgentDeps) -> dict[str, pd.DataFrame]:
         return pickle.load(fh)
 
 
+_REFILTER_MARKERS = ("重新筛选", "重新运行筛选", "重新生成筛选", "再次筛选", "重跑筛选", "重做筛选")
+
+
+def _requests_refilter(text: str) -> bool:
+    return any(marker in text for marker in _REFILTER_MARKERS)
+
+
 def data_filter_impl(
     deps: AgentDeps,
     missing_rate_threshold: float = 0.1,
@@ -796,6 +803,19 @@ def data_filter_impl(
         and deps.current_project_id is not None
         and deps.current_batch_id is not None
     ):
+        existing = deps.filter_baselines.current_baseline(
+            deps.current_project_id, deps.current_batch_id
+        )
+        if existing is not None and not _requests_refilter(
+            deps.session.current_user_prompt or ""
+        ):
+            return ok(
+                f"当前已存在确认的第 {existing.version} 版分析基线（{existing.artifact}）。"
+                "后续旱天分析直接读取该基线，无需重新筛选；如需重新筛选请明确告知。",
+                artifacts=[existing.artifact],
+                baseline_id=existing.baseline_id,
+                identity=existing.identity,
+            )
         from agent.tools.filter_baselines import run_filter_analysis
 
         shared_parameters = dict(params)

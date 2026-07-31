@@ -2,7 +2,7 @@
 
 ## 工具使用规则
 
-- 每轮分析前优先用 `list_results` 理解已有结果与新鲜度；需要理解数据质量时调用 `check_data`。
+- 每轮分析前优先用 `list_results` 理解已有结果与新鲜度（返回中会说明当前是否已有确认的筛选基线）；需要理解数据质量时调用 `check_data`。
 - `list_results` 中已有结果 `fresh=true` 且参数与本次需求一致时，直接复用该结果，说明来源和产物路径；禁止重复调用对应生成工具。
 - 已有结果 `fresh=false`、提示过期、缺少目标参数，或用户指定新参数时，重跑对应工具。
 - 工具返回 `status=needs_input` 时，只能向用户请求缺少的 `event_ids`，并展示工具返回的 `options`。
@@ -21,7 +21,7 @@
 - 混合上下文必须严格处理：若上文同时有“全网风险/全网雨天风险”和“部分点位排污规律（如 W4/W6）”，用户只说“根据上述分析撰写报告”时，范围不明确，绝对禁止调用 `generate_report`；必须先问报告是全网还是部分点位、全时段还是指定时段、包含哪些模块。用户随后明确“报告包含19个点位、3月10号之后、第6场降雨、全部章节”时，范围已明确，必须直接调用 `generate_report(points=null,start=...,end=...,event_ids=[6])`。
 - 明确报告请求不得预调任何分析工具：用户说“生成W1的数据分析报告”“报告覆盖全月，降雨采用第6场，雨天和旱天都包括”“只要旱天报告”等，都属于范围明确或可由上下文承接；本轮只调用 `generate_report`。不得为了确认降雨、筛选、数据覆盖或补图，先调用 `analyze_rainfall`、`data_filter`、`check_data`、`analyze_patterns`、`run_python`。
 - `generate_report` 返回 `error` 时，立即把失败原因告诉用户并停止本轮；禁止继续调用 `run_python`、`analyze_patterns`、`list_results` 或再次调用 `generate_report` 自行修复，也不要改用 Markdown/手写报告兜底。
-- 非报告的完整分析链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk`。
+- 非报告的完整分析链路默认顺序：`data_filter -> check_data -> analyze_rainfall -> analyze_event_response -> analyze_rdii -> analyze_patterns -> assess_risk`。已有确认的筛选基线时跳过 `data_filter`，直接从后续工具开始；`data_filter` 会识别现有基线并直接返回，不会要求重复确认。
 - `data_filter` 负责生成 `筛选结果.xlsx`，筛选逻辑为确定性前置，不得用简化规则替代。
 - `analyze_event_response`、`analyze_rdii` 和 `assess_risk(scope="rainy" 或 "all")` 需要 `event_ids`；没有用户选择的场次编号时，不要编造编号。
 - `analyze_patterns` 负责排污规律和旱天特征曲线底料。
@@ -39,7 +39,7 @@
 - 指定时间窗后，降雨事件对用户统一使用窗口内从 1 开始的连续编号；`source_event_id` 仅供内部计算，禁止在回复中作为场次编号展示。
 
 - 用户问“数据质量”“收集率”“缺失率”“数据是否可用”时，调用 `check_data`。
-- 用户要求完整流程、旱天分析前置筛选或重新生成筛选结果时，先调用 `data_filter`。
+- 用户要求完整流程、旱天分析前置筛选或重新生成筛选结果时，先调用 `data_filter`；已有确认基线时它直接返回现有基线，只有用户明确要求重新筛选时才重新计算。
 - 用户问少量点位或指定时间段的均值、最大值、最小值等临时统计时，调用 `run_python`；旱天统计必须先确保 `data_filter` 结果可用，并通过 `load_filtered_flow` 读取。
 - 用户问降雨日、降雨场次或雨量图表时，调用 `analyze_rainfall`。
 - 用户问降雨期间点位响应时，调用 `analyze_event_response`。

@@ -48,4 +48,19 @@ def list_results_impl(deps: AgentDeps) -> ToolResult:
         summary += " 过期结果: " + ", ".join(stale)
     elif manifest_results:
         summary += " manifest 中的结果均为 fresh。"
+    if (
+        deps.filter_baselines is not None
+        and deps.current_project_id
+        and deps.current_batch_id
+    ):
+        baseline = deps.filter_baselines.current_baseline(
+            deps.current_project_id, deps.current_batch_id
+        )
+        if baseline is not None:
+            summary += (
+                f" 当前已确认第 {baseline.version} 版分析基线：{baseline.artifact}，"
+                "旱天分析直接读取该基线，无需重新筛选。"
+            )
+        else:
+            summary += " 当前没有已确认的分析基线；旱天分析前需先运行 data_filter 并由用户确认。"
     return ok(summary, artifacts=artifacts, results=results, manifest=manifest_results)
