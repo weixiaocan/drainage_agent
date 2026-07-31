@@ -290,8 +290,8 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "选择监测 CSV" in response.text
     assert "尚未上传" in response.text
     assert "/workspace/state" in response.text
-    assert "/workspace/reset" in response.text
-    assert "归档旧对话" in response.text
+    assert "/workspace/reset" not in response.text
+    assert "现有降雨和点位信息会保留" in response.text
     assert 'name="rainfall_file"' in response.text
     assert 'name="site_info_file"' in response.text
     assert "上传并智能识别全部列名" in response.text
@@ -320,6 +320,29 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert 'id="closeImportMappingDialog"' in response.text
     assert 'aria-label="关闭监测数据列名匹配弹窗"' in response.text
     assert 'id="importDialogStatus"' in response.text
+
+
+def test_replacing_monitoring_data_does_not_reset_auxiliary_inputs_in_browser(
+    tmp_path: Path,
+) -> None:
+    response = _client(tmp_path).get("/")
+
+    assert response.status_code == 200
+    import_handler = response.text.split(
+        'document.getElementById("dataImportForm").addEventListener',
+        1,
+    )[1].split("function renderFilterResult", 1)[0]
+    assert "/workspace/reset" not in import_handler
+    assert "derived_state_reset" in response.text
+
+
+def test_chat_messages_show_explicit_sender_names(tmp_path: Path) -> None:
+    response = _client(tmp_path).get("/")
+
+    assert response.status_code == 200
+    assert 'className = "msg-meta"' in response.text
+    assert '"你"' in response.text
+    assert '"排水分析助手"' in response.text
 
 
 def test_multiple_monitoring_files_are_confirmed_as_one_standard_dataset(

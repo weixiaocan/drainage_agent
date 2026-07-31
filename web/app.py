@@ -627,13 +627,17 @@ def create_app(
         if app.state.projects.get_batch(project_id, batch_id) is None:
             raise HTTPException(status_code=404, detail="分析批次不存在")
         try:
-            return app.state.data_importer.confirm_mapping(
+            result = app.state.data_importer.confirm_mapping(
                 project_id,
                 batch_id,
                 import_id,
                 request.mapping,
                 request.units,
             )
+            if result["replaced_existing"]:
+                _invalidate_derived_state(project_id, batch_id)
+            result["derived_state_reset"] = bool(result["replaced_existing"])
+            return result
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
@@ -650,11 +654,15 @@ def create_app(
         if app.state.projects.get_batch(project_id, batch_id) is None:
             raise HTTPException(status_code=404, detail="分析批次不存在")
         try:
-            return app.state.data_importer.confirm_batch_mappings(
+            result = app.state.data_importer.confirm_batch_mappings(
                 project_id,
                 batch_id,
                 [item.model_dump() for item in request.imports],
             )
+            if result["replaced_existing"]:
+                _invalidate_derived_state(project_id, batch_id)
+            result["derived_state_reset"] = bool(result["replaced_existing"])
+            return result
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
@@ -929,6 +937,32 @@ def create_app(
             if target.is_relative_to(root.resolve()) and target.is_dir():
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
+
+    def _invalidate_derived_state(
+        project_id: str,
+        batch_id: str,
+    ) -> None:
+        """Clear outputs derived from monitoring data, preserving auxiliary inputs."""
+        _archive_chat_and_clear_analysis(project_id, batch_id)
+        database = app.state.root / "var" / "drainage.sqlite3"
+        with sqlite3.connect(database) as connection:
+            for table in (
+                "current_analysis_baselines",
+                "analysis_baselines",
+                "filter_results",
+            ):
+                connection.execute(
+                    f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
+                    (project_id, batch_id),
+                )
+        root = app.state.projects.batch_workspace(project_id, batch_id)
+        baseline_root = (root / "baseline").resolve()
+        if (
+            baseline_root.is_relative_to(root.resolve())
+            and baseline_root.is_dir()
+        ):
+            shutil.rmtree(baseline_root)
+        baseline_root.mkdir(parents=True, exist_ok=True)
 
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}/filters",

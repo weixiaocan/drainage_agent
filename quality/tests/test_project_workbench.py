@@ -293,6 +293,87 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
         ).fetchone()[0] == 1
 
 
+def test_replacing_monitoring_data_preserves_auxiliary_inputs_and_clears_derived_state(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post(
+        "/api/projects",
+        json={"name": "独立替换监测数据"},
+    ).json()
+    selected = client.put(f"/api/projects/{project['id']}/selection").json()
+    workspace_id = selected["current_workspace"]["id"]
+    root = app.state.projects.batch_workspace(project["id"], workspace_id)
+    write_standard_flow(root)
+    standard = root / "standard"
+    (standard / "rainfall.csv").write_text(
+        "timestamp,rain_mm\n2026-03-07,2.5\n",
+        encoding="utf-8",
+    )
+    (standard / "sites.csv").write_text(
+        "point_id,diameter_m,well_depth_m\nW1,1.5,5.4\n",
+        encoding="utf-8",
+    )
+    (standard / "auxiliary_manifest.json").write_text(
+        '{"rainfall":"rain.csv","sites":"sites.xlsx"}',
+        encoding="utf-8",
+    )
+    base_url = f"/api/projects/{project['id']}/batches/{workspace_id}"
+    candidate = client.post(
+        f"{base_url}/filters",
+        json={"expected_rows_per_day": 1},
+    ).json()
+    assert client.post(
+        f"{base_url}/filters/{candidate['filter_id']}/confirmation",
+        json={"confirm": True},
+    ).status_code == 200
+
+    uploaded = client.post(
+        f"{base_url}/batch-imports",
+        files=[
+            (
+                "files",
+                (
+                    "W1.csv",
+                    b"time,flow\n2026-03-08 00:00:00,2\n",
+                    "text/csv",
+                ),
+            )
+        ],
+    ).json()["imports"][0]
+    confirmed = client.put(
+        f"{base_url}/batch-imports/mapping",
+        json={
+            "imports": [
+                {
+                    "import_id": uploaded["id"],
+                    "mapping": {
+                        "time": "timestamp",
+                        "flow": "flow_lps",
+                    },
+                    "units": {"flow": "L/s"},
+                }
+            ]
+        },
+    )
+
+    assert confirmed.status_code == 200
+    assert confirmed.json()["replaced_existing"] is True
+    assert confirmed.json()["derived_state_reset"] is True
+    state = client.get(
+        f"/api/projects/{project['id']}/workspace/state"
+    ).json()
+    assert state["flow"]["present"] is True
+    assert state["rainfall"] == {"present": True, "filename": "rain.csv"}
+    assert state["sites"] == {"present": True, "filename": "sites.xlsx"}
+    assert state["filter"] == {"present": False}
+
+
 def test_reconfirming_same_filter_keeps_current_chat(
     tmp_path: Path,
 ) -> None:
