@@ -94,6 +94,7 @@ def test_builtin_contract_generates_versioned_drafts_and_comprehensive_tables(
     assert workbook["数据收集率统计"]["A1"].value == "点位编号"
     assert workbook["数据收集率统计"]["A2"].value == "W1"
     sheet = workbook["数据收集率统计"]
+    assert sheet.auto_filter.ref is None
     assert sheet["A1"].border.left.style == "thin"
     assert sheet["A2"].border.left.style == "thin"
     assert sheet["A2"].border.bottom.style == "thin"

@@ -386,7 +386,6 @@ class ReportTemplateService:
             ):
                 sheet.append(row)
             sheet.freeze_panes = "A2"
-            sheet.auto_filter.ref = sheet.dimensions
             sheet.sheet_view.showGridLines = False
             thin_side = Side(style="thin", color="D9D9D9")
             table_border = Border(
