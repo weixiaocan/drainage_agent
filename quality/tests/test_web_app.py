@@ -105,6 +105,18 @@ def test_index_renders_agent_markdown(client: TestClient) -> None:
     assert "body.appendChild(renderMarkdown(text));" in response.text
 
 
+def test_markdown_renderer_repairs_side_by_side_tables_and_supports_rich_blocks(
+    client: TestClient,
+) -> None:
+    response = client.get("/")
+
+    assert "function normalizeMarkdownTable" in response.text
+    assert 'className = "markdown-table-wrap"' in response.text
+    assert 'document.createElement("ol")' in response.text
+    assert 'document.createElement("blockquote")' in response.text
+    assert ".msg.agent tbody tr:nth-child(even)" in response.text
+
+
 def test_index_sends_message_on_enter(client: TestClient) -> None:
     response = client.get("/")
 
@@ -336,4 +348,3 @@ def test_file_download_supports_chinese_artifact_name(client: TestClient, tmp_pa
 
     assert response.status_code == 200
     assert response.content == b"xlsx"
-

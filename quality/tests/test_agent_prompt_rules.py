@@ -115,6 +115,13 @@ def test_prompt_documents_exception_and_quality_reminders() -> None:
     assert "工具返回 `error`" in prompt
 
 
+def test_prompt_requires_valid_readable_markdown_tables() -> None:
+    prompt = read_prompt()
+
+    assert "每条记录单独一行" in prompt
+    assert "禁止并排拼接两张表" in prompt
+
+
 def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:
     prompt = read_prompt()
 

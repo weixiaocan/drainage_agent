@@ -243,7 +243,7 @@
       display: flex;
       gap: 10px;
       width: 100%;
-      max-width: 860px;
+      max-width: 1080px;
       margin: 0 auto 18px;
       line-height: 1.6;
     }
@@ -269,6 +269,7 @@
       color: var(--muted);
     }
     .msg-main { min-width: 0; max-width: calc(100% - 40px); }
+    .msg.agent .msg-main { width: calc(100% - 40px); }
     .msg.user .msg-main {
       display: flex;
       flex-direction: column;
@@ -288,6 +289,7 @@
       border-radius: 4px 16px 16px 16px;
       background: var(--panel);
       box-shadow: 0 1px 3px rgba(32, 36, 44, 0.05);
+      overflow: hidden;
     }
     .msg.user .msg-body {
       border: none;
@@ -329,10 +331,19 @@
       font-size: 16px;
       line-height: 1.35;
     }
+    .msg.agent h1 { font-size: 20px; }
+    .msg.agent h2 {
+      margin-top: 20px;
+      padding-bottom: 7px;
+      border-bottom: 1px solid var(--border);
+      font-size: 18px;
+    }
+    .msg.agent h3 { font-size: 16px; color: var(--primary-dark); }
     .msg.agent p {
       margin: 8px 0;
     }
-    .msg.agent ul {
+    .msg.agent ul,
+    .msg.agent ol {
       margin: 8px 0;
       padding-left: 22px;
     }
@@ -341,27 +352,58 @@
     }
     .msg.agent table {
       width: 100%;
-      margin: 10px 0;
       border-collapse: collapse;
       font-size: 14px;
+      background: #fff;
+    }
+    .markdown-table-wrap {
+      width: 100%;
+      margin: 12px 0 16px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
     }
     .msg.agent th,
     .msg.agent td {
-      border: 1px solid var(--border);
-      padding: 7px 8px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 9px 11px;
       text-align: left;
       vertical-align: top;
     }
     .msg.agent th {
-      background: var(--soft);
+      background: #eaf3f7;
       font-weight: 650;
+      color: #203746;
     }
+    .msg.agent tr:last-child td { border-bottom: 0; }
+    .msg.agent th:last-child,
+    .msg.agent td:last-child { border-right: 0; }
+    .msg.agent tbody tr:nth-child(even) { background: #f8fafb; }
+    .msg.agent tbody tr:hover { background: #eef6f8; }
     .msg.agent code {
       padding: 1px 4px;
       border-radius: 4px;
       background: #eef1f5;
       font-family: Consolas, "Courier New", monospace;
       font-size: 0.92em;
+    }
+    .msg.agent pre {
+      margin: 12px 0;
+      padding: 12px 14px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: #202934;
+      color: #eef4f7;
+    }
+    .msg.agent pre code { padding: 0; background: transparent; color: inherit; }
+    .msg.agent blockquote {
+      margin: 12px 0;
+      padding: 9px 13px;
+      border-left: 4px solid var(--primary);
+      border-radius: 0 7px 7px 0;
+      background: var(--soft);
+      color: #3d5260;
     }
     .msg.agent hr {
       border: 0;
@@ -868,7 +910,31 @@
 
     function isTableSeparator(line) {
       const cells = splitTableRow(line);
-      return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+      return cells.length > 1 && cells.every((cell) => /^:?-+:?$/.test(cell));
+    }
+
+    function normalizeMarkdownTable(headers, rows) {
+      const divider = headers.findIndex((cell) => !cell);
+      const mirrored =
+        divider > 0 &&
+        divider === headers.length - divider - 1 &&
+        headers.slice(0, divider).every(
+          (cell, column) => cell === headers[divider + 1 + column],
+        );
+      if (mirrored) {
+        const normalizedRows = [];
+        rows.forEach((row) => {
+          const left = row.slice(0, divider);
+          const right = row.slice(divider + 1, divider + 1 + divider);
+          if (left.some(Boolean)) normalizedRows.push(left);
+          if (right.some(Boolean)) normalizedRows.push(right);
+        });
+        return {headers: headers.slice(0, divider), rows: normalizedRows};
+      }
+      return {
+        headers,
+        rows: rows.map((row) => headers.map((_, column) => row[column] || "")),
+      };
     }
 
     function isBlockStart(line, nextLine = "") {
@@ -878,6 +944,9 @@
         /^#{1,6}\s+/.test(trimmed) ||
         /^-{3,}$/.test(trimmed) ||
         /^-\s+/.test(trimmed) ||
+        /^\d+[.)]\s+/.test(trimmed) ||
+        /^>\s?/.test(trimmed) ||
+        /^```/.test(trimmed) ||
         (trimmed.startsWith("|") && isTableSeparator(nextLine))
       );
     }
@@ -917,24 +986,49 @@
           continue;
         }
 
+        if (/^```/.test(trimmed)) {
+          const codeLines = [];
+          index += 1;
+          while (index < lines.length && !/^```/.test(lines[index].trim())) {
+            codeLines.push(lines[index]);
+            index += 1;
+          }
+          if (index < lines.length) index += 1;
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          code.textContent = codeLines.join("\n");
+          pre.appendChild(code);
+          fragment.appendChild(pre);
+          continue;
+        }
+
         if (trimmed.startsWith("|") && isTableSeparator(nextLine)) {
+          const rawHeaders = splitTableRow(line);
+          const rawRows = [];
+          index += 2;
+          while (index < lines.length && lines[index].trim().startsWith("|")) {
+            rawRows.push(splitTableRow(lines[index]));
+            index += 1;
+          }
+          const normalized = normalizeMarkdownTable(rawHeaders, rawRows);
           const table = document.createElement("table");
           const thead = document.createElement("thead");
           const headerRow = document.createElement("tr");
-          splitTableRow(line).forEach((cell) => appendHtml(headerRow, "th", renderInlineMarkdown(cell)));
+          normalized.headers.forEach((cell) => appendHtml(headerRow, "th", renderInlineMarkdown(cell)));
           thead.appendChild(headerRow);
           table.appendChild(thead);
 
           const tbody = document.createElement("tbody");
-          index += 2;
-          while (index < lines.length && lines[index].trim().startsWith("|")) {
+          normalized.rows.forEach((cells) => {
             const row = document.createElement("tr");
-            splitTableRow(lines[index]).forEach((cell) => appendHtml(row, "td", renderInlineMarkdown(cell)));
+            cells.forEach((cell) => appendHtml(row, "td", renderInlineMarkdown(cell)));
             tbody.appendChild(row);
-            index += 1;
-          }
+          });
           table.appendChild(tbody);
-          fragment.appendChild(table);
+          const tableWrap = document.createElement("div");
+          tableWrap.className = "markdown-table-wrap";
+          tableWrap.appendChild(table);
+          fragment.appendChild(tableWrap);
           continue;
         }
 
@@ -945,6 +1039,28 @@
             index += 1;
           }
           fragment.appendChild(list);
+          continue;
+        }
+
+        if (/^\d+[.)]\s+/.test(trimmed)) {
+          const list = document.createElement("ol");
+          while (index < lines.length && /^\d+[.)]\s+/.test(lines[index].trim())) {
+            appendHtml(list, "li", renderInlineMarkdown(lines[index].trim().replace(/^\d+[.)]\s+/, "")));
+            index += 1;
+          }
+          fragment.appendChild(list);
+          continue;
+        }
+
+        if (/^>\s?/.test(trimmed)) {
+          const quoteLines = [];
+          while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
+            quoteLines.push(lines[index].trim().replace(/^>\s?/, ""));
+            index += 1;
+          }
+          const quote = document.createElement("blockquote");
+          quote.innerHTML = quoteLines.map(renderInlineMarkdown).join("<br>");
+          fragment.appendChild(quote);
           continue;
         }
 
