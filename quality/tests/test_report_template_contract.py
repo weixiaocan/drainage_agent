@@ -81,6 +81,8 @@ def test_builtin_contract_generates_versioned_drafts_and_comprehensive_tables(
     assert first.version == 1
     assert second.version == 2
     assert first.report_id != second.report_id
+    assert first.docx == "exports/报告第1版/分析报告.docx"
+    assert first.workbook == "exports/报告第1版/综合结果表.xlsx"
     first_docx = projects.batch_workspace(project.id, batch.id) / first.docx
     second_docx = projects.batch_workspace(project.id, batch.id) / second.docx
     assert first_docx.is_file() and second_docx.is_file()

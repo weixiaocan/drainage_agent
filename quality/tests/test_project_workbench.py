@@ -445,6 +445,8 @@ def test_project_downloads_offer_all_files_and_results_only(
     chart = root / "exports" / "特征曲线图" / "W1_曲线.png"
     chart.parent.mkdir(parents=True, exist_ok=True)
     chart.write_bytes(b"png")
+    legacy_chat_bundle = root / "exports" / "chat-old.zip"
+    legacy_chat_bundle.write_bytes(b"legacy duplicate")
 
     all_files = client.get(f"/api/projects/{project['id']}/downloads/all")
     results = client.get(
@@ -464,6 +466,8 @@ def test_project_downloads_offer_all_files_and_results_only(
     assert result_path in all_names
     assert result_path not in result_names
     assert "exports/特征曲线图/W1_曲线.png" in result_names
+    assert "exports/chat-old.zip" not in all_names
+    assert "exports/chat-old.zip" not in result_names
     assert "standard/flow.csv" not in result_names
 
 
@@ -528,9 +532,9 @@ def test_report_chat_only_surfaces_report_and_comprehensive_workbook() -> None:
     current = [
         {"path": "results/rainfall/run/result.json", "name": "降雨分析结果", "size": 1},
         {"path": "results/rdii/run/result.json", "name": "RDII 分析结果", "size": 1},
-        {"path": "exports/1-id/report_draft.docx", "name": "当前报告初稿", "size": 1},
+        {"path": "exports/报告第1版/分析报告.docx", "name": "当前报告初稿", "size": 1},
         {
-            "path": "exports/1-id/comprehensive_results.xlsx",
+            "path": "exports/报告第1版/综合结果表.xlsx",
             "name": "当前综合结果表",
             "size": 1,
         },
@@ -559,7 +563,7 @@ def _chat_project(client: TestClient, app, name: str) -> tuple[dict, str]:
     return project, selected["current_workspace"]["id"]
 
 
-def test_chat_zips_turn_created_files_on_explicit_download_request(
+def test_chat_attaches_turn_created_files_without_duplicate_zip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -598,10 +602,8 @@ def test_chat_zips_turn_created_files_on_explicit_download_request(
 
     assert response.status_code == 200
     artifacts = response.json()["artifacts"]
-    assert len(artifacts) == 1
-    assert artifacts[0]["name"] == "本轮生成文件打包.zip"
-    with zipfile.ZipFile(root / artifacts[0]["path"]) as archive:
-        assert set(archive.namelist()) == {"W1_曲线.png", "W2_曲线.png"}
+    assert [item["name"] for item in artifacts] == ["W1_曲线.png", "W2_曲线.png"]
+    assert not list((root / "exports").glob("chat-*.zip"))
 
 
 def test_chat_attaches_preexisting_file_cited_in_reply(
