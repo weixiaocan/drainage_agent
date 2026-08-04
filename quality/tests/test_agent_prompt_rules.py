@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -120,6 +121,35 @@ def test_prompt_requires_valid_readable_markdown_tables() -> None:
 
     assert "每条记录单独一行" in prompt
     assert "禁止并排拼接两张表" in prompt
+
+
+def test_dry_report_intent_uses_existing_report_tool_without_model(
+    monkeypatch,
+) -> None:
+    from agent.core import DRY_REPORT_SECTIONS, _ReportIntentAgent
+
+    called = {}
+    monkeypatch.setattr(
+        "agent.core.generate_report_impl",
+        lambda deps, **kwargs: called.update(kwargs) or {
+            "status": "ok",
+            "summary": "报告已生成",
+        },
+    )
+
+    class UnexpectedModel:
+        def run_sync(self, *args, **kwargs):
+            raise AssertionError("明确的旱天报告不应等待模型再次路由")
+
+    result = _ReportIntentAgent(UnexpectedModel()).run_sync(
+        "生成旱天分析报告",
+        deps=SimpleNamespace(),
+        message_history=[],
+    )
+
+    assert called["sections"] == DRY_REPORT_SECTIONS
+    assert "旱天分析报告已生成" in result.output
+    assert len(result.all_messages()) == 2
 
 
 def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:

@@ -301,6 +301,8 @@
       overflow-wrap: anywhere;
     }
     .msg.pending .msg-body { padding: 14px 16px; }
+    .msg.pending .msg-main { width: auto; }
+    .msg.pending .msg-body { width: auto; min-width: 52px; }
     .typing {
       display: inline-flex;
       gap: 5px;
@@ -486,6 +488,34 @@
       justify-content: center;
     }
     .composer-box button:disabled { opacity: 0.55; }
+    .attach-button {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .attach-button:hover { background: var(--soft); color: var(--primary); }
+    .attachment-preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 860px;
+      margin: 0 auto 7px;
+    }
+    .attachment-preview:empty { display: none; }
+    .attachment-chip {
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+    }
     .status {
       margin-top: 10px;
       color: var(--muted);
@@ -698,7 +728,15 @@
         </div>
       </section>
       <form id="chatForm" class="composer">
+        <div id="attachmentPreview" class="attachment-preview"></div>
         <div class="composer-box">
+          <input id="chatAttachments" type="file" hidden multiple
+                 accept=".txt,.md,.csv,.json,.xlsx,.xls,.xlsm,.docx,.pdf,.png,.jpg,.jpeg">
+          <label class="attach-button" for="chatAttachments" title="上传补充文件" aria-label="上传补充文件">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </label>
           <textarea id="message" rows="1"
                     placeholder="描述你的分析需求，例如：只看 3 月 7 日这场雨的场次统计"></textarea>
           <button id="sendBtn" type="submit" title="发送" aria-label="发送">
@@ -753,6 +791,8 @@
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const sendBtn = document.getElementById("sendBtn");
+    const chatAttachments = document.getElementById("chatAttachments");
+    const attachmentPreview = document.getElementById("attachmentPreview");
     const chatModel = document.getElementById("chatModel");
     const uploadStatus = document.getElementById("uploadStatus");
     const auxiliaryMapping = document.getElementById("auxiliaryMapping");
@@ -1081,7 +1121,7 @@
       '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
       '<polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
-    function addMessage(text, role, persist = true, artifacts = []) {
+    function addMessage(text, role, persist = true, artifacts = [], attachments = []) {
       const div = document.createElement("div");
       div.className = `msg ${role}`;
       const avatar = document.createElement("div");
@@ -1104,6 +1144,17 @@
         body.textContent = text;
       }
       main.appendChild(body);
+      if (attachments.length > 0) {
+        const files = document.createElement("div");
+        files.className = "message-artifacts";
+        attachments.forEach((item) => {
+          const chip = document.createElement("span");
+          chip.className = "attachment-chip";
+          chip.textContent = `附件：${item.name}`;
+          files.appendChild(chip);
+        });
+        main.appendChild(files);
+      }
       if (role === "agent" && artifacts.length > 0) {
         const artifactList = document.createElement("div");
         artifactList.className = "message-artifacts";
@@ -1125,7 +1176,7 @@
       chat.scrollTop = chat.scrollHeight;
       if (persist) {
         const transcript = loadTranscript();
-        transcript.push({role, text, artifacts});
+        transcript.push({role, text, artifacts, attachments});
         saveTranscript(transcript);
       }
       return div;
@@ -1140,7 +1191,7 @@
       }
       transcript.forEach((item) => {
         if (item && typeof item.text === "string" && ["user", "agent"].includes(item.role)) {
-          addMessage(item.text, item.role, false, item.artifacts || []);
+          addMessage(item.text, item.role, false, item.artifacts || [], item.attachments || []);
         }
       });
     }
@@ -1152,7 +1203,8 @@
         sessionId = createSessionId();
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
       }
-      addMessage(trimmed, "user");
+      const selectedAttachments = Array.from(chatAttachments.files || []);
+      addMessage(trimmed, "user", true, [], selectedAttachments.map((file) => ({name: file.name})));
       message.value = "";
       message.style.height = "";
       sendBtn.disabled = true;
@@ -1164,7 +1216,27 @@
       pendingMessage.classList.add("pending");
       pendingMessage.querySelector(".msg-body").innerHTML =
         '<span class="typing" aria-label="正在分析"><i></i><i></i><i></i></span>';
+      const startedAt = Date.now();
+      const pendingTimer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        if (seconds >= 8 && pendingMessage.isConnected) {
+          pendingMessage.querySelector(".msg-body").innerHTML =
+            `<span class="typing"><i></i><i></i><i></i></span> 正在处理，已等待 ${seconds} 秒`;
+        }
+      }, 1000);
       try {
+        let uploadedAttachments = [];
+        if (selectedAttachments.length > 0) {
+          const form = new FormData();
+          selectedAttachments.forEach((file) => form.append("files", file));
+          const uploadRes = await fetch(
+            `/api/projects/${currentProjectId}/batches/${currentBatchId}/chat-attachments`,
+            {method: "POST", body: form},
+          );
+          const uploadData = await uploadRes.json();
+          if (!uploadRes.ok) throw new Error(uploadData.detail || "补充文件上传失败");
+          uploadedAttachments = uploadData.files || [];
+        }
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1174,7 +1246,8 @@
             project_id: currentProjectId || null,
             batch_id: currentBatchId || null,
             debug: deepDebug.checked,
-            model_id: chatModel.value || null
+            model_id: chatModel.value || null,
+            attachment_paths: uploadedAttachments.map((item) => item.path)
           })
         });
         const data = await res.json();
@@ -1186,11 +1259,14 @@
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
         pendingMessage.remove();
         addMessage(data.reply, "agent", true, data.artifacts || []);
+        chatAttachments.value = "";
+        attachmentPreview.replaceChildren();
         loadAgentRuns();
       } catch (err) {
         pendingMessage.remove();
         addMessage(`请求失败：${err.message}`, "agent");
       } finally {
+        clearInterval(pendingTimer);
         sendBtn.disabled = false;
         message.disabled = false;
         document.querySelectorAll("[data-prompt]").forEach((button) => {
@@ -1199,6 +1275,16 @@
         message.focus();
       }
     }
+
+    chatAttachments.addEventListener("change", () => {
+      attachmentPreview.replaceChildren();
+      Array.from(chatAttachments.files || []).forEach((file) => {
+        const chip = document.createElement("span");
+        chip.className = "attachment-chip";
+        chip.textContent = file.name;
+        attachmentPreview.appendChild(chip);
+      });
+    });
 
     document.getElementById("chatForm").addEventListener("submit", (event) => {
       event.preventDefault();

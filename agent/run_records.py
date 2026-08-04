@@ -65,6 +65,15 @@ class RunRecorder:
             )
             connection.execute(
                 """
+                UPDATE agent_runs
+                SET status = 'interrupted', finished_at = ?,
+                    error = '服务重启前请求未完成'
+                WHERE status = 'running'
+                """,
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+            connection.execute(
+                """
                 CREATE TABLE IF NOT EXISTS agent_run_steps (
                     step_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id TEXT NOT NULL,

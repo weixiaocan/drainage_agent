@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from pydantic_ai import RunContext
-from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from agent.deps import AgentDeps
 from .logging_utils import summarize_tool_result, trace_event
@@ -249,6 +249,47 @@ class _FakeToolMessage:
 
 
 FILTER_CONFIRMATION_CLARIFICATION = "是确认用当前筛选结果继续吗？如果是，请回复“确认继续”；如果要重新筛选或改需求，请直接说明。"
+DRY_REPORT_SECTIONS = ["监测概况", "旱天排污规律统计分析", "旱天风险"]
+
+
+def _is_dry_report_request(message: str) -> bool:
+    user_request = message.split("[本轮补充资料]", 1)[0]
+    compact = re.sub(r"\s+", "", user_request)
+    return (
+        "报告" in compact
+        and any(marker in compact for marker in ("旱天", "干天"))
+        and not any(marker in compact for marker in ("雨天", "降雨", "RDII"))
+        and not re.search(r"(?<![A-Za-z0-9])W\d+|20\d{2}[-/.年]", user_request, re.IGNORECASE)
+    )
+
+
+def _direct_report_reply(result: dict[str, Any]) -> str:
+    summary = str(result.get("summary") or "旱天分析报告处理完成。")
+    if result.get("status") != "ok":
+        return f"## 旱天分析报告生成失败\n\n{summary}"
+    return (
+        "## 旱天分析报告已生成\n\n"
+        f"{summary}\n\n"
+        "报告仅包含监测概况、旱天排污规律和旱天风险，不依赖降雨数据。"
+    )
+
+
+class _ReportIntentAgent:
+    def __init__(self, inner: Any):
+        self._inner = inner
+
+    def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
+        history = list(message_history or [])
+        if not _is_dry_report_request(message):
+            return self._inner.run_sync(message, deps=deps, message_history=history)
+        result = generate_report_impl(deps, sections=DRY_REPORT_SECTIONS)
+        reply = _direct_report_reply(result)
+        saved_history = [
+            *history,
+            ModelRequest(parts=[UserPromptPart(content=message)]),
+            ModelResponse(parts=[TextPart(content=reply)]),
+        ]
+        return _PreflightResult(reply, saved_history)
 
 
 def _has_pending_filter_confirmation(deps: AgentDeps) -> bool:
@@ -364,7 +405,7 @@ def build_agent(deps: AgentDeps) -> Any:
             model,
             deps_type=AgentDeps,
             system_prompt=load_system_prompt(deps.paths.root),
-            model_settings=ModelSettings(request_limit=100),
+            model_settings=ModelSettings(request_limit=100, timeout=90),
             capabilities=[ProcessHistory(compact_history)],
         )
 
@@ -565,6 +606,6 @@ def build_agent(deps: AgentDeps) -> Any:
             args = {"code": code}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
 
-        return _FilterConfirmationAgent(agent)
+        return _ReportIntentAgent(_FilterConfirmationAgent(agent))
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc
