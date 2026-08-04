@@ -30,6 +30,11 @@ def test_prompt_documents_v2_workflow_order() -> None:
     )
     assert expected_order in prompt
     assert "范围不明确时先问清楚再调用" in prompt
+    assert "“完整”明确表示全网、全部数据覆盖时段、全部章节" in prompt
+    assert "generate_report(points=null, start=null, end=null, sections=null, event_ids=null)" in prompt
+    assert "不要再次询问范围" in prompt
+    assert "只能输出面向用户的最终问题" in prompt
+    assert "禁止展示参数推断、工具选择和内部规划过程" in prompt
     assert "禁止在调用前单独跑" in prompt
     assert "失败时告知原因并停止" in prompt
     assert "不要编造" in prompt
