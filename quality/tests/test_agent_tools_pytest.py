@@ -274,8 +274,12 @@ def test_full_network_patterns_write_no_combined_and_full_network_pngs(
     assert result["status"] == "ok"
     assert result["data"]["result_destinations"][0]["kind"] == "not_persisted"
     assert not deps.paths.combined_xlsx.exists()
-    assert (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png").exists()
-    assert (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W2_流量特征曲线.png").exists()
+    assert not list(deps.paths.outputs.rglob("*.csv"))
+    assert not list(deps.paths.outputs.rglob("*.png"))
+    assert not list(deps.paths.outputs.rglob("*.zip"))
+    assets = deps.paths.root / "results" / "generated" / "特征曲线图" / "全网_全时段"
+    assert (assets / "W1_流量特征曲线.png").exists()
+    assert (assets / "W2_流量特征曲线.png").exists()
 
 
 def test_partial_patterns_without_export_write_no_table_or_png(
@@ -296,7 +300,7 @@ def test_partial_patterns_without_export_write_no_table_or_png(
     assert not list(deps.paths.outputs.rglob("*.png"))
 
 
-def test_partial_patterns_with_export_write_named_csv_and_png_only(
+def test_partial_patterns_with_export_writes_one_downloadable_zip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -308,12 +312,23 @@ def test_partial_patterns_with_export_write_named_csv_and_png_only(
     result = analyze_patterns_impl(deps, points=["W1"], export=True)
 
     assert result["status"] == "ok"
-    assert (deps.paths.outputs / "W1_全时段_排污规律分析.csv").exists()
+    bundle = deps.paths.outputs / "排污规律分析结果.zip"
+    assert bundle.exists()
+    assert not (deps.paths.outputs / "W1_全时段_排污规律分析.csv").exists()
     point_images = [Path(path) for path in result["data"]["curve_images"]["W1"]]
     assert len(point_images) == 2
     assert {path.name for path in point_images} == {"W1_流量特征曲线.png", "W1_液位特征曲线.png"}
     assert all(path.exists() for path in point_images)
     assert len({path.read_bytes() for path in point_images}) == 2
+    with zipfile.ZipFile(bundle) as archive:
+        assert set(archive.namelist()) == {
+            "W1_全时段_排污规律分析.csv",
+            "特征曲线图/W1_全时段/W1_流量特征曲线.png",
+            "特征曲线图/W1_全时段/W1_液位特征曲线.png",
+        }
+    assert result["artifacts"] == [
+        bundle.relative_to(deps.paths.root).as_posix()
+    ]
     assert not deps.paths.combined_xlsx.exists()
     assert not (deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png").exists()
 
@@ -331,7 +346,8 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
         deps.paths.combined_xlsx, sheet_name="排污规律分析", index=False
     )
     sheet_before = pd.read_excel(deps.paths.combined_xlsx, sheet_name="排污规律分析")
-    fixed_png = deps.paths.outputs / "特征曲线图" / "全网_全时段" / "W1_流量特征曲线.png"
+    assets = deps.paths.root / "results" / "generated" / "特征曲线图"
+    fixed_png = assets / "全网_全时段" / "W1_流量特征曲线.png"
     png_before = fixed_png.read_bytes()
 
     monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
@@ -340,8 +356,9 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
 
     pd.testing.assert_frame_equal(sheet_after, sheet_before)
     assert fixed_png.read_bytes() == png_before
-    assert (deps.paths.outputs / "特征曲线图" / "W1_全时段" / "W1_流量特征曲线.png").exists()
-    assert (deps.paths.outputs / "特征曲线图" / "W1_全时段" / "W1_液位特征曲线.png").exists()
+    assert (assets / "W1_全时段" / "W1_流量特征曲线.png").exists()
+    assert (assets / "W1_全时段" / "W1_液位特征曲线.png").exists()
+    assert (deps.paths.outputs / "排污规律分析结果.zip").exists()
 
 
 def test_rainfall_time_window_pngs_are_range_named(tmp_path: Path) -> None:
@@ -1512,5 +1529,3 @@ def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.Monkey
     assert result["status"] == "error"
     assert elapsed < 10
     assert result["data"]["script"]
-
-

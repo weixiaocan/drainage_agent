@@ -563,7 +563,7 @@ def _chat_project(client: TestClient, app, name: str) -> tuple[dict, str]:
     return project, selected["current_workspace"]["id"]
 
 
-def test_chat_attaches_turn_created_files_without_duplicate_zip(
+def test_chat_packages_multiple_turn_created_files_into_one_zip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -602,8 +602,13 @@ def test_chat_attaches_turn_created_files_without_duplicate_zip(
 
     assert response.status_code == 200
     artifacts = response.json()["artifacts"]
-    assert [item["name"] for item in artifacts] == ["W1_曲线.png", "W2_曲线.png"]
-    assert not list((root / "exports").glob("chat-*.zip"))
+    assert [item["name"] for item in artifacts] == ["特征曲线.zip"]
+    bundle = root / artifacts[0]["path"]
+    with zipfile.ZipFile(bundle) as archive:
+        assert set(archive.namelist()) == {
+            "results/特征曲线图/W1_曲线.png",
+            "results/特征曲线图/W2_曲线.png",
+        }
 
 
 def test_chat_attaches_preexisting_file_cited_in_reply(
@@ -642,7 +647,7 @@ def test_chat_attaches_preexisting_file_cited_in_reply(
     assert response.status_code == 200
     assert response.json()["artifacts"] == [
         {
-            "path": "results/patterns/dry_day_24h_curve.png",
+            "path": "exports/dry_day_24h_curve.png",
             "name": "dry_day_24h_curve.png",
             "size": len(b"png-bytes"),
         }

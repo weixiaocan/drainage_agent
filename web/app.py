@@ -157,18 +157,41 @@ def _select_requested_downloads(
     deliverable = sorted(
         path
         for path in (created | cited)
-        if _is_chat_deliverable(path) and (root / path).is_file()
+        if (
+            _is_chat_deliverable(path)
+            or (path in created and path.startswith("sessions/") and path.lower().endswith(".zip"))
+        )
+        and (root / path).is_file()
     )
     if not deliverable:
         return []
-    return [
-        {
-            "path": rel,
-            "name": PurePath(rel).name,
-            "size": (root / rel).stat().st_size,
-        }
-        for rel in deliverable
-    ]
+    exports = root / "exports"
+    exports.mkdir(parents=True, exist_ok=True)
+    if len(deliverable) == 1:
+        source = root / deliverable[0]
+        target = exports / source.name
+        if source.resolve() != target.resolve():
+            shutil.copy2(source, target)
+        rel = target.relative_to(root).as_posix()
+        return [{"path": rel, "name": target.name, "size": target.stat().st_size}]
+
+    joined = " ".join(deliverable).lower()
+    if "特征曲线" in joined:
+        filename = "特征曲线.zip"
+    elif "rdii" in joined:
+        filename = "RDII分析结果.zip"
+    elif "降雨" in joined:
+        filename = "降雨分析结果.zip"
+    else:
+        filename = "本次导出结果.zip"
+    bundle = exports / filename
+    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for rel in deliverable:
+            source = root / rel
+            if source.resolve() != bundle.resolve():
+                archive.write(source, arcname=rel)
+    rel = bundle.relative_to(root).as_posix()
+    return [{"path": rel, "name": filename, "size": bundle.stat().st_size}]
 
 
 class ProjectCreateRequest(BaseModel):

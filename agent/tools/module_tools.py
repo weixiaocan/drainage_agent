@@ -7,6 +7,7 @@ import pickle
 import re
 import time
 import traceback
+import zipfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -55,12 +56,15 @@ def _rel(deps: AgentDeps, path: Path) -> str:
 def _result_artifacts(deps: AgentDeps, data: dict[str, Any]) -> list[str]:
     """Return only files owned by this tool result, never historical output files."""
     candidates: list[Any] = []
+    bundled = False
     for destination in data.get("result_destinations", []):
         if isinstance(destination, dict) and destination.get("path"):
             candidates.append(destination["path"])
-    for key in ("chart_paths", "curve_images", "output_file"):
-        if key in data:
-            candidates.append(data[key])
+            bundled = bundled or destination.get("kind") == "zip"
+    if not bundled:
+        for key in ("chart_paths", "curve_images", "output_file"):
+            if key in data:
+                candidates.append(data[key])
 
     paths: list[str] = []
 
@@ -82,6 +86,56 @@ def _result_artifacts(deps: AgentDeps, data: dict[str, Any]) -> list[str]:
 
     collect(candidates)
     return paths
+
+
+def _analysis_assets_dir(deps: AgentDeps) -> Path:
+    """Keep reusable analysis assets out of the user-facing export directory."""
+    path = deps.paths.root / "results" / "generated"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+_EXPORT_BUNDLE_LABELS = {
+    "analyze_patterns": "排污规律分析结果",
+    "analyze_rainfall": "降雨分析结果",
+    "analyze_rdii": "RDII分析结果",
+}
+
+
+def _bundle_export_artifacts(
+    deps: AgentDeps,
+    tool_name: str,
+    data: dict[str, Any],
+    artifacts: list[str],
+    params: dict[str, Any],
+) -> list[str]:
+    """Turn a multi-file explicit export into one stable user download."""
+    if not params.get("export") or len(artifacts) <= 1:
+        return artifacts
+    label = _EXPORT_BUNDLE_LABELS.get(tool_name, "分析结果")
+    bundle = deps.paths.outputs / f"{label}.zip"
+    bundle.parent.mkdir(parents=True, exist_ok=True)
+    internal_root = _analysis_assets_dir(deps)
+    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for artifact in artifacts:
+            path = deps.paths.root / artifact
+            if not path.is_file() or path == bundle:
+                continue
+            if path.is_relative_to(deps.paths.outputs):
+                arcname = path.relative_to(deps.paths.outputs).as_posix()
+            elif path.is_relative_to(internal_root):
+                arcname = path.relative_to(internal_root).as_posix()
+            else:
+                arcname = path.name
+            archive.write(path, arcname=arcname)
+    for artifact in artifacts:
+        path = deps.paths.root / artifact
+        if path.is_file() and path.is_relative_to(deps.paths.outputs) and path != bundle:
+            path.unlink()
+    data["result_destinations"] = [
+        {"kind": "zip", "path": _rel(deps, bundle), "sheet": None}
+    ]
+    return [_rel(deps, bundle)]
 
 
 def _destination_note(destinations: list[dict[str, Any]]) -> str:
@@ -491,10 +545,13 @@ def _run(
     try:
         deps.paths.outputs.mkdir(parents=True, exist_ok=True)
         summary, data = fn()
+        artifacts = _result_artifacts(deps, data)
+        artifacts = _bundle_export_artifacts(
+            deps, tool_name, data, artifacts, params or {}
+        )
         destination_note = _destination_note(data.get("result_destinations", []))
         if destination_note:
             summary = f"{summary} 落盘去向：{destination_note}。"
-        artifacts = _result_artifacts(deps, data)
         record_result(deps, tool_name, artifacts, params=params)
         if use_cache:
             deps.session.analysis_cache[cache_key] = {"summary": summary, "data": deepcopy(data)}
@@ -762,7 +819,7 @@ def confirm_pending_filter_result(deps: AgentDeps) -> Path:
 
 
 def _intermediate_dir(deps: AgentDeps) -> Path:
-    path = deps.paths.outputs / "intermediate"
+    path = _analysis_assets_dir(deps) / "intermediate"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -1267,7 +1324,7 @@ def analyze_rainfall_impl(
                 _add_rainfall_excel_charts(deps.paths.combined_xlsx, result["daily"])
             chart_paths = save_rainfall_png_charts(
                 result["daily"],
-                deps.paths.outputs / "降雨分析图",
+                _analysis_assets_dir(deps) / "降雨分析图",
                 _range_result_prefix(None, deps, range_start, range_end),
             )
         if output in {"all", "events"}:
@@ -1346,12 +1403,12 @@ def analyze_patterns_impl(
             curve_images = _save_pattern_curve_pngs(
                 curves,
                 dry_flow,
-                deps.paths.outputs / "特征曲线图",
+                _analysis_assets_dir(deps) / "特征曲线图",
                 scope_prefix,
             )
         elif export:
             curve_images = _save_partial_pattern_curve_png(
-                curves, dry_flow, points, deps.paths.outputs, scope_prefix
+                curves, dry_flow, points, _analysis_assets_dir(deps), scope_prefix
             )
         else:
             curve_images = {}
@@ -1479,12 +1536,12 @@ def analyze_rdii_impl(
                 result["rdii_curve_data"],
                 rain,
                 events,
-                deps.paths.outputs,
+                _analysis_assets_dir(deps),
                 selected_events=source_event_ids,
             )
         elif export:
             chart_paths = _save_partial_rdii_curve_png(
-                result["rdii_curve_data"], points, deps.paths.outputs, source_event_ids
+                result["rdii_curve_data"], points, _analysis_assets_dir(deps), source_event_ids
             )
         else:
             chart_paths = {}
