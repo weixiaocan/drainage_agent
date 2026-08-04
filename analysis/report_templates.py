@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 from docx import Document
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 
@@ -388,6 +388,21 @@ class ReportTemplateService:
             sheet.freeze_panes = "A2"
             sheet.auto_filter.ref = sheet.dimensions
             sheet.sheet_view.showGridLines = False
+            thin_side = Side(style="thin", color="D9D9D9")
+            table_border = Border(
+                left=thin_side,
+                right=thin_side,
+                top=thin_side,
+                bottom=thin_side,
+            )
+            for row in sheet.iter_rows(
+                min_row=1,
+                max_row=sheet.max_row,
+                min_col=1,
+                max_col=sheet.max_column,
+            ):
+                for cell in row:
+                    cell.border = table_border
             for cell in sheet[1]:
                 cell.font = Font(bold=True, color="FFFFFF")
                 cell.fill = PatternFill("solid", fgColor="1F4E78")
