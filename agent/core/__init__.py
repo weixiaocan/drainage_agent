@@ -27,14 +27,6 @@ from agent.tools.python_tool import run_python_impl
 from agent.types import FilterConfirmationRequired
 
 
-REPORT_SCOPE_CONFIRMATION_PROMPT = (
-    "我需要先确认报告范围：要包含哪些点位、哪段时间、哪些模块/章节？"
-    "如果包含雨天风险，也请说明采用哪些降雨事件。"
-)
-PENDING_REPORT_SCOPE_COMPLETION_PROMPT = (
-    "已记录你刚补充的报告要求。请再确认尚未说明的点位范围、时间范围或报告模块；"
-    "未限制点位和时间时，可以直接回复“全网、全时段”。"
-)
 
 
 COMPACT_THRESHOLD = 30
@@ -230,154 +222,6 @@ def compact_history(ctx: RunContext[AgentDeps], messages: list[ModelMessage]) ->
     return compacted
 
 
-def _is_report_request(message: str) -> bool:
-    return any(keyword in message for keyword in ("报告", "DOCX", "docx", "文档"))
-
-
-def _has_explicit_report_scope(message: str) -> bool:
-    if re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, flags=re.IGNORECASE):
-        return True
-    scope_keywords = ("全网", "全部", "所有", "19个点", "19 个点", "全时段", "全月", "上旬", "中旬", "下旬")
-    if any(keyword in message for keyword in scope_keywords):
-        return True
-    section_keywords = ("旱天", "雨天", "降雨", "风险", "排污规律", "RDII", "监测概况", "数据质量", "全部章节")
-    if any(keyword in message for keyword in section_keywords):
-        return True
-    if re.search(r"\d+\s*月|\d{4}-\d{1,2}-\d{1,2}|\d+\s*号|第\s*\d+\s*场", message):
-        return True
-    return False
-
-
-def _history_has_mixed_report_scope(history: list[str]) -> bool:
-    texts = [text for text in history if text.strip()]
-    joined = "\n".join(texts)
-    has_full_scope = any(keyword in joined for keyword in ("全网", "19个点", "19 个点", "全部点位", "所有点位"))
-    has_partial_scope = bool(re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", joined, flags=re.IGNORECASE))
-    time_markers: set[str] = set()
-    for text in texts:
-        if re.search(r"\d+\s*月\s*\d+\s*日|\d+\s*号|\d{4}-\d{1,2}-\d{1,2}", text):
-            time_markers.add("dated")
-        for keyword in ("上旬", "中旬", "下旬", "全月"):
-            if keyword in text:
-                time_markers.add(keyword)
-    has_multiple_time_scopes = len(time_markers) >= 2
-    return (has_full_scope and has_partial_scope) or has_multiple_time_scopes
-
-
-def needs_report_scope_confirmation(message: str, history: list[str]) -> bool:
-    if not _is_report_request(message):
-        return False
-    if _has_explicit_report_scope(message):
-        return False
-    return True
-
-
-def _has_pending_report_scope_confirmation(history: list[str], start: int = 0) -> bool:
-    for index in range(len(history) - 1, start - 1, -1):
-        if needs_report_scope_confirmation(history[index], history[:index]):
-            return True
-    return False
-
-
-def _has_report_point_scope(message: str) -> bool:
-    if re.search(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, flags=re.IGNORECASE):
-        return True
-    has_all_scope_reply = any(
-        re.sub(r"\s+", "", line).startswith("所有")
-        for line in message.splitlines()
-    )
-    return has_all_scope_reply or any(
-        keyword in message
-        for keyword in ("全网", "19个点", "19 个点", "全部点位", "所有点位")
-    )
-
-
-def _requests_rainfall_event_options(message: str) -> bool:
-    return (
-        any(keyword in message for keyword in ("哪些降雨事件", "哪些降雨场次", "可用降雨事件", "可用降雨场次"))
-        or (
-            "告诉我" in message
-            and "降雨" in message
-            and any(keyword in message for keyword in ("事件", "场次"))
-        )
-    )
-
-
-def _pending_report_scope_text(message: str, history: list[str], start: int = 0) -> str:
-    for index in range(len(history) - 1, start - 1, -1):
-        if needs_report_scope_confirmation(history[index], history[:index]):
-            return "\n".join([*history[index + 1 :], message])
-    return message
-
-
-def _rainfall_event_options_output(deps: AgentDeps) -> str:
-    if (
-        deps.analysis_runner is None
-        or not deps.current_project_id
-        or not deps.current_batch_id
-    ):
-        result = analyze_rainfall_impl(deps)
-        if result.get("status") != "ok":
-            return str(result.get("summary") or result)
-        events = result.get("data", {}).get("events", [])
-    else:
-        from analysis.runs import AnalysisRequest
-
-        result = deps.analysis_runner.run(
-            AnalysisRequest(
-                deps.current_project_id,
-                deps.current_batch_id,
-                "rainfall",
-            )
-        )
-        events = result.data.get("events", [])
-        standard_data = getattr(deps.analysis_runner, "standard_data", None)
-        if standard_data is not None and events:
-            import pandas as pd
-
-            from analysis.modules.event_response import analyze_event_response
-
-            flow = standard_data.load_flow(
-                deps.current_project_id,
-                deps.current_batch_id,
-            )
-            event_frame = pd.DataFrame(events)
-            events = [
-                event
-                for event in events
-                if not analyze_event_response(
-                    flow,
-                    event_frame,
-                    [int(event["event_id"])],
-                ).empty
-            ]
-    if not events:
-        return (
-            "降雨数据中识别到了事件，但这些事件与当前监测数据的时间范围没有重叠，"
-            "因此目前没有可用于报告的降雨事件。"
-        )
-    lines = ["已按全网、全时段、全部章节理解。当前可采用的降雨事件："]
-    for event in events:
-        event_id = event.get("event_id")
-        start = str(event.get("start_time") or "")
-        end = str(event.get("end_time") or "")
-        total = event.get("total_rain_mm", event.get("total_mm"))
-        detail = f"第 {event_id} 场：{start} 至 {end}"
-        if total is not None:
-            detail += f"，总雨量 {total} mm"
-        lines.append(f"- {detail}")
-    lines.append("请回复要采用的场次，例如“第 6 场”；也可以回复“全部场次”。")
-    return "\n".join(lines)
-
-
-def needs_pending_report_scope_completion(message: str, history: list[str], start: int = 0) -> bool:
-    return (
-        _has_pending_report_scope_confirmation(history, start)
-        and _has_explicit_report_scope(message)
-        and not _has_report_point_scope(message)
-    )
-
-
 class _PreflightResult:
     def __init__(self, output: str, message_history: list[Any], new_messages: list[Any] | None = None):
         self.output = output
@@ -460,112 +304,18 @@ def _resume_after_filter_confirmation_message(deps: AgentDeps, confirmed_path: P
     )
 
 
-def _report_sections_from_message(message: str) -> list[str] | None:
-    dry_only_markers = (
-        "只要旱天",
-        "跳过雨天",
-        "不要雨天",
-        "雨天的不要",
-        "降雨分析都不要",
-        "不用分析降雨",
-        "不含降雨",
-        "所有关于旱天",
-        "所有旱天",
-    )
-    if any(marker in message for marker in dry_only_markers):
-        return ["监测概况", "旱天排污规律统计分析", "旱天风险"]
-    return None
-
-
-def _report_args_from_message(message: str) -> dict[str, Any]:
-    points = sorted(
-        set(re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, flags=re.IGNORECASE)),
-        key=lambda value: int(value[1:]),
-    )
-    if any(keyword in message for keyword in ("全网", "19个点", "19 个点", "全部点位", "所有点位")):
-        points_arg: list[str] | None = None
-    else:
-        points_arg = points or None
-
-    start = None
-    end = None
-    if "全月" in message:
-        start = "2026-03-01"
-        end = "2026-03-31"
-    after_match = re.search(r"3\s*月\s*(\d{1,2})\s*(?:日|号)?\s*之后", message)
-    if after_match:
-        start = f"2026-03-{int(after_match.group(1)):02d}"
-        end = None
-
-    event_ids = [int(value) for value in re.findall(r"第\s*(\d+)\s*场", message)]
-    return {
-        "points": points_arg,
-        "start": start,
-        "end": end,
-        "sections": _report_sections_from_message(message),
-        "event_ids": event_ids or None,
-    }
-
-
-def _should_direct_generate_report(message: str, history: list[str], start: int = 0) -> bool:
-    is_direct_report = (
-        _is_report_request(message)
-        and _has_explicit_report_scope(message)
-        and not needs_report_scope_confirmation(message, history)
-    )
-    is_report_scope_reply = (
-        _has_pending_report_scope_confirmation(history, start)
-        and _has_explicit_report_scope(_pending_report_scope_text(message, history, start))
-        and _has_report_point_scope(_pending_report_scope_text(message, history, start))
-        and not _requests_rainfall_event_options(message)
-    )
-    return is_direct_report or is_report_scope_reply
-
-
-def _mark_report_scope_resolved(deps: AgentDeps) -> None:
-    deps.session.pending_report_scope_messages = []
-    # 当前消息在 finally 里才追加到历史，+1 把它也计入已完成轮次
-    deps.session.report_scope_resolved_count = len(deps.session.user_prompt_history) + 1
-
-
-def _report_tool_output(result: dict[str, Any]) -> str:
-    status = result.get("status")
-    summary = str(result.get("summary") or "")
-    if status != "ok":
-        return summary or str(result)
-    lines = ["报告已生成。"]
-    if summary:
-        lines.append(summary)
-    return "\n".join(lines)
-
-
-class _ReportScopeGuardedAgent:
+class _FilterConfirmationAgent:
     def __init__(self, inner: Any):
         self._inner = inner
 
     def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
         history = list(message_history or [])
-        prior_user_prompts = list(deps.session.user_prompt_history)
         deps.session.current_user_prompt = message
         try:
             if _has_pending_filter_confirmation(deps):
                 if _is_clear_filter_confirmation(message):
                     original_request = deps.session.pending_filter_result_request or ""
                     confirmed_path = confirm_pending_filter_result(deps)
-                    if original_request and _should_direct_generate_report(
-                        original_request,
-                        prior_user_prompts,
-                        deps.session.report_scope_resolved_count,
-                    ):
-                        args = _report_args_from_message(original_request)
-                        result = generate_report_impl(deps, **args)
-                        deps.session.pending_filter_result_request = None
-                        _mark_report_scope_resolved(deps)
-                        return _PreflightResult(
-                            _report_tool_output(result),
-                            history,
-                            [_FakeToolMessage("generate_report", args)],
-                        )
                     continuation = _resume_after_filter_confirmation_message(deps, confirmed_path)
                     deps.session.current_user_prompt = continuation
                     result = self._inner.run_sync(continuation, deps=deps, message_history=history)
@@ -573,51 +323,6 @@ class _ReportScopeGuardedAgent:
                     return result
                 if _looks_like_ambiguous_filter_confirmation(message):
                     return _PreflightResult(FILTER_CONFIRMATION_CLARIFICATION, history)
-            if needs_report_scope_confirmation(message, prior_user_prompts):
-                deps.session.pending_report_scope_messages = [message]
-                return _PreflightResult(REPORT_SCOPE_CONFIRMATION_PROMPT, history)
-            pending_report_scope = deps.session.pending_report_scope_messages
-            if (
-                pending_report_scope
-                and _requests_rainfall_event_options(message)
-            ):
-                pending_report_scope.append(message)
-                return _PreflightResult(
-                    _rainfall_event_options_output(deps),
-                    history,
-                    [_FakeToolMessage("analyze_rainfall", {})],
-                )
-            if pending_report_scope:
-                pending_scope_text = "\n".join([*pending_report_scope, message])
-                if (
-                    _has_explicit_report_scope(pending_scope_text)
-                    and _has_report_point_scope(pending_scope_text)
-                ):
-                    args = _report_args_from_message(pending_scope_text)
-                    result = generate_report_impl(deps, **args)
-                    _mark_report_scope_resolved(deps)
-                    return _PreflightResult(
-                        _report_tool_output(result),
-                        history,
-                        [_FakeToolMessage("generate_report", args)],
-                    )
-                if _has_explicit_report_scope(message):
-                    pending_report_scope.append(message)
-                    return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
-            resolved_count = deps.session.report_scope_resolved_count
-            if _should_direct_generate_report(message, prior_user_prompts, resolved_count):
-                args = _report_args_from_message(
-                    _pending_report_scope_text(message, prior_user_prompts, resolved_count)
-                )
-                result = generate_report_impl(deps, **args)
-                _mark_report_scope_resolved(deps)
-                return _PreflightResult(
-                    _report_tool_output(result),
-                    history,
-                    [_FakeToolMessage("generate_report", args)],
-                )
-            if needs_pending_report_scope_completion(message, prior_user_prompts, resolved_count):
-                return _PreflightResult(PENDING_REPORT_SCOPE_COMPLETION_PROMPT, history)
             return self._inner.run_sync(message, deps=deps, message_history=history)
         except FilterConfirmationRequired as exc:
             return _PreflightResult(
@@ -860,6 +565,6 @@ def build_agent(deps: AgentDeps) -> Any:
             args = {"code": code}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
 
-        return _ReportScopeGuardedAgent(agent)
+        return _FilterConfirmationAgent(agent)
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc

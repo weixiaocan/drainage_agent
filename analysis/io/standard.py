@@ -57,11 +57,13 @@ class StandardDataStore:
         if list(frame.columns) != STANDARD_FLOW_COLUMNS:
             raise StandardDataUnavailable("标准流量文件字段不符合 v1 契约")
         frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
+        for col in ("flow_lps", "level_m", "velocity_mps"):
+            frame[col] = pd.to_numeric(frame[col], errors="coerce")
         if frame.empty:
             raise StandardDataUnavailable("标准流量文件不包含数据")
         if frame["timestamp"].isna().any():
             raise StandardDataUnavailable("标准流量文件包含无效时间")
-        return frame.astype(object).where(pd.notna(frame), None)
+        return frame
 
     def load_rainfall(self, project_id: str, batch_id: str) -> pd.DataFrame:
         path = self._batch_root(project_id, batch_id) / "standard" / "rainfall.csv"

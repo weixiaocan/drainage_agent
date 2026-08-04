@@ -108,7 +108,11 @@ class ToolLLMClient:
             kwargs["base_url"] = deps.settings.base_url
         self._client = OpenAI(**kwargs)
         self._model = deps.settings.model
-        self._prompt_dirs = [deps.paths.root / "agent" / "prompts", deps.paths.root / "prompts"]
+        self._prompt_dirs = [
+            deps.paths.root / "agent" / "prompts",
+            deps.paths.root / "prompts",
+            Path(__file__).resolve().parents[1] / "prompts",
+        ]
 
     def load_prompt(self, name: str) -> str:
         for prompt_dir in self._prompt_dirs:
@@ -151,6 +155,29 @@ def _write_sheet(path: Path, sheet_name: str, df: pd.DataFrame) -> None:
     else:
         with pd.ExcelWriter(path, engine="openpyxl") as writer:
             display_df.to_excel(writer, sheet_name=sheet_name, index=False)
+    _apply_borders(path, sheet_name)
+
+
+def _apply_borders(path: Path, sheet_name: str) -> None:
+    from openpyxl import load_workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    workbook = load_workbook(path)
+    if sheet_name not in workbook.sheetnames:
+        return
+    sheet = workbook[sheet_name]
+    thin = Side(style="thin")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    header_font = Font(bold=True)
+    for row in sheet.iter_rows(min_row=1, max_row=sheet.max_row, max_col=sheet.max_column):
+        for cell in row:
+            cell.border = border
+            if cell.row == 1:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+    workbook.save(path)
 
 
 def _site_point_ids(deps: AgentDeps) -> set[str]:

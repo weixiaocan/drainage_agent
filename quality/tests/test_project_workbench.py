@@ -250,8 +250,8 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
     )
     (root / "results").mkdir(exist_ok=True)
     (root / "results" / "old-result.json").write_text("{}", encoding="utf-8")
-    (root / "reports").mkdir(exist_ok=True)
-    (root / "reports" / "old-report.docx").write_text("old", encoding="utf-8")
+    (root / "exports").mkdir(exist_ok=True)
+    (root / "exports" / "old-report.docx").write_text("old", encoding="utf-8")
     downloaded = client.get(
         f"{base_url}/filters/{first_filter['filter_id']}/download"
     )
@@ -275,7 +275,7 @@ def test_revised_filter_archives_chat_and_clears_derived_results(
     assert confirmed.json()["derived_state_reset"] is True
     assert (root / "standard" / "flow.csv").is_file()
     assert not (root / "results" / "old-result.json").exists()
-    assert not (root / "reports" / "old-report.docx").exists()
+    assert not (root / "exports" / "old-report.docx").exists()
     state = client.get(f"/api/projects/{project['id']}/workspace/state").json()
     assert state["filter"]["filter_id"] == revision["filter_id"]
     with sqlite3.connect(tmp_path / "var" / "drainage.sqlite3") as connection:
@@ -528,9 +528,9 @@ def test_report_chat_only_surfaces_report_and_comprehensive_workbook() -> None:
     current = [
         {"path": "results/rainfall/run/result.json", "name": "降雨分析结果", "size": 1},
         {"path": "results/rdii/run/result.json", "name": "RDII 分析结果", "size": 1},
-        {"path": "reports/1-id/report_draft.docx", "name": "当前报告初稿", "size": 1},
+        {"path": "exports/1-id/report_draft.docx", "name": "当前报告初稿", "size": 1},
         {
-            "path": "reports/1-id/comprehensive_results.xlsx",
+            "path": "exports/1-id/comprehensive_results.xlsx",
             "name": "当前综合结果表",
             "size": 1,
         },

@@ -67,6 +67,29 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+    .chat-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .model-picker {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .model-picker select {
+      min-width: 132px;
+      padding: 7px 30px 7px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+    }
     .project-downloads a {
       padding: 7px 12px;
       border: 1px solid var(--border);
@@ -540,6 +563,8 @@
                placeholder="输入或选择项目">
         <datalist id="projectNames"></datalist>
         <button class="upload-btn" type="submit">创建或打开项目</button>
+        <button class="upload-btn" type="button" id="resetWorkspaceBtn" style="display:none" title="清空当前项目的对话记录、筛选结果和分析数据">清空记录</button>
+        <button class="upload-btn" type="button" id="deleteProjectBtn" style="display:none" title="永久删除当前项目及其所有数据">删除项目</button>
       </form>
 
       <h2><span class="step-no">2</span>数据导入</h2>
@@ -610,9 +635,15 @@
           <h1>对话分析</h1>
           <div class="sub">完成左侧项目选择和数据导入后，直接描述要做的分析。</div>
         </div>
-        <div id="projectDownloads" class="project-downloads" hidden>
-          <a id="downloadProjectResults" href="#">下载分析结果</a>
-          <a id="downloadProjectAll" href="#">下载项目全部文件</a>
+        <div class="chat-header-actions">
+          <label class="model-picker" for="chatModel">
+            对话模型
+            <select id="chatModel" aria-label="选择对话模型"></select>
+          </label>
+          <div id="projectDownloads" class="project-downloads" hidden>
+            <a id="downloadProjectResults" href="#">下载分析结果</a>
+            <a id="downloadProjectAll" href="#">下载项目全部文件</a>
+          </div>
         </div>
       </header>
       <section id="chat" class="chat">
@@ -680,6 +711,7 @@
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const sendBtn = document.getElementById("sendBtn");
+    const chatModel = document.getElementById("chatModel");
     const uploadStatus = document.getElementById("uploadStatus");
     const auxiliaryMapping = document.getElementById("auxiliaryMapping");
     const auxiliaryMappingDialog = document.getElementById("auxiliaryMappingDialog");
@@ -690,6 +722,8 @@
     const downloadProjectAll = document.getElementById("downloadProjectAll");
     const projectNameInput = document.getElementById("projectName");
     const projectNames = document.getElementById("projectNames");
+    const resetWorkspaceBtn = document.getElementById("resetWorkspaceBtn");
+    const deleteProjectBtn = document.getElementById("deleteProjectBtn");
     const batchImportButton = document.getElementById("batchImportButton");
     const batchImportStatus = document.getElementById("batchImportStatus");
     const importQuestions = document.getElementById("importQuestions");
@@ -714,6 +748,36 @@
     let pendingAuxiliaryFiles = {rainfall: null, sites: null};
     let projectOptions = [];
     let currentFilterId = "";
+    let defaultModelId = "";
+
+    function projectModelStorageKey(projectId) {
+      return `drainage-agent-project-model-${projectId || "default"}`;
+    }
+
+    function restoreModelSelection() {
+      const saved = localStorage.getItem(projectModelStorageKey(currentProjectId));
+      const available = Array.from(chatModel.options).map((option) => option.value);
+      chatModel.value = available.includes(saved) ? saved : defaultModelId;
+    }
+
+    async function loadChatModels() {
+      const res = await fetch("/api/models");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "模型列表加载失败");
+      defaultModelId = data.default;
+      chatModel.innerHTML = "";
+      data.models.forEach((item) => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        chatModel.appendChild(option);
+      });
+      restoreModelSelection();
+    }
+
+    chatModel.addEventListener("change", () => {
+      localStorage.setItem(projectModelStorageKey(currentProjectId), chatModel.value);
+    });
 
     const CANONICAL_FIELDS = [
       {value: "timestamp", label: "监测时间"},
@@ -993,7 +1057,8 @@
             session_id: sessionId || null,
             project_id: currentProjectId || null,
             batch_id: currentBatchId || null,
-            debug: deepDebug.checked
+            debug: deepDebug.checked,
+            model_id: chatModel.value || null
           })
         });
         const data = await res.json();
@@ -1087,10 +1152,13 @@
         confirmFilterButton.disabled = true;
       } else {
         filterSummary.textContent = state.has_data
-          ? "尚未生成筛选结果。"
+          ? "尚未生成筛选结果，可直接上传筛选文件或运行自动筛选。"
           : "请先上传并确认监测数据。";
         filterRevisionFileName.textContent = "尚未生成";
-        filterRevisionFileButtonLabel.textContent = "上传修改版";
+        filterRevisionFileButtonLabel.textContent = "上传筛选文件";
+        filterRevisionFile.disabled = !state.has_data;
+        confirmFilterButton.disabled = true;
+        runFilterButton.disabled = !state.has_data;
       }
     }
 
@@ -1102,8 +1170,11 @@
       currentBatchId = data.current_workspace.id;
       sessionId = localStorage.getItem(projectSessionStorageKey(currentProjectId)) || "";
       restoreTranscript();
+      restoreModelSelection();
       projectNameInput.value = data.current_project.name;
       projectDownloads.hidden = false;
+      resetWorkspaceBtn.style.display = "";
+      deleteProjectBtn.style.display = "";
       downloadProjectResults.href =
         `/api/projects/${currentProjectId}/downloads/results`;
       downloadProjectAll.href =
@@ -1197,6 +1268,50 @@
         projectNameInput.setCustomValidity(err.message);
         projectNameInput.reportValidity();
         projectNameInput.setCustomValidity("");
+      }
+    });
+
+    resetWorkspaceBtn.addEventListener("click", async () => {
+      if (!currentProjectId) return;
+      if (!confirm("清空将归档当前对话并删除所有筛选、分析和报告结果。确定继续？")) return;
+      try {
+        const res = await fetch(`/api/projects/${currentProjectId}/workspace/reset`, {method: "POST"});
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || "清空失败");
+        }
+        sessionId = "";
+        localStorage.removeItem(projectSessionStorageKey(currentProjectId));
+        restoreTranscript();
+        await loadWorkspaceState();
+        await loadAgentRuns();
+        alert("记录已清空。");
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    deleteProjectBtn.addEventListener("click", async () => {
+      if (!currentProjectId) return;
+      if (!confirm(`确定要永久删除项目"${projectNameInput.value}"及其所有数据吗？此操作不可撤销。`)) return;
+      try {
+        const res = await fetch(`/api/projects/${currentProjectId}`, {method: "DELETE"});
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || "删除失败");
+        }
+        currentProjectId = "";
+        currentBatchId = "";
+        sessionId = "";
+        projectNameInput.value = "";
+        projectDownloads.hidden = true;
+        resetWorkspaceBtn.style.display = "none";
+        deleteProjectBtn.style.display = "none";
+        restoreTranscript();
+        await refreshProjects();
+        alert("项目已删除。");
+      } catch (err) {
+        alert(err.message);
       }
     });
 
@@ -1487,8 +1602,8 @@
 
     confirmFilterButton.addEventListener("click", async () => {
       try {
-        if (!currentFilterId) throw new Error("没有可确认的筛选文件");
         const file = filterRevisionFile.files[0];
+        if (!file && !currentFilterId) throw new Error("请先选择筛选文件或运行自动筛选");
         if (file) {
           if (
             currentWorkspaceState?.filter?.present
@@ -1499,19 +1614,18 @@
           ) {
             return;
           }
-          filterSummary.textContent = "正在上传并校验修改后的筛选文件...";
+          filterSummary.textContent = "正在上传并校验筛选文件...";
           const form = new FormData();
           form.append("file", file);
-          const revisionRes = await fetch(
-            `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
-            `/filters/${currentFilterId}/revisions`,
-            {method: "POST", body: form},
-          );
-          const revision = await revisionRes.json();
-          if (!revisionRes.ok) {
-            throw new Error(revision.detail || "筛选文件校验失败");
+          const uploadUrl = currentFilterId
+            ? `/api/projects/${currentProjectId}/batches/${currentBatchId}/filters/${currentFilterId}/revisions`
+            : `/api/projects/${currentProjectId}/batches/${currentBatchId}/filters/upload`;
+          const uploadRes = await fetch(uploadUrl, {method: "POST", body: form});
+          const uploadResult = await uploadRes.json();
+          if (!uploadRes.ok) {
+            throw new Error(uploadResult.detail || "筛选文件校验失败");
           }
-          currentFilterId = revision.filter_id;
+          currentFilterId = uploadResult.filter_id;
         }
         const res = await fetch(
           `/api/projects/${currentProjectId}/batches/${currentBatchId}` +
@@ -1593,8 +1707,8 @@
         event.target.files[0]?.name
         || (currentWorkspaceState?.filter?.present
           ? "当前已确认：筛选结果.xlsx"
-          : "待确认：自动筛选结果.xlsx");
-      confirmFilterButton.disabled = !event.target.files[0];
+          : "尚未生成");
+      confirmFilterButton.disabled = !event.target.files[0] && !currentFilterId;
     });
     const AUXILIARY_FIELDS = {
       rainfall: [
@@ -1694,6 +1808,11 @@
     continueAuxiliaryMapping.addEventListener("click", () => auxiliaryMappingDialog.showModal());
 
     restoreTranscript();
+    loadChatModels().catch((err) => {
+      chatModel.innerHTML = '<option value="">模型加载失败</option>';
+      chatModel.disabled = true;
+      console.error(err);
+    });
     fetch("/api/projects/selection")
       .then((response) => response.json())
       .then(async (data) => {

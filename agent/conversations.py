@@ -139,12 +139,17 @@ class ConversationRunner:
         base_deps: AgentDeps,
         files_root: Path,
         run_recorder: Any,
+        *,
+        model_agents: dict[str, tuple[Any, Any]] | None = None,
     ) -> None:
         self.repository = repository
         self.agent = agent
         self.base_deps = base_deps
         self.files_root = files_root.resolve()
         self.run_recorder = run_recorder
+        self.model_agents = model_agents or {
+            base_deps.settings.provider_id: (agent, base_deps.settings)
+        }
 
     def run(
         self,
@@ -154,13 +159,25 @@ class ConversationRunner:
         message: str,
         session_id: str | None = None,
         debug: bool = False,
+        model_id: str | None = None,
     ) -> ConversationTurn:
         session_id = session_id or uuid.uuid4().hex
         history, session_state = self.repository.load(
             session_id, project_id, batch_id
         )
         run_id = uuid.uuid4().hex
-        deps = self._scoped_deps(project_id, batch_id, session_state, run_id)
+        selected_model_id = model_id or self.base_deps.settings.provider_id
+        selected = self.model_agents.get(selected_model_id)
+        if selected is None:
+            raise ValueError("所选模型未配置或不可用")
+        selected_agent, selected_settings = selected
+        deps = self._scoped_deps(
+            project_id,
+            batch_id,
+            session_state,
+            run_id,
+            selected_settings,
+        )
         self.run_recorder.start(
             run_id=run_id,
             project_id=project_id,
@@ -178,7 +195,7 @@ class ConversationRunner:
                 }
             )
         try:
-            result = self.agent.run_sync(
+            result = selected_agent.run_sync(
                 message,
                 deps=deps,
                 message_history=history,
@@ -234,9 +251,11 @@ class ConversationRunner:
         batch_id: str,
         session: SessionState,
         run_id: str,
+        settings: Any,
     ) -> AgentDeps:
         batch_root = self.files_root / project_id / "batches" / batch_id
         scoped = copy(self.base_deps)
+        scoped.settings = settings
         scoped.paths = Paths(
             root=batch_root,
             data=batch_root / "inputs",

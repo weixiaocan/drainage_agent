@@ -189,7 +189,7 @@ class ReportTemplateService:
         version = self._next_version(project_id, batch_id)
         report_id = uuid.uuid4().hex
         root = self._batch_root(project_id, batch_id)
-        relative_root = f"reports/{version}-{report_id}"
+        relative_root = f"exports/{version}-{report_id}"
         docx_relative = f"{relative_root}/report_draft.docx"
         workbook_relative = f"{relative_root}/comprehensive_results.xlsx"
         docx_path = root / docx_relative

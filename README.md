@@ -25,6 +25,14 @@ AGENT_BASE_URL=https://api.deepseek.com
 AGENT_MODEL=deepseek-chat
 ```
 
+如需在网页对话框中切换到 GLM-5.2，再加入以下配置；只有配置了密钥的模型会显示在下拉框中：
+
+```env
+GLM_API_KEY=你的智谱API密钥
+GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+GLM_MODEL=glm-5.2
+```
+
 ## Docker
 
 构建镜像：

@@ -9,6 +9,7 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
+from copy import copy
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
@@ -39,7 +40,7 @@ from analysis.runs import (
 )
 from agent.core import build_agent
 from agent.conversations import ConversationRepository, ConversationRunner
-from agent.deps import AgentDeps, build_deps
+from agent.deps import AgentDeps, available_agent_settings, build_deps
 from agent.run_records import RunRecorder
 from web.projects import AnalysisBatch, Project, ProjectRepository
 from web.import_profiles import (
@@ -76,6 +77,7 @@ class ChatRequest(BaseModel):
     project_id: str | None = None
     batch_id: str | None = None
     debug: bool = False
+    model_id: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -83,6 +85,12 @@ class ChatResponse(BaseModel):
     run_id: str
     reply: str
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _deps_with_settings(deps: AgentDeps, settings: Any) -> AgentDeps:
+    model_deps = copy(deps)
+    model_deps.settings = settings
+    return model_deps
 
 
 def _select_chat_artifacts(
@@ -93,7 +101,7 @@ def _select_chat_artifacts(
     return [
         item
         for item in created
-        if str(item["path"]).startswith("reports/")
+        if str(item["path"]).startswith("exports/")
     ]
 
 
@@ -104,7 +112,6 @@ _CHAT_DELIVERABLE_EXCLUDED_PREFIXES = (
     "inputs/",
     "baseline/",
     "sessions/",
-    "reports/",
 )
 _REPLY_PATH_PATTERN = re.compile(
     r"[\w\-./一-鿿()]+?\.(?:png|jpe?g|csv|xlsx|zip)",
@@ -365,7 +372,15 @@ def create_app(
     )
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
-    app.state.agent = agent_factory(app.state.deps)
+    model_settings = available_agent_settings()
+    model_settings[app.state.deps.settings.provider_id] = app.state.deps.settings
+    app.state.model_agents = {
+        model_id: (agent_factory(_deps_with_settings(app.state.deps, settings)), settings)
+        for model_id, settings in model_settings.items()
+    }
+    app.state.agent = app.state.model_agents[
+        app.state.deps.settings.provider_id
+    ][0]
     app.state.projects = ProjectRepository(
         app.state.root / "var" / "drainage.sqlite3",
         app.state.root / "var" / "projects",
@@ -417,7 +432,22 @@ def create_app(
         app.state.deps,
         app.state.root / "var" / "projects",
         app.state.run_records,
+        model_agents=app.state.model_agents,
     )
+
+    @app.get("/api/models")
+    def list_chat_models() -> dict[str, object]:
+        return {
+            "default": app.state.deps.settings.provider_id,
+            "models": [
+                {
+                    "id": model_id,
+                    "name": settings.display_name,
+                    "model": settings.model,
+                }
+                for model_id, (_, settings) in app.state.model_agents.items()
+            ],
+        }
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
@@ -463,6 +493,18 @@ def create_app(
         if project is None:
             raise HTTPException(status_code=404, detail="监测项目不存在")
         return _project_data(project)
+
+    @app.delete("/api/projects/{project_id}")
+    def delete_project(project_id: str) -> dict[str, str]:
+        if app.state.projects.get(project_id) is None:
+            raise HTTPException(status_code=404, detail="监测项目不存在")
+        if app.state.current_project_id == project_id:
+            app.state.current_project_id = None
+            app.state.current_batch_id = None
+            app.state.deps.current_project_id = None
+            app.state.deps.current_batch_id = None
+        app.state.projects.delete(project_id)
+        return {"message": "项目已删除"}
 
     @app.put("/api/projects/{project_id}/selection")
     def select_project(project_id: str) -> dict[str, dict[str, str]]:
@@ -1017,11 +1059,19 @@ def create_app(
                 (project_id, batch_id),
             )
         root = app.state.projects.batch_workspace(project_id, batch_id)
-        for directory in ("results", "reports", "jobs", "sessions"):
+        for directory in ("results", "jobs", "sessions"):
             target = (root / directory).resolve()
             if target.is_relative_to(root.resolve()) and target.is_dir():
                 shutil.rmtree(target)
             target.mkdir(parents=True, exist_ok=True)
+        exports_dir = (root / "exports").resolve()
+        if exports_dir.is_dir() and exports_dir.is_relative_to(root.resolve()):
+            for path in sorted(exports_dir.rglob("*")):
+                if path.is_file() and path.name != "筛选结果.xlsx":
+                    path.unlink()
+            for subdir in sorted(exports_dir.rglob("*"), reverse=True):
+                if subdir.is_dir() and not any(subdir.iterdir()):
+                    subdir.rmdir()
 
     def _invalidate_derived_state(
         project_id: str,
@@ -1065,6 +1115,30 @@ def create_app(
                     batch_id=batch_id,
                     **request.model_dump(),
                 )
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except BaselinePreconditionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(result)
+
+    @app.post(
+        "/api/projects/{project_id}/batches/{batch_id}/filters/upload",
+        status_code=201,
+    )
+    async def upload_filter_file(
+        project_id: str,
+        batch_id: str,
+        file: UploadFile = File(...),
+    ) -> dict[str, object]:
+        try:
+            result = app.state.filter_baselines.upload_filter(
+                project_id,
+                batch_id,
+                file.filename or "",
+                await _read_upload(file),
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1489,7 +1563,7 @@ def create_app(
             compression=zipfile.ZIP_DEFLATED,
         ) as archive:
             if results_only:
-                for user_dir in ("exports", "reports"):
+                for user_dir in ("exports",):
                     base = root / user_dir
                     if not base.is_dir():
                         continue
@@ -1513,7 +1587,7 @@ def create_app(
                     ),
                 )
                 for directory in (
-                    "inputs", "standard", "baseline", "results", "reports",
+                    "inputs", "standard", "baseline", "results", "exports",
                 ):
                     folder = root / directory
                     if not folder.is_dir():
@@ -1619,7 +1693,7 @@ def create_app(
         root = app.state.projects.batch_workspace(project_id, workspace.id)
         for directory in (
             "inputs", "standard", "baseline", "results",
-            "reports", "jobs", "sessions",
+            "exports", "jobs", "sessions",
         ):
             target = (root / directory).resolve()
             if target.is_relative_to(root.resolve()) and target.is_dir():
@@ -1783,6 +1857,7 @@ def create_app(
                 message=message,
                 session_id=request.session_id,
                 debug=request.debug,
+                model_id=request.model_id,
             )
             artifacts = _select_chat_artifacts(
                 _current_workspace_artifacts(project_id, batch_id),

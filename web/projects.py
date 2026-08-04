@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import shutil
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -153,6 +154,48 @@ class ProjectRepository:
 
     def batch_workspace(self, project_id: str, batch_id: str) -> Path:
         return self.workspace(project_id) / "batches" / batch_id
+
+    def delete(self, project_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            batch_ids = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT id FROM analysis_batches WHERE project_id = ?",
+                    (project_id,),
+                )
+            ]
+            for table in (
+                "current_analysis_baselines",
+                "analysis_baselines",
+                "filter_results",
+                "data_imports",
+                "analysis_runs",
+                "agent_sessions",
+                "archived_agent_sessions",
+                "report_drafts",
+                "report_templates",
+                "background_jobs",
+            ):
+                for batch_id in batch_ids:
+                    connection.execute(
+                        f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
+                        (project_id, batch_id),
+                    )
+                connection.execute(
+                    f"DELETE FROM {table} WHERE project_id = ?",
+                    (project_id,),
+                )
+            connection.execute(
+                "DELETE FROM analysis_batches WHERE project_id = ?",
+                (project_id,),
+            )
+            connection.execute(
+                "DELETE FROM projects WHERE id = ?", (project_id,)
+            )
+        project_dir = self.workspace(project_id)
+        if project_dir.exists():
+            shutil.rmtree(project_dir)
 
     def resolve_file(self, project_id: str, file_path: str) -> Path:
         workspace = self.workspace(project_id).resolve()

@@ -290,7 +290,7 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert "选择监测 CSV" in response.text
     assert "尚未上传" in response.text
     assert "/workspace/state" in response.text
-    assert "/workspace/reset" not in response.text
+    assert "/workspace/reset" in response.text
     assert "现有降雨和点位信息会保留" in response.text
     assert 'name="rainfall_file"' in response.text
     assert 'name="site_info_file"' in response.text
@@ -592,14 +592,13 @@ def test_analysis_reads_confirmed_batch_data_only_through_standard_contract(
         "level_m",
         "velocity_mps",
     ]
-    assert flow.iloc[0].to_dict() == {
-        "timestamp": flow.iloc[0]["timestamp"],
-        "device_id": None,
-        "point_id": "W5",
-        "flow_lps": 2.5,
-        "level_m": None,
-        "velocity_mps": None,
-    }
+    row = flow.iloc[0].to_dict()
+    assert row["timestamp"] == flow.iloc[0]["timestamp"]
+    assert row["device_id"] is None
+    assert row["point_id"] == "W5"
+    assert row["flow_lps"] == 2.5
+    assert pd.isna(row["level_m"])
+    assert pd.isna(row["velocity_mps"])
     assert flow.iloc[0]["timestamp"].isoformat() == "2026-03-07T00:00:00"
 
 

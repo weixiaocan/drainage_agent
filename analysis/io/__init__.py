@@ -181,8 +181,16 @@ def load_filtered_flow(
 ) -> pd.DataFrame:
     """读取 data_filter 标准产物中选定的有效旱天数据。"""
     base = root or project_root()
-    return load_flow_by_filter_result(
+    for candidate in (
+        base / "exports" / "筛选结果.xlsx",
         _outputs_dir(base) / "筛选结果.xlsx",
+    ):
+        if candidate.exists():
+            return load_flow_by_filter_result(
+                candidate, points=points, time_range=time_range, root=base
+            )
+    return load_flow_by_filter_result(
+        base / "exports" / "筛选结果.xlsx",
         points=points,
         time_range=time_range,
         root=base,

@@ -291,6 +291,67 @@ class FilterBaselineService:
             results.append(FilterResult(**values))
         return results
 
+    def upload_filter(
+        self,
+        project_id: str,
+        batch_id: str,
+        filename: str,
+        content: bytes,
+    ) -> FilterResult:
+        if Path(filename).suffix.lower() != ".xlsx":
+            raise ValueError("筛选文件只允许 xlsx")
+        self._require_batch(project_id, batch_id)
+        self._validate_workbook(project_id, batch_id, content)
+
+        standard_sha256 = self._standard_sha256(project_id, batch_id)
+        version = self._next_filter_version(project_id, batch_id)
+        filter_id = uuid.uuid4().hex
+        artifact = FILTER_ARTIFACT
+        artifact_path = self._batch_root(project_id, batch_id) / artifact
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_bytes(content)
+        file_sha256 = self._sha256(artifact_path)
+        identity = {
+            "project_id": project_id,
+            "batch_id": batch_id,
+            "standard_input": {
+                "contract_version": 1,
+                "content_sha256": standard_sha256,
+            },
+            "parameters": {},
+            "file_sha256": file_sha256,
+        }
+        selected = {
+            point_id: sorted(day.isoformat() for day in days)
+            for point_id, days in read_selected_days(artifact_path).items()
+        }
+        result = FilterResult(
+            filter_id=filter_id,
+            project_id=project_id,
+            batch_id=batch_id,
+            version=version,
+            status="awaiting_confirmation",
+            identity=identity,
+            summary={
+                "point_count": len(selected),
+                "selected_point_days": sum(len(days) for days in selected.values()),
+                "selected_days": selected,
+                "exclusion_reasons": self._read_filter_notes(artifact_path),
+            },
+            artifact=artifact,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._insert_filter(result)
+        with self._connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM current_analysis_baselines
+                WHERE project_id = ? AND batch_id = ?
+                """,
+                (project_id, batch_id),
+            )
+        return result
+
     def upload_revision(
         self,
         project_id: str,

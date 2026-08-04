@@ -65,6 +65,8 @@ class AgentSettings:
     model: str
     base_url: str | None
     api_key: str | None
+    provider_id: str = "deepseek"
+    display_name: str = "DeepSeek"
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -73,6 +75,25 @@ class AgentSettings:
             base_url=os.getenv("AGENT_BASE_URL", os.getenv("DEEPSEEK_BASE_URL")),
             api_key=os.getenv("AGENT_API_KEY", os.getenv("DEEPSEEK_API_KEY")),
         )
+
+
+def available_agent_settings() -> dict[str, AgentSettings]:
+    """Return configured chat-model adapters without exposing credentials."""
+    default = AgentSettings.from_env()
+    settings = {default.provider_id: default}
+    glm_key = os.getenv("GLM_API_KEY")
+    if glm_key:
+        settings["glm"] = AgentSettings(
+            model=os.getenv("GLM_MODEL", "glm-5.2"),
+            base_url=os.getenv(
+                "GLM_BASE_URL",
+                "https://open.bigmodel.cn/api/paas/v4",
+            ),
+            api_key=glm_key,
+            provider_id="glm",
+            display_name="GLM-5.2",
+        )
+    return settings
 
 
 @dataclass
@@ -88,8 +109,6 @@ class SessionState:
     pending_filter_result_params: dict[str, Any] = field(default_factory=dict)
     pending_filter_result_request: str | None = None
     pending_filter_result_message: str | None = None
-    pending_report_scope_messages: list[str] = field(default_factory=list)
-    report_scope_resolved_count: int = 0
     confirmed_filter_result_path: str | None = None
     confirmed_filter_result_identity: str | None = None
     confirmed_filter_result_params: dict[str, Any] = field(default_factory=dict)
