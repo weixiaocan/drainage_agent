@@ -413,8 +413,13 @@ def _tool_calls_after_data_filter_confirmation(events: list[dict[str, Any]]) -> 
     return calls
 
 
-def _looks_like_no_coverage_request(text: str) -> bool:
-    if "W999" in text or "2030" in text:
+def _looks_like_no_coverage_request(text: str, allowed_sites: set[str] | None = None) -> bool:
+    if "W999" in text:
+        mentioned = {match.group(0).upper() for match in POINT_RE.finditer(text)}
+        if allowed_sites and mentioned & allowed_sites:
+            return False
+        return True
+    if "2030" in text:
         return True
     if re.search(r"[12]\s*月", text) or re.search(r"一\s*月|二\s*月", text):
         return True
@@ -431,7 +436,7 @@ def check_coverage_guard_no_analysis_without_data(case: CaseRecord, ctx: CheckCo
     forbidden = {"analyze_event_response", "analyze_patterns", "analyze_rdii", "assess_risk"}
     for turn in case.turns:
         text = f"{turn.prompt}\n{turn.expect}"
-        if not _looks_like_no_coverage_request(text):
+        if not _looks_like_no_coverage_request(text, ctx.allowed_sites):
             continue
         if not turn.tool_calls:
             results.append(result(case, name, "trace", "skip", "no tool_calls available for this turn", turn.n))
@@ -475,7 +480,7 @@ def check_single_analysis_no_unrelated_tools(case: CaseRecord, ctx: CheckContext
     checks: list[CheckResult] = []
     for turn in case.turns:
         text = f"{turn.prompt}\n{turn.expect}"
-        if _looks_like_no_coverage_request(text):
+        if _looks_like_no_coverage_request(text, ctx.allowed_sites):
             continue
         if any(token in text for token in ("报告", "完整", "全部章节", "再加", "上述", "导出", "综合")):
             continue
@@ -492,6 +497,14 @@ def check_single_analysis_no_unrelated_tools(case: CaseRecord, ctx: CheckContext
             allowed.add("analyze_rainfall")
         if "assess_risk" in intents:
             allowed.add("analyze_rainfall")
+            rainy_event_risk = any(
+                call.tool == "assess_risk"
+                and call.args.get("scope") == "rainy"
+                and call.args.get("event_ids")
+                for call in turn.tool_calls
+            )
+            if rainy_event_risk:
+                allowed.add("analyze_event_response")
         bad = [call.tool for call in turn.tool_calls if call.tool in ANALYSIS_TOOLS and call.tool not in allowed]
         status: Status = "fail" if bad else "pass"
         reason = f"unrelated analysis tools called: {bad}; intent={sorted(intents)}" if bad else f"tools match intent={sorted(intents)}"

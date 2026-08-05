@@ -23,8 +23,10 @@ from quality.eval.eval_stage2.run_eval import (
 from quality.eval.eval_stage2.view import load_checks, load_results, render_report
 from quality.eval.check import (
     CheckContext,
+    check_coverage_guard_no_analysis_without_data,
     check_expected_tool_contract,
     check_report_has_independent_curve_images,
+    check_single_analysis_no_unrelated_tools,
     load_cases,
 )
 
@@ -420,3 +422,53 @@ def test_structured_per_turn_tool_contract_is_loaded_and_checked(tmp_path: Path)
     assert case.turns[0].expected["inherited"] == ["task"]
     assert checked[0].status == "pass"
     assert checked[0].turn == 1
+
+
+def test_coverage_guard_allows_analysis_for_mixed_valid_and_invalid_points(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    outputs = root / "outputs"
+    outputs.mkdir(parents=True)
+    manifest = {"results": {"analyze_patterns": {"artifacts": []}}}
+    (outputs / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "CI005",
+        "root": str(root),
+        "turns": [{
+            "n": 1,
+            "prompt": "比较 W1、W6、W999 的旱天流量。",
+            "expect": "指出 W999 无效并继续处理 W1/W6",
+            "tool_calls": [{"tool": "analyze_patterns", "args": {"points": ["W1", "W6", "W999"]}}],
+        }],
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    checked = check_coverage_guard_no_analysis_without_data(
+        load_cases(results)[0],
+        CheckContext(tmp_path, {"W1", "W6"}, None, None, None, None),
+    )
+
+    assert checked[0].status == "skip"
+
+
+def test_rainy_risk_allows_event_response_analysis(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "CI006",
+        "root": str(tmp_path / "artifacts"),
+        "turns": [{
+            "n": 2,
+            "prompt": "那就第 6 场。",
+            "expect": "承接原任务并完成事件6雨天风险",
+            "tool_calls": [
+                {"tool": "assess_risk", "args": {"scope": "rainy", "event_ids": [6]}},
+                {"tool": "analyze_event_response", "args": {"event_ids": [6]}},
+            ],
+        }],
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    checked = check_single_analysis_no_unrelated_tools(
+        load_cases(results)[0],
+        CheckContext(tmp_path, set(), None, None, None, None),
+    )
+
+    assert checked[0].status == "pass"

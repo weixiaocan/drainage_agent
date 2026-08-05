@@ -105,6 +105,12 @@ def test_prompt_requires_needs_input_for_event_ids() -> None:
     assert "`options`" in prompt
 
 
+def test_prompt_does_not_treat_discovered_events_as_user_selection() -> None:
+    prompt = read_prompt()
+    assert "工具发现的可用场次不等于用户已选择场次" in prompt
+    assert "列出可选场次并停止本轮" in prompt
+
+
 def test_prompt_requires_report_scope_and_nonempty_rainy_risk() -> None:
     prompt = read_prompt()
     assert "`points`" in prompt

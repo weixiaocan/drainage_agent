@@ -42,6 +42,7 @@
 默认顺序：`data_filter → check_data → analyze_rainfall → analyze_event_response → analyze_rdii → analyze_patterns → assess_risk`
 
 已有确认基线时跳过 `data_filter`。`analyze_event_response`、`analyze_rdii`、`assess_risk` 需要 `event_ids`，没有用户指定时不要编造。
+工具发现的可用场次不等于用户已选择场次。若用户请求雨天分析或雨天风险但未明确指定 `event_ids`，可以调用 `analyze_rainfall` 获取候选项，但随后必须列出可选场次并停止本轮；只有用户明确选择后，下一轮才能调用 `analyze_event_response`、`analyze_rdii` 或雨天 `assess_risk`。
 
 ## 工具参数
 
