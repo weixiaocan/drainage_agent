@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import uuid
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -280,6 +281,12 @@ def run_objective_check(results_path: Path) -> None:
         cases = load_cases(results_path)
         ctx = build_context(PROJECT)
         results = run_checks(cases, ctx)
+        checks_path = results_path.with_name(f"{results_path.stem}_checks.json")
+        checks_path.write_text(
+            json.dumps({"checks": [asdict(item) for item in results]}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"自动检查明细 -> {checks_path}")
         print_summary_report(results)
     except Exception as exc:
         print(f"客观项自动判分失败: {exc!r}")

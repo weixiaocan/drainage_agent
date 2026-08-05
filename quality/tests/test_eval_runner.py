@@ -17,7 +17,7 @@ from quality.eval.eval_stage2.run_eval import (
     tool_seq,
     validate_cases,
 )
-from quality.eval.eval_stage2.view import load_results, render_report
+from quality.eval.eval_stage2.view import load_checks, load_results, render_report
 from quality.eval.check import CheckContext, check_expected_tool_contract, load_cases
 
 
@@ -243,6 +243,47 @@ def test_multiturn_view_skips_meta_and_renders_turns(tmp_path: Path) -> None:
     assert count == 1
     assert "逐轮人工判定" not in html
     assert "M001" in html and "先看 W1" in html and "调用工具" in html
+
+
+def test_eval_view_loads_objective_check_sidecar(tmp_path: Path) -> None:
+    source = tmp_path / "results_single.jsonl"
+    destination = tmp_path / "report.html"
+    row = {
+        "id": "E001",
+        "category": "analysis",
+        "scenario": "Inspect W1",
+        "dimensions": {"clarity": "clear"},
+        "turns": [{
+            "n": 1,
+            "prompt": "Inspect W1",
+            "expected": {"response": "Summarize status"},
+            "output": "W1 is normal",
+            "tool_calls": [],
+            "trace_events": [],
+        }],
+    }
+    source.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    checks = {"checks": [{
+        "case_id": "E001",
+        "check": "tool_contract",
+        "basis": "trace",
+        "status": "fail",
+        "reason": "missing call",
+        "turn": 1,
+    }]}
+    source.with_name("results_single_checks.json").write_text(
+        json.dumps(checks), encoding="utf-8"
+    )
+
+    assert load_checks(source)[0]["status"] == "fail"
+    assert render_report(source, destination) == 1
+    html = destination.read_text(encoding="utf-8")
+    assert "Drainage Agent Eval 评审" in html
+    assert "自动失败" in html
+    assert "Inspect W1" in html
+    assert "Summarize status" in html
+    assert "W1 is normal" in html
+    assert "整例人工判定" in html
 
 
 def test_completed_case_ids_ignores_meta_and_partial_line(tmp_path: Path) -> None:
