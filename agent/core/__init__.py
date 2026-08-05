@@ -27,6 +27,15 @@ from agent.tools.python_tool import run_python_impl
 from agent.types import FilterConfirmationRequired
 
 
+_cancel_flags: dict[str, bool] = {}
+
+
+def request_cancel(session_id: str) -> None:
+    _cancel_flags[session_id] = True
+
+
+def _check_cancel(session_id: str) -> bool:
+    return _cancel_flags.pop(session_id, False)
 
 
 COMPACT_THRESHOLD = 30
@@ -424,6 +433,8 @@ def build_agent(deps: AgentDeps) -> Any:
                 },
             )
             try:
+                if _check_cancel(ctx.deps.cancel_session_id):
+                    return {"status": "cancelled", "summary": "工具已被用户取消"}
                 result = func()
             except Exception as exc:
                 duration_ms = round((monotonic() - started) * 1000)

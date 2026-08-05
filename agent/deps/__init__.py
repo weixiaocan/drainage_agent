@@ -132,6 +132,7 @@ class AgentDeps:
     report_templates: Any | None = None
     current_project_id: str | None = None
     current_batch_id: str | None = None
+    cancel_session_id: str = ""
 
 
 def ensure_directories(paths: Paths) -> None:

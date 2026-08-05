@@ -646,19 +646,19 @@
         <div class="file-picker">
           <input id="batchImportFile" name="files" type="file" accept=".csv" multiple required>
           <label id="flowFileButtonLabel" for="batchImportFile">选择监测 CSV</label>
-          <span id="flowFileNames">尚未上传</span>
+          <span id="flowFileNames">未上传</span>
         </div>
         <label>降雨 CSV</label>
         <div class="file-picker">
           <input id="rainfallFile" name="rainfall_file" type="file" accept=".csv">
           <label id="rainfallFileButtonLabel" for="rainfallFile">选择降雨 CSV</label>
-          <span id="rainfallFileName">尚未上传</span>
+          <span id="rainfallFileName">未上传</span>
         </div>
         <label>点位信息 XLSX</label>
         <div class="file-picker">
           <input id="siteInfoFile" name="site_info_file" type="file" accept=".xlsx,.xlsm,.xls">
           <label id="siteInfoFileButtonLabel" for="siteInfoFile">选择点位 XLSX</label>
-          <span id="siteInfoFileName">尚未上传</span>
+          <span id="siteInfoFileName">未上传</span>
         </div>
         <button id="batchImportButton" class="upload-btn" type="submit" disabled>上传并智能识别全部列名</button>
       </form>
@@ -685,7 +685,7 @@
       <div class="quick">
         <button class="secondary" data-prompt="描述当前数据">描述当前数据</button>
         <button class="secondary" data-prompt="检查当前数据质量">检查数据质量</button>
-        <button class="secondary" data-prompt="只看降雨场次">只看降雨场次</button>
+        <button class="secondary" data-prompt="统计排污规律">统计排污规律</button>
         <button class="secondary" data-prompt="分析旱天风险">分析旱天风险</button>
         <button class="secondary" data-prompt="列出已有结果">列出已有结果</button>
       </div>
@@ -739,6 +739,11 @@
           </label>
           <textarea id="message" rows="1"
                     placeholder="描述你的分析需求，例如：只看 3 月 7 日这场雨的场次统计"></textarea>
+          <button id="stopBtn" type="button" title="停止生成" aria-label="停止" style="display:none">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <rect x="4" y="4" width="16" height="16" rx="2"/>
+            </svg>
+          </button>
           <button id="sendBtn" type="submit" title="发送" aria-label="发送">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -791,6 +796,9 @@
     const chat = document.getElementById("chat");
     const message = document.getElementById("message");
     const sendBtn = document.getElementById("sendBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    let processing = false;
+    let pendingMessages = [];
     const chatAttachments = document.getElementById("chatAttachments");
     const attachmentPreview = document.getElementById("attachmentPreview");
     const chatModel = document.getElementById("chatModel");
@@ -1198,20 +1206,27 @@
 
     async function send(text) {
       const trimmed = text.trim();
-      if (!trimmed || sendBtn.disabled) return;
+      if (!trimmed) return;
+      if (processing) {
+        pendingMessages.push(trimmed);
+        addMessage(trimmed, "user", true);
+        message.value = "";
+        message.style.height = "";
+        const queueNote = addMessage(`已排队（第 ${pendingMessages.length} 条），将在当前任务完成后处理`, "agent", false);
+        queueNote.style.opacity = "0.6";
+        return;
+      }
       if (!sessionId) {
         sessionId = createSessionId();
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
       }
+      processing = true;
+      sendBtn.style.display = "none";
+      stopBtn.style.display = "";
       const selectedAttachments = Array.from(chatAttachments.files || []);
       addMessage(trimmed, "user", true, [], selectedAttachments.map((file) => ({name: file.name})));
       message.value = "";
       message.style.height = "";
-      sendBtn.disabled = true;
-      message.disabled = true;
-      document.querySelectorAll("[data-prompt]").forEach((button) => {
-        button.disabled = true;
-      });
       const pendingMessage = addMessage("", "agent", false);
       pendingMessage.classList.add("pending");
       pendingMessage.querySelector(".msg-body").innerHTML =
@@ -1267,12 +1282,14 @@
         addMessage(`请求失败：${err.message}`, "agent");
       } finally {
         clearInterval(pendingTimer);
-        sendBtn.disabled = false;
-        message.disabled = false;
-        document.querySelectorAll("[data-prompt]").forEach((button) => {
-          button.disabled = false;
-        });
+        processing = false;
+        sendBtn.style.display = "";
+        stopBtn.style.display = "none";
         message.focus();
+        if (pendingMessages.length > 0) {
+          const next = pendingMessages.shift();
+          send(next);
+        }
       }
     }
 
@@ -1289,6 +1306,24 @@
     document.getElementById("chatForm").addEventListener("submit", (event) => {
       event.preventDefault();
       send(message.value);
+    });
+
+    stopBtn.addEventListener("click", async () => {
+      if (!processing || !sessionId) return;
+      try {
+        await fetch("/api/cancel", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({session_id: sessionId}),
+        });
+      } catch (_) {}
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && processing) {
+        event.preventDefault();
+        stopBtn.click();
+      }
     });
 
     message.addEventListener("keydown", (event) => {
@@ -1326,13 +1361,13 @@
       currentBatchId = state.workspace_id;
       const flowText = state.flow.present
         ? `当前已导入 ${state.flow.file_count || 1} 个文件`
-        : "尚未上传";
+        : "未上传";
       const rainfallText = state.rainfall.present
         ? `当前已导入：${state.rainfall.filename || "降雨数据"}`
-        : "尚未上传";
+        : "未上传";
       const sitesText = state.sites.present
         ? `当前已导入：${state.sites.filename || "点位信息"}`
-        : "尚未上传";
+        : "未上传";
       document.getElementById("flowFileNames").textContent = flowText;
       document.getElementById("rainfallFileName").textContent = rainfallText;
       document.getElementById("siteInfoFileName").textContent = sitesText;
@@ -1504,11 +1539,23 @@
         }
         currentProjectId = "";
         currentBatchId = "";
+        currentFilterId = "";
+        currentWorkspaceState = null;
         sessionId = "";
         projectNameInput.value = "";
         projectDownloads.hidden = true;
         resetWorkspaceBtn.style.display = "none";
         deleteProjectBtn.style.display = "none";
+        resetImportArea();
+        document.getElementById("flowFileNames").textContent = "未上传";
+        document.getElementById("rainfallFileName").textContent = "未上传";
+        document.getElementById("siteInfoFileName").textContent = "未上传";
+        filterSummary.textContent = "";
+        filterRevisionFileName.textContent = "尚未生成";
+        filterRevisionFile.disabled = true;
+        filterRevisionFile.value = "";
+        confirmFilterButton.disabled = true;
+        runFilterButton.disabled = true;
         restoreTranscript();
         await refreshProjects();
         alert("项目已删除。");
@@ -1887,13 +1934,13 @@
       pendingAuxiliaryFiles.rainfall = event.target.files[0] || null;
       document.getElementById("rainfallFileName").textContent =
         pendingAuxiliaryFiles.rainfall?.name
-        || (currentWorkspaceState?.rainfall?.present ? "当前已导入：降雨数据" : "尚未上传");
+        || (currentWorkspaceState?.rainfall?.present ? "当前已导入：降雨数据" : "未上传");
     });
     document.getElementById("siteInfoFile").addEventListener("change", (event) => {
       pendingAuxiliaryFiles.sites = event.target.files[0] || null;
       document.getElementById("siteInfoFileName").textContent =
         pendingAuxiliaryFiles.sites?.name
-        || (currentWorkspaceState?.sites?.present ? "当前已导入：点位信息" : "尚未上传");
+        || (currentWorkspaceState?.sites?.present ? "当前已导入：点位信息" : "未上传");
     });
     document.getElementById("batchImportFile").addEventListener("change", (event) => {
       const names = Array.from(event.target.files).map((file) => file.name);
@@ -1902,7 +1949,7 @@
           ? `已选择 ${names.length} 个文件`
           : (currentWorkspaceState?.flow?.present
             ? `当前已导入 ${currentWorkspaceState.flow.file_count || 1} 个文件`
-            : "尚未上传");
+            : "未上传");
     });
     filterRevisionFile.addEventListener("change", (event) => {
       filterRevisionFileName.textContent =

@@ -177,6 +177,7 @@ class ConversationRunner:
             session_state,
             run_id,
             selected_settings,
+            session_id,
         )
         self.run_recorder.start(
             run_id=run_id,
@@ -252,6 +253,7 @@ class ConversationRunner:
         session: SessionState,
         run_id: str,
         settings: Any,
+        session_id: str = "",
     ) -> AgentDeps:
         batch_root = self.files_root / project_id / "batches" / batch_id
         scoped = copy(self.base_deps)
@@ -268,6 +270,7 @@ class ConversationRunner:
         scoped.session.current_run_id = run_id
         scoped.current_project_id = project_id
         scoped.current_batch_id = batch_id
+        scoped.cancel_session_id = session_id
         scoped.trace = self.run_recorder
         return scoped
 

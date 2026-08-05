@@ -89,6 +89,10 @@ class ChatResponse(BaseModel):
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class CancelRequest(BaseModel):
+    session_id: str
+
+
 def _deps_with_settings(deps: AgentDeps, settings: Any) -> AgentDeps:
     model_deps = copy(deps)
     model_deps.settings = settings
@@ -1914,6 +1918,12 @@ def create_app(
                 project_id, batch_id
             )
         ]
+
+    @app.post("/api/cancel")
+    def cancel_run(request: CancelRequest) -> dict[str, str]:
+        from agent.core import request_cancel
+        request_cancel(request.session_id)
+        return {"status": "cancelled"}
 
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:

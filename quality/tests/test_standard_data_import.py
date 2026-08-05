@@ -288,7 +288,7 @@ def test_index_exposes_batch_standard_data_import_workflow(tmp_path: Path) -> No
     assert 'names.join("、")' not in response.text
     assert "重新识别完成：已替换当前标准数据" not in response.text
     assert "选择监测 CSV" in response.text
-    assert "尚未上传" in response.text
+    assert "未上传" in response.text
     assert "/workspace/state" in response.text
     assert "/workspace/reset" in response.text
     assert "现有降雨和点位信息会保留" in response.text
