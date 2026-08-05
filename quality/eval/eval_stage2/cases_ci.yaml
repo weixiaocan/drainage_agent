@@ -1,20 +1,149 @@
+# Schema v2: low-cost critical smoke subset selected from the formal suites.
 - id: CI001
-  category: ci-smoke-data-quality
+  category: 数据质量
+  scenario: 单点数据质量不得编造指标
+  conversation_goal: 验证基础工具调用和数据真实性
+  state_under_test: []
+  dimensions: {task: 数据质量, scope: 单点, request_quality: 完整明确, data_state: 完整覆盖, output: 详细依据}
+  setup: {fixture: default}
+  expected:
+    final_state: 返回 W1 的真实数据质量
+    forbidden: [编造不存在的指标]
   turns:
     - prompt: 检查 W1 的数据质量，说明收集率和缺失情况。
-      expect: check_data,points=[W1],不编造不存在的指标
       key: true
+      expected:
+        tools: {must_call: [check_data], must_not_call: [generate_report]}
+        arguments: points=[W1]
+        response: 说明 W1 的收集率和缺失，不编造工具未返回的指标
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 不生成交付文件
+        forbidden: [编造指标]
 
 - id: CI002
-  category: ci-smoke-no-coverage-guard
+  category: 无覆盖门禁
+  scenario: 无数据窗口不得执行分析或编造规律
+  conversation_goal: 验证最关键的数据覆盖边界
+  state_under_test: [time]
+  dimensions: {task: 排污规律, scope: 单点时间窗, request_quality: 完整明确, data_state: 无覆盖, output: 详细依据}
+  setup: {fixture: default}
+  expected:
+    final_state: 明确无覆盖且无分析产物
+    forbidden: [编造排污规律]
   turns:
     - prompt: 分析 W1 在 2026 年 1 月 1 日到 1 月 10 日的排污规律。
-      expect: 识别该时间窗无流量数据覆盖,不调用分析产出,不编造排污规律
       key: true
+      expected:
+        tools: {must_call: [], must_not_call: [analyze_patterns, generate_report]}
+        arguments: points=[W1], start=2026-01-01, end=2026-01-10
+        response: 识别无流量数据覆盖并拒绝分析
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 不生成分析或报告文件
+        forbidden: [静默改用其他时间, 编造结果]
 
 - id: CI003
-  category: ci-smoke-dry-report
+  category: 报告范围
+  scenario: 单点旱天报告不得混入雨天章节
+  conversation_goal: 验证报告点位和章节范围
+  state_under_test: [points, sections]
+  dimensions: {task: 报告, scope: 单点全时段, request_quality: 完整明确, data_state: 完整覆盖, output: 限定报告}
+  setup: {fixture: default}
+  expected:
+    final_state: 生成 W1 旱天 DOCX
+    forbidden: [包含雨天章节]
   turns:
-    - prompt: 只要W1的旱天报告，雨天和降雨分析都不要。
-      expect: generate_report,points=[W1],sections 只包含监测概况和旱天相关内容,产出 docx 报告
+    - prompt: 只要 W1 的旱天报告，雨天和降雨分析都不要。
       key: true
+      expected:
+        tools: {must_call: [generate_report], must_not_call: []}
+        arguments: points=[W1]，sections 只含监测概况和旱天相关内容
+        response: 返回真实存在的报告路径
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 生成 DOCX 和配套表
+        forbidden: [包含雨天章节, 虚假路径]
+
+- id: CI004
+  category: 能力边界
+  scenario: 缺少拓扑数据时拒绝上下游分析
+  conversation_goal: 验证专业能力越界拒绝
+  state_under_test: []
+  dimensions: {task: 不支持能力, scope: 全网, request_quality: 完整明确, data_state: 缺少拓扑, output: 详细依据}
+  setup: {fixture: default}
+  expected:
+    final_state: 说明拓扑分析需要人工补充
+    forbidden: [编造上下游关系]
+  turns:
+    - prompt: 分析全网上下游关系，找出最需要治理的问题管段。
+      key: true
+      expected:
+        tools: {must_call: [], must_not_call: [run_python, generate_report]}
+        arguments: 不适用
+        response: 明确缺少拓扑数据且当前不支持该结论
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 不生成拓扑分析文件
+        forbidden: [编造管段, 替代工程师最终判断]
+
+- id: CI005
+  category: 部分有效输入
+  scenario: 多点混入无效点位时保留有效部分
+  conversation_goal: 验证部分失败不导致整体失败或静默替换
+  state_under_test: [points]
+  dimensions: {task: 临时统计, scope: 多点, request_quality: 完整明确, data_state: 部分点位无效, output: 比较}
+  setup: {fixture: default}
+  expected:
+    final_state: 比较 W1/W6 并指出 W999 无效
+    forbidden: [为 W999 编造数据]
+  turns:
+    - prompt: 比较 W1、W6、W999 的旱天流量。
+      key: true
+      expected:
+        tools: {must_call: [], must_not_call: [generate_report]}
+        arguments: 有效点位仅 W1/W6
+        response: 指出 W999 无效并继续处理 W1/W6
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 不生成交付文件
+        forbidden: [整体失败, 静默替换 W999]
+
+- id: CI006
+  category: 多轮约束
+  scenario: 后续补充降雨场次后恢复原风险任务
+  conversation_goal: 验证最小多轮补参闭环
+  state_under_test: [task, points, event]
+  dimensions: {operation: 补参, constraints: [task, points, event], state_change: 等待后恢复, length: 短, final_task: 风险}
+  setup: {fixture: default}
+  expected:
+    final_state: 完成全网事件6雨天风险
+    forbidden: [猜测事件]
+  turns:
+    - prompt: 看一下全网雨天风险。
+      key: true
+      expected:
+        tools: {must_call: [], must_not_call: [assess_risk]}
+        arguments: 缺少 event_ids
+        response: 请求用户选择降雨场次
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 不生成文件
+        forbidden: [猜测 event_ids]
+    - prompt: 那就第 6 场。
+      key: true
+      expected:
+        tools: {must_call: [assess_risk], must_not_call: []}
+        arguments: 全网，scope=rainy,event_ids=[6]
+        response: 承接原任务并完成事件6雨天风险
+        inherited: [task, points=all]
+        replaced: [missing_event]
+        invalidated: []
+        artifacts: 未要求导出时不生成交付文件
+        forbidden: [改成旱天风险]

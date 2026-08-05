@@ -132,6 +132,12 @@ Agent Eval 的用例、运行器、人工标注数据和 HTML 报告位于 `qual
 python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_single.yaml --validate-only
 ```
 
+验证 schema v2 多轮题库：
+
+```powershell
+python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_multiturn_v2.yaml --validate-only
+```
+
 正式运行时显式指定输出文件，避免覆盖历史结果：
 
 ```powershell

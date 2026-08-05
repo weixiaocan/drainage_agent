@@ -72,6 +72,7 @@ class TurnRecord:
     output: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     run_id: str | None = None
+    expected: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -188,6 +189,7 @@ def load_cases(results_path: Path, artifacts_root: Path | None = None) -> list[C
                         output=str(raw_turn.get("output") or ""),
                         tool_calls=calls,
                         run_id=run_id,
+                        expected=raw_turn.get("expected") if isinstance(raw_turn.get("expected"), dict) else {},
                     )
                 )
         else:
@@ -764,24 +766,32 @@ def check_hitl_filter_confirmation(case: CaseRecord, ctx: CheckContext) -> list[
 def check_expected_tool_contract(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
     """执行 schema v2 中能够客观判定的通用工具契约。"""
     name = "expected_tool_contract"
-    tools = case.expected.get("tools") if isinstance(case.expected, dict) else None
-    if not isinstance(tools, dict):
-        return [result(case, name, "trace", "skip", "no structured tool contract")]
-    must_call = {str(value) for value in tools.get("must_call", [])}
-    must_not_call = {str(value) for value in tools.get("must_not_call", [])}
-    if not must_call and not must_not_call:
-        return [result(case, name, "trace", "skip", "no machine-readable tool names")]
-    actual = [call.tool for call in case.all_tool_calls]
-    missing = sorted(must_call - set(actual))
-    forbidden = sorted(must_not_call & set(actual))
-    if missing or forbidden:
-        reasons = []
-        if missing:
-            reasons.append(f"missing required tools: {missing}")
-        if forbidden:
-            reasons.append(f"called forbidden tools: {forbidden}")
-        return [result(case, name, "trace", "fail", "; ".join(reasons))]
-    return [result(case, name, "trace", "pass", f"tool contract satisfied: {actual}")]
+    contracts: list[tuple[int | None, dict[str, Any], list[str]]] = []
+    case_tools = case.expected.get("tools") if isinstance(case.expected, dict) else None
+    if isinstance(case_tools, dict):
+        contracts.append((None, case_tools, [call.tool for call in case.all_tool_calls]))
+    for turn in case.turns:
+        turn_tools = turn.expected.get("tools") if isinstance(turn.expected, dict) else None
+        if isinstance(turn_tools, dict):
+            contracts.append((turn.n, turn_tools, [call.tool for call in turn.tool_calls]))
+    checks: list[CheckResult] = []
+    for turn_number, tools, actual in contracts:
+        must_call = {str(value) for value in tools.get("must_call", [])}
+        must_not_call = {str(value) for value in tools.get("must_not_call", [])}
+        if not must_call and not must_not_call:
+            continue
+        missing = sorted(must_call - set(actual))
+        forbidden = sorted(must_not_call & set(actual))
+        if missing or forbidden:
+            reasons = []
+            if missing:
+                reasons.append(f"missing required tools: {missing}")
+            if forbidden:
+                reasons.append(f"called forbidden tools: {forbidden}")
+            checks.append(result(case, name, "trace", "fail", "; ".join(reasons), turn_number))
+        else:
+            checks.append(result(case, name, "trace", "pass", f"tool contract satisfied: {actual}", turn_number))
+    return checks or [result(case, name, "trace", "skip", "no machine-readable tool names")]
 
 
 CHECKS: list[CheckFn] = [

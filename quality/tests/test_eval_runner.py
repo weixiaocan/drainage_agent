@@ -145,14 +145,27 @@ def test_normalize_multiturn_case_preserves_key_turns() -> None:
     case = normalize_case({
         "id": "M001",
         "category": "指代",
+        "conversation_goal": "继承任务并替换点位",
+        "state_under_test": ["task", "points"],
         "turns": [
             {"prompt": "先看 W1", "expect": "调用工具"},
-            {"prompt": "W6 呢", "expect": "继承上下文", "key": True},
+            {
+                "prompt": "W6 呢",
+                "key": True,
+                "expected": {
+                    "response": "继承上下文",
+                    "inherited": ["task"],
+                    "replaced": ["points"],
+                },
+            },
         ],
     })
 
     assert [turn["key"] for turn in case["turns"]] == [False, True]
     assert case["turns"][1]["expect"] == "继承上下文"
+    assert case["turns"][1]["expected"]["replaced"] == ["points"]
+    assert case["conversation_goal"] == "继承任务并替换点位"
+    assert case["state_under_test"] == ["task", "points"]
 
 
 def test_normalize_structured_single_case_preserves_eval_contract() -> None:
@@ -280,3 +293,25 @@ def test_structured_expected_tools_are_loaded_and_checked(tmp_path: Path) -> Non
 
     assert case.expected["tools"]["must_call"] == ["check_data"]
     assert checked[0].status == "pass"
+
+
+def test_structured_per_turn_tool_contract_is_loaded_and_checked(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "M001",
+        "turns": [{
+            "n": 1,
+            "prompt": "W6 呢",
+            "expected": {"tools": {"must_call": ["analyze_patterns"]}, "inherited": ["task"]},
+            "tool_calls": [{"tool": "analyze_patterns", "args": {"points": ["W6"]}}],
+        }],
+        "root": str(tmp_path / "artifacts"),
+    }, ensure_ascii=False), encoding="utf-8")
+    case = load_cases(results)[0]
+    ctx = CheckContext(tmp_path, set(), None, None, None, None)
+
+    checked = check_expected_tool_contract(case, ctx)
+
+    assert case.turns[0].expected["inherited"] == ["task"]
+    assert checked[0].status == "pass"
+    assert checked[0].turn == 1

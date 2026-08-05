@@ -165,7 +165,8 @@ def normalize_case(case: dict) -> dict:
         turns = [
             {
                 "prompt": t["prompt"],
-                "expect": t.get("expect", ""),
+                "expect": t.get("expect", "") or t.get("expected", {}).get("response", ""),
+                "expected": t.get("expected", {}),
                 "key": bool(t.get("key", False)),
                 "category": case.get("category", ""),
             }
@@ -175,6 +176,7 @@ def normalize_case(case: dict) -> dict:
         turns = [{
             "prompt": case["prompt"],
             "expect": case.get("pass_when", "") or default_expect,
+            "expected": expected,
             "key": True,
             "category": case.get("category", ""),
         }]
@@ -185,6 +187,8 @@ def normalize_case(case: dict) -> dict:
         "dimensions": case.get("dimensions", {}),
         "setup": case.get("setup", {"fixture": "default"}),
         "expected": expected,
+        "conversation_goal": case.get("conversation_goal", ""),
+        "state_under_test": case.get("state_under_test", []),
         "turns": turns,
         "seed_prompts": case.get("seed_prompts", []),
         "rebuild_after_seed": bool(case.get("rebuild_after_seed", False)),
@@ -290,6 +294,8 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
         "dimensions": case["dimensions"],
         "setup": case["setup"],
         "expected": case["expected"],
+        "conversation_goal": case["conversation_goal"],
+        "state_under_test": case["state_under_test"],
         "turns": [],
         "state": {"before": [], "after": []},
         "root": "",
@@ -329,6 +335,7 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
                     "run_id": run_id,
                     "prompt": turn["prompt"],
                     "expect": turn["expect"],
+                    "expected": turn["expected"],
                     "key": turn["key"],
                     "output": str(result.output),
                     "tool_calls": tool_seq(result.new_messages()),
@@ -355,8 +362,8 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description="排水 agent eval runner（单轮/多轮）")
-    ap.add_argument("cases_file", nargs="?", default=str(STAGE_DIR / "cases_multiturn.yaml"),
-                    help="用例文件，默认 quality/eval/eval_stage2/cases_multiturn.yaml")
+    ap.add_argument("cases_file", nargs="?", default=str(STAGE_DIR / "cases_multiturn_v2.yaml"),
+                    help="用例文件，默认 quality/eval/eval_stage2/cases_multiturn_v2.yaml")
     ap.add_argument("-o", "--out", default=None, help="输出 jsonl，默认 quality/eval/eval_stage2/results.jsonl")
     ap.add_argument("--resume", action="store_true", help="从已有 .tmp 结果断点续跑，跳过已完整写入的 case")
     ap.add_argument("--auto-confirm", dest="auto_confirm", action="store_true", default=True,

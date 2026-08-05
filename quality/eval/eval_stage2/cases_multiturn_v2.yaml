@@ -1,0 +1,1944 @@
+# Schema v2: multi-turn cases only test state that crosses turns.
+- id: M001
+  category: 指代消解
+  scenario: 继承分析任务、替换点位并比较已有结果
+  conversation_goal: 继承分析任务、替换点位并比较已有结果
+  state_under_test: &id001
+  - task
+  - scope
+  dimensions:
+    operation: 指代和替换
+    constraints: *id001
+    state_change: 增量分析
+    length: 短
+    final_task: 比较
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 看 W1、W6 的旱天排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1,W6]，旱天
+      response: 返回 W1/W6 的旱天排污规律
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那 W4 呢？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W4]，仍为旱天排污规律
+      response: 把那指代为排污规律，对 W4 做同类分析
+      inherited:
+      - task
+      - dry_scope
+      replaced:
+      - points
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 反问做什么分析
+      - 扩展到全网
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W1 和 W4 比，哪个更异常？
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - analyze_patterns
+      arguments: ''
+      response: 基于已有 W1/W4 结果比较并给出依据
+      inherited:
+      - task
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 不产生新文件
+      forbidden:
+      - 重跑全网
+      - 无依据排序
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M002
+  category: 增量分析与导出
+  scenario: 继承点位和事件，追加模块并导出上述结果
+  conversation_goal: 继承点位和事件，追加模块并导出上述结果
+  state_under_test: &id002
+  - points
+  - event
+  dimensions:
+    operation: 追加和指代
+    constraints: *id002
+    state_change: 增量分析
+    length: 短
+    final_task: 导出
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 W6 在第 6 场降雨里的事件响应。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: points=[W6], event_ids=[6]
+      response: 返回 W6 事件6响应
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 进一步分析 RDII 和雨天风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        - assess_risk
+        must_not_call: []
+      arguments: points=[W6], event_ids=[6], scope=rainy
+      response: 在相同点位和事件上追加 RDII 与雨天风险
+      inherited:
+      - points
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 改用其他事件
+      - 扩展到全网
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 把上述结果导出。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 把上述指代为本会话 W6 事件6的三个模块结果
+      inherited:
+      - points
+      - event
+      - selected_results
+      replaced: []
+      invalidated: []
+      artifacts: 只导出 W6 事件6相关结果
+      forbidden:
+      - 反问导出什么
+      - 导出全网无关结果
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M003
+  category: 风险增量链
+  scenario: 从旱天风险增量追加指定雨天风险并复用结果比较
+  conversation_goal: 从旱天风险增量追加指定雨天风险并复用结果比较
+  state_under_test: &id003
+  - scope
+  - event
+  dimensions:
+    operation: 追加模块
+    constraints: *id003
+    state_change: 增量分析
+    length: 短
+    final_task: 比较
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 看一下全网旱天风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: 全网，scope=dry
+      response: 返回全网旱天风险
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再加上第 6 场降雨的雨天风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: 全网，scope=rainy, event_ids=[6]
+      response: 保留旱天结果并追加事件6雨天风险
+      inherited:
+      - points=all
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 重算无关模块
+      - 覆盖旱天结果
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W4 和 W6 是不是雨天风险最高的？
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - assess_risk
+      arguments: ''
+      response: 基于事件6雨天风险结果回答并给出依据
+      inherited:
+      - event
+      - rainy_scope
+      - risk_result
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 重新计算
+      - 切回旱天口径
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M004
+  category: 缺参澄清与恢复
+  scenario: 缺少降雨场次时澄清，补参后恢复原任务
+  conversation_goal: 缺少降雨场次时澄清，补参后恢复原任务
+  state_under_test: &id004
+  - task
+  - points
+  - event
+  dimensions:
+    operation: 补参
+    constraints: *id004
+    state_change: 等待输入后恢复
+    length: 中
+    final_task: 比较
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 看一下全网旱天风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: 全网，scope=dry
+      response: 返回全网旱天风险
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再加上雨天的。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - assess_risk
+      arguments: ''
+      response: 要求用户选择降雨场次并展示选项
+      inherited:
+      - task
+      - points=all
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 猜测 event_ids
+      - 默认选择最大降雨
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那就看第 6 场。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: 全网，scope=rainy, event_ids=[6]
+      response: 补入事件6并恢复全网雨天风险任务
+      inherited:
+      - task
+      - points=all
+      replaced:
+      - missing_event
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W4 和 W6 是不是最高的？
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - assess_risk
+      arguments: ''
+      response: 基于刚完成的事件6雨天风险比较
+      inherited:
+      - event
+      - rainy_scope
+      - risk_result
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M005
+  category: 事件选择替换
+  scenario: 最大降雨无流量覆盖后改为选择有覆盖事件
+  conversation_goal: 最大降雨无流量覆盖后改为选择有覆盖事件
+  state_under_test: &id005
+  - points
+  - event
+  dimensions:
+    operation: 替换参数
+    constraints: *id005
+    state_change: 旧选择失效
+    length: 中
+    final_task: RDII
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 这段数据有哪些降雨事件，最大那场是哪天？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rainfall
+        must_not_call: []
+      arguments: ''
+      response: 列出事件并识别最大降雨
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 针对最大那场，看 W1、W6 的响应。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: ''
+      response: 继承最大事件和 W1/W6；无覆盖时明确拒绝计算
+      inherited:
+      - max_event
+      replaced:
+      - points
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 编造响应指标
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那就改成有流量数据覆盖的最大场次。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: ''
+      response: 用有覆盖的最大事件替换旧事件并分析 W1/W6
+      inherited:
+      - points
+      replaced:
+      - event
+      invalidated:
+      - previous_event_response
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 这两个点这场的 RDII 谁更严重？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        must_not_call: []
+      arguments: ''
+      response: 继承新事件和 W1/W6 计算 RDII 并比较
+      inherited:
+      - points
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 回到原最大但无覆盖事件
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M006
+  category: 报告范围逐步形成
+  scenario: 分析后逐步确定并修正最终报告范围
+  conversation_goal: 分析后逐步确定并修正最终报告范围
+  state_under_test: &id006
+  - points
+  - time
+  - sections
+  - event
+  dimensions:
+    operation: 补参和修改
+    constraints: *id006
+    state_change: 报告范围形成
+    length: 中
+    final_task: 报告
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 W1、W4 的旱天排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1,W4]，旱天
+      response: 返回 W1/W4 旱天规律
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 生成分析报告。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - generate_report
+      arguments: ''
+      response: 报告范围不完整时询问时间、章节或是否沿用当前范围
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 擅自生成全网全时段报告
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 只要旱天章节，时间用 3 月 10 日之后。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - generate_report
+      arguments: ''
+      response: 记录旱天章节和新时间窗，继续确认最终点位范围
+      inherited:
+      - points
+      replaced:
+      - time
+      - sections
+      invalidated:
+      - earlier_full_period_results
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 就用 W1、W4，生成吧。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - generate_report
+        must_not_call: []
+      arguments: points=[W1,W4]，start=2026-03-10，只含旱天章节
+      response: 按最终确认范围生成报告
+      inherited:
+      - time
+      - sections
+      replaced: []
+      invalidated: []
+      artifacts: 生成范围正确的 DOCX 和配套表
+      forbidden:
+      - 包含雨天章节
+      - 扩展到全网
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M007
+  category: 有效时间窗切换
+  scenario: 连续切换有效子窗口并保持分析任务
+  conversation_goal: 连续切换有效子窗口并保持分析任务
+  state_under_test: &id007
+  - task
+  - time
+  - points
+  dimensions:
+    operation: 替换时间
+    constraints: *id007
+    state_change: 旧结果失效
+    length: 短
+    final_task: 分析
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 只看 2026 年 3 月 7 日到 15 日的全网排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: 全网，start=2026-03-07,end=2026-03-15
+      response: 按明确窗口分析全网排污规律
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那 3 月上旬呢？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 保持排污规律任务并替换为3月上旬窗口
+      inherited:
+      - task
+      - points=all
+      replaced:
+      - time
+      invalidated:
+      - previous_window_result
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那 3 月中旬呢？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 再次替换时间窗并说明实际数据覆盖
+      inherited:
+      - task
+      - points=all
+      replaced:
+      - time
+      invalidated:
+      - previous_window_result
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M008
+  category: 无覆盖窗口保持
+  scenario: 窗口收窄后仍无覆盖，不因多轮而编造结果
+  conversation_goal: 窗口收窄后仍无覆盖，不因多轮而编造结果
+  state_under_test: &id008
+  - task
+  - time
+  - points
+  dimensions:
+    operation: 替换时间
+    constraints: *id008
+    state_change: 持续无结果
+    length: 短
+    final_task: 拒绝
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 只看 2 月这段的全网排污规律。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 明确2月无覆盖并拒绝分析
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 编造排污规律
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那 2 月上旬呢？
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - analyze_patterns
+      arguments: ''
+      response: 继承排污规律和全网范围，替换为2月上旬后仍拒绝
+      inherited:
+      - task
+      - points=all
+      replaced:
+      - time
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 因为窗口变短而编造结果
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M009
+  category: 禁止静默放宽范围
+  scenario: 无覆盖范围持续生效，只有明确修改后才能切换全时段
+  conversation_goal: 无覆盖范围持续生效，只有明确修改后才能切换全时段
+  state_under_test: &id009
+  - points
+  - time
+  - task
+  dimensions:
+    operation: 保持后显式替换
+    constraints: *id009
+    state_change: 无结果到新任务
+    length: 中
+    final_task: 报告
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 1 月份 W1 的排污规律。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 明确一月无覆盖，不分析
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 静默改用有数据时段
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 进一步做风险和 RDII。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - assess_risk
+        - analyze_rdii
+      arguments: ''
+      response: 继续继承一月和 W1，无覆盖时拒绝
+      inherited:
+      - points
+      - time
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 改成全时段
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 生成 W1 的分析报告。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - generate_report
+      arguments: ''
+      response: 一月范围仍有效，因此拒绝生成无依据报告或要求确认新范围
+      inherited:
+      - points
+      - time
+      replaced: []
+      invalidated: []
+      artifacts: 不生成报告
+      forbidden:
+      - 偷偷生成全时段报告
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 改成 W1 全时段，只要旱天报告。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - generate_report
+        must_not_call: []
+      arguments: ''
+      response: 显式替换时间和章节后生成 W1 全时段旱天报告
+      inherited: []
+      replaced:
+      - time
+      - sections
+      invalidated:
+      - january_request
+      artifacts: 生成 W1 全时段旱天 DOCX
+      forbidden:
+      - 包含雨天章节
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M010
+  category: 长期旱天约束
+  scenario: 多轮跨模块后持续保持只看旱天
+  conversation_goal: 多轮跨模块后持续保持只看旱天
+  state_under_test: &id010
+  - dry_scope
+  dimensions:
+    operation: 长期保持
+    constraints: *id010
+    state_change: 跨模块保持
+    length: 长
+    final_task: 报告
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 接下来都只看旱天。先给我 W1、W6 的排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1,W6]，旱天
+      response: 确立旱天约束并分析 W1/W6
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W18 的呢？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 仍按旱天分析 W18
+      inherited:
+      - task
+      - dry_scope
+      replaced:
+      - points
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 全网风险怎么样？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: ''
+      response: 按旱天口径评估全网风险
+      inherited:
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 自动加入雨天风险
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 有哪些降雨事件？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rainfall
+        must_not_call: []
+      arguments: ''
+      response: 正常列出降雨事件，不改变旱天分析约束
+      inherited:
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再看全网排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 多轮后仍按旱天分析全网
+      inherited:
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 只要旱天报告。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - generate_report
+        must_not_call: []
+      arguments: ''
+      response: 生成只含旱天内容的报告
+      inherited:
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 只生成旱天报告
+      forbidden:
+      - 包含雨天章节
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M011
+  category: 长期点位约束
+  scenario: 多轮跨模块后持续限制在 W1/W6/W18
+  conversation_goal: 多轮跨模块后持续限制在 W1/W6/W18
+  state_under_test: &id011
+  - points
+  dimensions:
+    operation: 长期保持
+    constraints: *id011
+    state_change: 跨模块保持
+    length: 长
+    final_task: 分析
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 这次只关注 W1、W6、W18。先看它们的旱天排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1,W6,W18]
+      response: 确立三点约束并分析
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 它们的风险怎么样？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: ''
+      response: 风险仍限定三点
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 扩展到全网
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 第 6 场降雨的响应？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: event_ids=[6]
+      response: 事件响应仍限定三点
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: RDII 呢？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        must_not_call: []
+      arguments: ''
+      response: RDII 仍限定三点和事件6
+      inherited:
+      - points
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 哪些降雨事件比较大？
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rainfall
+        must_not_call: []
+      arguments: ''
+      response: 降雨列表可正常全域返回，但不改变点位约束
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再给我看排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 多轮后仍只分析三点
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 扩展到全网
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M012
+  category: 上下文压缩
+  scenario: 上下文压缩后保留旱天和 W1/W6/W18 双重约束
+  conversation_goal: 上下文压缩后保留旱天和 W1/W6/W18 双重约束
+  state_under_test: &id012
+  - points
+  - dry_scope
+  dimensions:
+    operation: 压缩后保持
+    constraints: *id012
+    state_change: 上下文压缩
+    length: 压缩阈值
+    final_task: 分析
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 接下来全程只看旱天，而且只关注 W1、W6、W18。先看排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1,W6,W18]，旱天
+      response: 确立双重约束
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 它们的风险？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: ''
+      response: 三点旱天风险
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 哪个点最异常？
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 基于已有三点旱天结果比较
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 有哪些降雨事件？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_rainfall
+        must_not_call: []
+      arguments: ''
+      response: 列出降雨但不改变双重约束
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 第一场雨这三个点的响应？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: ''
+      response: 三点事件响应
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 这场的 RDII？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        must_not_call: []
+      arguments: ''
+      response: 三点同事件 RDII
+      inherited:
+      - points
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W1 的排污规律类型？
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 仍为旱天和约束点位
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W6 呢？
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 继承旱天排污规律并替换到 W6
+      inherited:
+      - task
+      - dry_scope
+      replaced:
+      - focus_point
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: W18 呢？
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 继承旱天排污规律并替换到 W18
+      inherited:
+      - task
+      - dry_scope
+      replaced:
+      - focus_point
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再整体看风险。
+    key: false
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: ''
+      response: 仍为三点旱天风险
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 数据质量怎么样？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - check_data
+        must_not_call: []
+      arguments: ''
+      response: 检查数据且不改变双重约束
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 哪个点数据最完整？
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 基于上轮结果比较三点
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再看一次排污规律。
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 仍为三点旱天规律
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 第六场雨它们的响应？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_event_response
+        must_not_call: []
+      arguments: ''
+      response: 三点事件6响应
+      inherited:
+      - points
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 这场的 RDII？
+    key: false
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        must_not_call: []
+      arguments: ''
+      response: 三点事件6 RDII
+      inherited:
+      - points
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 整体给个风险排序。
+    key: false
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 在三点和旱天口径内排序
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 我们一开始关注哪些点、什么口径？
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 准确复述 W1/W6/W18 和旱天
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 混入其他点位
+      - 改为雨天
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再看一遍这几个点的排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 压缩后仍执行三点旱天分析
+      inherited:
+      - points
+      - dry_scope
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 扩成全网
+      - 漂移到雨天
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M013
+  category: 用户修正覆盖
+  scenario: 用户修改点位和时间后以最新明确要求为准
+  conversation_goal: 用户修改点位和时间后以最新明确要求为准
+  state_under_test: &id013
+  - points
+  - time
+  - task
+  dimensions:
+    operation: 修改参数
+    constraints: *id013
+    state_change: 旧结果失效
+    length: 中
+    final_task: 比较
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 W1 全月的旱天排污规律。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: points=[W1]，全月，旱天
+      response: 分析 W1 全月旱天规律
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 改成 W6。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 用 W6 替换 W1 并重算
+      inherited:
+      - task
+      - time
+      - dry_scope
+      replaced:
+      - points
+      invalidated:
+      - W1_result
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 时间也改成 3 月 8 日到 10 日。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        must_not_call: []
+      arguments: ''
+      response: 替换时间并重新分析 W6
+      inherited:
+      - task
+      - points
+      - dry_scope
+      replaced:
+      - time
+      invalidated:
+      - full_month_result
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 和刚才 W1 全月结果比一下。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 说明两个范围不同，不做误导性直接比较；需要时请求统一口径
+      inherited:
+      - W1_full_month_result
+      - W6_window_result
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 把不同时间窗当同口径排名
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M014
+  category: 撤销输出要求
+  scenario: 用户撤销雨天章节和文件输出后不得保留旧要求
+  conversation_goal: 用户撤销雨天章节和文件输出后不得保留旧要求
+  state_under_test: &id014
+  - sections
+  - artifact_intent
+  dimensions:
+    operation: 撤销要求
+    constraints: *id014
+    state_change: 旧输出要求失效
+    length: 中
+    final_task: 仅对话
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 W1 的旱天和第 6 场雨天风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - assess_risk
+        must_not_call: []
+      arguments: points=[W1]，dry+rainy,event_ids=[6]
+      response: 完成 W1 旱天和事件6雨天风险
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 把这些做成包含旱天和雨天章节的报告。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call: []
+      arguments: ''
+      response: 记录报告意图和两个章节，范围不完整时继续确认
+      inherited:
+      - points
+      - event
+      - sections
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 算了，不要雨天，也不要生成文件。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - generate_report
+      arguments: ''
+      response: 撤销雨天章节和文件输出
+      inherited: []
+      replaced:
+      - sections
+      - artifact_intent
+      invalidated:
+      - rainy_report_request
+      artifacts: 不生成文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 那就总结一下。
+    key: true
+    expected:
+      tools:
+        must_call: []
+        must_not_call:
+        - generate_report
+      arguments: ''
+      response: 只在对话中总结 W1 旱天结果
+      inherited:
+      - points
+      - dry_scope
+      - artifact_intent=none
+      replaced: []
+      invalidated: []
+      artifacts: 不生成文件
+      forbidden:
+      - 包含雨天结论
+      - 生成报告
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+- id: M015
+  category: 范围变化与必要重算
+  scenario: 时间范围变化使旧结果失效，只补跑必要模块
+  conversation_goal: 时间范围变化使旧结果失效，只补跑必要模块
+  state_under_test: &id015
+  - points
+  - time
+  - modules
+  dimensions:
+    operation: 修改范围
+    constraints: *id015
+    state_change: 部分结果失效
+    length: 中
+    final_task: 报告
+  setup:
+    fixture: default
+  expected:
+    final_state: 最终状态与用户最后一次明确要求一致
+    forbidden:
+    - 编造数据
+    - 静默放宽范围
+    - 复用已经失效的结果
+    evidence:
+    - turns.expected
+    - turns.trace_events
+    - state.before
+    - state.after
+  turns:
+  - prompt: 分析 W1、W6 全时段的旱天排污规律和风险。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        - assess_risk
+        must_not_call: []
+      arguments: points=[W1,W6]，全时段，旱天
+      response: 完成两点全时段旱天规律和风险
+      inherited: []
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 改成只看 3 月 8 日到 10 日。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_patterns
+        - assess_risk
+        must_not_call: []
+      arguments: ''
+      response: 时间变化使两个旧模块结果失效并按新窗口重算
+      inherited:
+      - points
+      - modules
+      - dry_scope
+      replaced:
+      - time
+      invalidated:
+      - patterns_full_period
+      - risk_full_period
+      artifacts: 未明确要求时不产生交付文件
+      forbidden: []
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 再加上第 6 场雨的 RDII。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - analyze_rdii
+        must_not_call: []
+      arguments: points=[W1,W6],event_ids=[6]
+      response: 保留新窗口旱天结果并增量追加事件6 RDII
+      inherited:
+      - points
+      - time
+      replaced: []
+      invalidated: []
+      artifacts: 未明确要求时不产生交付文件
+      forbidden:
+      - 重复运行旱天模块
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after
+  - prompt: 按现在的范围生成报告。
+    key: true
+    expected:
+      tools:
+        must_call:
+        - generate_report
+        must_not_call: []
+      arguments: ''
+      response: 用最终点位、时间和模块生成报告
+      inherited:
+      - points
+      - time
+      - modules
+      - event
+      replaced: []
+      invalidated: []
+      artifacts: 生成最终范围 DOCX 和配套表
+      forbidden:
+      - 复用全时段旧结果
+      evidence:
+      - tool_calls
+      - trace_events
+      - state.before
+      - state.after

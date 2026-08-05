@@ -1,25 +1,90 @@
+# Schema v2: human-in-the-loop filter confirmation scenarios.
 - id: HITL001
-  category: hitl-filter-confirmation
+  category: 筛选确认
+  scenario: 筛选后暂停，明确确认后恢复且不重复筛选
+  conversation_goal: 验证正式筛选确认状态机
+  state_under_test: [filter_confirmation, task]
+  dimensions: {operation: 确认后恢复, constraints: [filter_confirmation], state_change: 等待确认到继续, length: 短, final_task: 风险}
+  setup: {fixture: default}
+  expected:
+    final_state: 已确认筛选结果被复用
+    forbidden: [越过确认, 重复筛选]
   turns:
     - prompt: 先筛选数据，然后分析全网旱天排污规律。
-      expect: hitl_stop_after_filter
       key: true
+      expected:
+        tools: {must_call: [data_filter], must_not_call: [analyze_patterns]}
+        arguments: 全网筛选
+        response: hitl_stop_after_filter
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 只产生候选筛选结果
+        forbidden: [确认前继续分析]
     - prompt: 确认继续
-      expect: hitl_resume_without_refilter
       key: true
+      expected:
+        tools: {must_call: [analyze_patterns], must_not_call: [data_filter]}
+        arguments: 全网旱天排污规律
+        response: hitl_resume_without_refilter
+        inherited: [pending_task, filter_result]
+        replaced: [filter_confirmation]
+        invalidated: []
+        artifacts: 产生确认后的分析结果
+        forbidden: [重新筛选]
     - prompt: 继续用这份筛选结果，看全网旱天风险。
-      expect: hitl_confirmed_fresh_no_repeat_stop
       key: true
+      expected:
+        tools: {must_call: [assess_risk], must_not_call: [data_filter]}
+        arguments: 全网旱天风险
+        response: hitl_confirmed_fresh_no_repeat_stop
+        inherited: [confirmed_filter_result]
+        replaced: [task]
+        invalidated: []
+        artifacts: 未要求导出时不产生交付文件
+        forbidden: [再次等待同一确认]
 
 - id: HITL002
-  category: hitl-filter-confirmation
+  category: 筛选确认
+  scenario: 含糊回复不得视为确认，明确确认后才恢复
+  conversation_goal: 验证确认语义不能被普通继续请求替代
+  state_under_test: [filter_confirmation, pending_task]
+  dimensions: {operation: 歧义确认, constraints: [filter_confirmation], state_change: 继续等待后恢复, length: 中, final_task: 风险}
+  setup: {fixture: default}
+  expected:
+    final_state: 只有明确确认后才执行风险分析
+    forbidden: [把普通分析请求当作确认]
   turns:
     - prompt: 先筛选数据，再看全网旱天风险。
-      expect: hitl_stop_after_filter
       key: true
+      expected:
+        tools: {must_call: [data_filter], must_not_call: [assess_risk]}
+        arguments: 全网筛选
+        response: hitl_stop_after_filter
+        inherited: []
+        replaced: []
+        invalidated: []
+        artifacts: 只产生候选筛选结果
+        forbidden: [确认前继续风险分析]
     - prompt: 继续看 W6 风险
-      expect: hitl_ambiguous_confirmation
       key: true
+      expected:
+        tools: {must_call: [], must_not_call: [data_filter, assess_risk]}
+        arguments: 尚未明确确认
+        response: hitl_ambiguous_confirmation
+        inherited: [pending_filter_confirmation]
+        replaced: []
+        invalidated: []
+        artifacts: 不产生新分析文件
+        forbidden: [把该句视为确认]
     - prompt: 确认继续
-      expect: hitl_resume_without_refilter
       key: true
+      expected:
+        tools: {must_call: [assess_risk], must_not_call: [data_filter]}
+        arguments: 承接 W6 旱天风险请求
+        response: hitl_resume_without_refilter
+        inherited: [filter_result, pending_task]
+        replaced: [filter_confirmation]
+        invalidated: []
+        artifacts: 产生确认后的风险结果
+        forbidden: [重新筛选]
