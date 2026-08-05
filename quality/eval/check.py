@@ -82,6 +82,7 @@ class CaseRecord:
     trace: Path | None
     error: str | None
     turns: list[TurnRecord]
+    expected: dict[str, Any] = field(default_factory=dict)
     manifest: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -209,6 +210,7 @@ def load_cases(results_path: Path, artifacts_root: Path | None = None) -> list[C
                 trace=trace,
                 error=record.get("error"),
                 turns=turns,
+                expected=record.get("expected") if isinstance(record.get("expected"), dict) else {},
                 manifest=manifest,
             )
         )
@@ -759,7 +761,31 @@ def check_hitl_filter_confirmation(case: CaseRecord, ctx: CheckContext) -> list[
     return checks
 
 
+def check_expected_tool_contract(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
+    """执行 schema v2 中能够客观判定的通用工具契约。"""
+    name = "expected_tool_contract"
+    tools = case.expected.get("tools") if isinstance(case.expected, dict) else None
+    if not isinstance(tools, dict):
+        return [result(case, name, "trace", "skip", "no structured tool contract")]
+    must_call = {str(value) for value in tools.get("must_call", [])}
+    must_not_call = {str(value) for value in tools.get("must_not_call", [])}
+    if not must_call and not must_not_call:
+        return [result(case, name, "trace", "skip", "no machine-readable tool names")]
+    actual = [call.tool for call in case.all_tool_calls]
+    missing = sorted(must_call - set(actual))
+    forbidden = sorted(must_not_call & set(actual))
+    if missing or forbidden:
+        reasons = []
+        if missing:
+            reasons.append(f"missing required tools: {missing}")
+        if forbidden:
+            reasons.append(f"called forbidden tools: {forbidden}")
+        return [result(case, name, "trace", "fail", "; ".join(reasons))]
+    return [result(case, name, "trace", "pass", f"tool contract satisfied: {actual}")]
+
+
 CHECKS: list[CheckFn] = [
+    check_expected_tool_contract,
     check_hitl_filter_confirmation,
     check_coverage_guard_no_analysis_without_data,
     check_single_analysis_no_unrelated_tools,

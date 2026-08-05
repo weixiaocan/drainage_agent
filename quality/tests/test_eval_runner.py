@@ -5,15 +5,20 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from quality.eval.eval_stage2.run_eval import (
+    apply_after_seed_mutation,
     canonical_case_id,
     compact_pending_results,
     completed_case_ids,
     fresh_root,
     normalize_case,
     preserve_artifacts,
+    trace_evidence,
+    tree_snapshot,
     tool_seq,
+    validate_cases,
 )
 from quality.eval.eval_stage2.view import load_results, render_report
+from quality.eval.check import CheckContext, check_expected_tool_contract, load_cases
 
 
 def test_fresh_root_copies_prompt_without_copying_env(tmp_path, monkeypatch) -> None:
@@ -32,6 +37,63 @@ def test_fresh_root_copies_prompt_without_copying_env(tmp_path, monkeypatch) -> 
     assert (root / "agent" / "prompts" / "system.md").read_text(encoding="utf-8") == "system prompt"
     assert not (root / ".env").exists()
     assert all((root / "var" / name).is_dir() for name in ("outputs", "workspace", "logs"))
+
+
+def test_fresh_root_can_remove_optional_inputs_from_isolated_copy(tmp_path, monkeypatch) -> None:
+    project = tmp_path / "project"
+    (project / "resources" / "data").mkdir(parents=True)
+    (project / "resources" / "templates").mkdir()
+    (project / "agent" / "prompts").mkdir(parents=True)
+    (project / "resources" / "data" / "降雨数据.csv").write_text("rain", encoding="utf-8")
+    (project / "resources" / "data" / "点位信息.xlsx").write_bytes(b"site")
+    (project / "resources" / "templates" / "监测数据分析报告模板-更新.docx").write_bytes(b"docx")
+    root = tmp_path / "isolated"
+    root.mkdir()
+    monkeypatch.setattr("quality.eval.eval_stage2.run_eval.PROJECT", project)
+
+    fresh_root(root, {"fixture": "default", "remove_inputs": ["rainfall", "site_info"]})
+
+    assert not (root / "resources" / "data" / "降雨数据.csv").exists()
+    assert not (root / "resources" / "data" / "点位信息.xlsx").exists()
+    assert (project / "resources" / "data" / "降雨数据.csv").exists()
+    assert (project / "resources" / "data" / "点位信息.xlsx").exists()
+
+
+def test_fresh_root_can_overlay_versioned_fixture_without_mutating_source(tmp_path, monkeypatch) -> None:
+    project = tmp_path / "project"
+    (project / "resources" / "data").mkdir(parents=True)
+    (project / "resources" / "templates").mkdir()
+    (project / "agent" / "prompts").mkdir(parents=True)
+    (project / "resources" / "data" / "点位信息.xlsx").write_bytes(b"original")
+    fixture = project / "quality" / "eval" / "fixtures" / "bad.xlsx"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_bytes(b"adversarial")
+    root = tmp_path / "isolated"
+    root.mkdir()
+    monkeypatch.setattr("quality.eval.eval_stage2.run_eval.PROJECT", project)
+
+    fresh_root(root, {
+        "fixture": "default",
+        "overlay_inputs": {"site_info": "quality/eval/fixtures/bad.xlsx"},
+    })
+
+    assert (root / "resources" / "data" / "点位信息.xlsx").read_bytes() == b"adversarial"
+    assert (project / "resources" / "data" / "点位信息.xlsx").read_bytes() == b"original"
+    assert fixture.read_bytes() == b"adversarial"
+
+
+def test_after_seed_mutation_only_changes_isolated_flow_copy(tmp_path: Path) -> None:
+    project_flow = tmp_path / "project" / "resources" / "data" / "flow" / "W1.csv"
+    isolated_flow = tmp_path / "isolated" / "resources" / "data" / "flow" / "W1.csv"
+    project_flow.parent.mkdir(parents=True)
+    isolated_flow.parent.mkdir(parents=True)
+    project_flow.write_text("header\nvalue", encoding="utf-8")
+    isolated_flow.write_text(project_flow.read_text(encoding="utf-8"), encoding="utf-8")
+
+    apply_after_seed_mutation(tmp_path / "isolated", {"after_seed_mutation": "append_flow_newline"})
+
+    assert project_flow.read_text(encoding="utf-8") == "header\nvalue"
+    assert isolated_flow.read_text(encoding="utf-8") == "header\nvalue\n"
 
 
 def test_tool_seq_reads_only_supplied_messages() -> None:
@@ -93,6 +155,58 @@ def test_normalize_multiturn_case_preserves_key_turns() -> None:
     assert case["turns"][1]["expect"] == "继承上下文"
 
 
+def test_normalize_structured_single_case_preserves_eval_contract() -> None:
+    case = normalize_case({
+        "id": "E021",
+        "scenario": "缺少降雨资料时请求 RDII",
+        "dimensions": {"task": "RDII", "data_state": "missing_rainfall"},
+        "setup": {"fixture": "default", "remove_inputs": ["rainfall"]},
+        "prompt": "分析 W1 第 6 场降雨的 RDII。",
+        "expected": {
+            "response": "说明缺少降雨资料",
+            "forbidden": ["编造 RDII"],
+        },
+    })
+
+    assert case["scenario"] == "缺少降雨资料时请求 RDII"
+    assert case["dimensions"]["data_state"] == "missing_rainfall"
+    assert case["setup"]["remove_inputs"] == ["rainfall"]
+    assert case["turns"][0]["expect"] == "说明缺少降雨资料"
+    assert case["expected"]["forbidden"] == ["编造 RDII"]
+
+
+def test_validate_cases_rejects_duplicate_ids() -> None:
+    duplicate = {"id": "E001", "prompt": "检查数据"}
+
+    try:
+        validate_cases([duplicate, duplicate])
+    except ValueError as exc:
+        assert "重复" in str(exc)
+    else:
+        raise AssertionError("duplicate Eval ids should fail validation")
+
+
+def test_tree_snapshot_and_trace_evidence_capture_objective_state(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "result.txt").write_text("done", encoding="utf-8")
+    trace = SimpleNamespace(path=root / "trace.jsonl")
+    trace.path.write_text(
+        "\n".join([
+            '{"run_id":"run-1","event":"tool_call","tool_name":"check_data"}',
+            '{"run_id":"run-2","event":"tool_result","status":"ok"}',
+        ]),
+        encoding="utf-8",
+    )
+
+    snapshot = tree_snapshot(root)
+    evidence = trace_evidence(trace, "run-1")
+
+    assert {item["path"] for item in snapshot} == {"result.txt", "trace.jsonl"}
+    assert len(evidence) == 1
+    assert evidence[0]["tool_name"] == "check_data"
+
+
 def test_multiturn_view_skips_meta_and_renders_turns(tmp_path: Path) -> None:
     source = tmp_path / "results.jsonl"
     destination = tmp_path / "report.html"
@@ -145,3 +259,24 @@ def test_compact_pending_results_keeps_last_complete_case(tmp_path: Path) -> Non
 
     assert len(rows) == 2
     assert rows[1]["turns"][0]["output"] == "new"
+
+
+def test_structured_expected_tools_are_loaded_and_checked(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "E001",
+        "expected": {"tools": {"must_call": ["check_data"], "must_not_call": ["generate_report"]}},
+        "turns": [{
+            "n": 1,
+            "prompt": "检查数据",
+            "tool_calls": [{"tool": "check_data", "args": {}}],
+        }],
+        "root": str(tmp_path / "artifacts"),
+    }, ensure_ascii=False), encoding="utf-8")
+    case = load_cases(results)[0]
+    ctx = CheckContext(tmp_path, set(), None, None, None, None)
+
+    checked = check_expected_tool_contract(case, ctx)
+
+    assert case.expected["tools"]["must_call"] == ["check_data"]
+    assert checked[0].status == "pass"

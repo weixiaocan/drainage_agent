@@ -88,6 +88,14 @@ Eval 使用版本化、只读的测试夹具。每条需要特定数据状态的
 
 表达清晰度、专业解释质量等主观项目使用人工或经过校准的模型判定。关键边界不得只依赖主观判分。
 
+### 当前可观测性
+
+生产运行记录已关联 `run_id`、监测项目、会话、模型、状态、耗时、Token、错误和回复摘要；工具步骤记录名称、参数、状态、耗时、错误和产物。trace 会脱敏敏感字段并限制长文本和大列表。
+
+Eval schema v2 在此基础上额外保存场景维度、隔离环境配置、结构化预期、每轮完整 trace 事件，以及执行前后的文件清单。它可以支持工具选择、参数、错误状态、产物和非预期副作用的客观判定。
+
+当前仍不把完整业务数据、API 密钥或无限长模型正文写入运行记录。表达质量和专业解释仍需要人工判定；模型、网络、进程和数据库级故障需要独立可靠性测试，不能仅由 Agent Eval 代替。
+
 ## 建议规模
 
 - 单轮正式集：35 至 45 条。
@@ -117,6 +125,18 @@ python -m pytest
 ```
 
 Agent Eval 的用例、运行器、人工标注数据和 HTML 报告位于 `quality/eval/`。需要真实模型调用的完整 Eval 会产生费用，应在评测版本和测试数据固定后手动运行；CI 只运行选定的关键用例。
+
+在不调用模型的情况下验证 schema v2 单轮题库和隔离夹具：
+
+```powershell
+python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_single.yaml --validate-only
+```
+
+正式运行时显式指定输出文件，避免覆盖历史结果：
+
+```powershell
+python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_single.yaml -o quality/eval/eval_stage2/results_single_v2.jsonl
+```
 
 每个 Eval 回合记录独立的 `run_id`。评测结果使用该标识定位对应 trace 或项目内 Agent 运行记录，不要求默认保存完整提示词和模型回复。
 

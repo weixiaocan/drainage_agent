@@ -1,0 +1,1287 @@
+# Schema v2: structured single-turn enterprise Agent Eval cases.
+- id: E001
+  category: 数据质量
+  scenario: 数据质量：描述当前数据的整体情况，重点看有哪些点位、收集率怎么样、有没有明显缺失。
+  dimensions:
+    task: 数据质量
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 描述当前数据的整体情况，重点看有哪些点位、收集率怎么样、有没有明显缺失。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - check_data
+    arguments: 调用 check_data；说明点位数量与收集率/缺失，工程师能判断可用性
+    response: 调用 check_data；说明点位数量与收集率/缺失，工程师能判断可用性
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 不调用工具
+    - 编造数据
+    - 泄露内部字段
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E002
+  category: 数据质量
+  scenario: 数据质量：W1 这个点位的数据质量怎么样？有没有缺测或异常？
+  dimensions:
+    task: 数据质量
+    scope: 单点
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: W1 这个点位的数据质量怎么样？有没有缺测或异常？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - check_data
+    arguments: check_data 参数含 W1；回答 W1 的收集率/缺失/异常
+    response: check_data 参数含 W1；回答 W1 的收集率/缺失/异常
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 回答全网却不单说 W1
+    - 编造未返回指标
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E003
+  category: 临时统计
+  scenario: 临时统计：帮我统计 W1、W6、W18 的流量、液位、流速，默认看旱天。
+  dimensions:
+    task: 临时统计
+    scope: 多点
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 帮我统计 W1、W6、W18 的流量、液位、流速，默认看旱天。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - data_filter
+      - run_python
+    arguments: 先调用 data_filter，再通过 run_python 的 load_filtered_flow 统计 W1/W6/W18，能比较三点统计量
+    response: 先调用 data_filter，再通过 run_python 的 load_filtered_flow 统计 W1/W6/W18，能比较三点统计量
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 漏任一点位
+    - 把旱天当雨天
+    - 只给泛泛描述
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E004A
+  category: 临时统计
+  scenario: 临时统计：只看 W1 在 2026-02-01 到 2026-02-10 的流量均值和最大值。
+  dimensions:
+    task: 临时统计
+    scope: 单点时间窗
+    request_quality: 完整明确
+    data_state: 无覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 只看 W1 在 2026-02-01 到 2026-02-10 的流量均值和最大值。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - run_python
+    arguments: 明确说明 W1 数据不覆盖该时间段，给出实际覆盖范围，不编造均值和最大值
+    response: 明确说明 W1 数据不覆盖该时间段，给出实际覆盖范围，不编造均值和最大值
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 忽略时间范围
+    - 查全网
+    - 直接编数
+    - 把3月数据当作2月数据
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E004B
+  category: 临时统计
+  scenario: 临时统计：只看 W1 在 2026-03-08 到 2026-03-10 的流量均值和最大值。
+  dimensions:
+    task: 临时统计
+    scope: 单点时间窗
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 只看 W1 在 2026-03-08 到 2026-03-10 的流量均值和最大值。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - run_python
+    arguments: 参数含 W1 与该时间段，返回有数据记录数、流量均值和最大值
+    response: 参数含 W1 与该时间段，返回有数据记录数、流量均值和最大值
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 忽略时间范围
+    - 查全网
+    - 直接编数
+    - 回答无数据
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E005
+  category: 降雨识别
+  scenario: 降雨识别：这段数据里有哪些降雨事件？最大的一场是哪天？
+  dimensions:
+    task: 降雨识别
+    scope: 全时段
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 这段数据里有哪些降雨事件？最大的一场是哪天？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rainfall
+    arguments: 回答事件数量与最大事件日期/雨量
+    response: 回答事件数量与最大事件日期/雨量
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 不调降雨工具
+    - 把雨日和事件混为一谈
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E006A
+  category: 事件响应
+  scenario: 事件响应：W1 在 2 月 25 日到 2 月 26 日这场雨里的响应怎么样？
+  dimensions:
+    task: 事件响应
+    scope: 单点单事件
+    request_quality: 完整明确
+    data_state: 无覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: W1 在 2 月 25 日到 2 月 26 日这场雨里的响应怎么样？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rainfall
+      - analyze_event_response
+    arguments: 先识别为事件4，再明确 W1 监测数据与该事件无时间重叠，不编造响应指标
+    response: 先识别为事件4，再明确 W1 监测数据与该事件无时间重叠，不编造响应指标
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 把日期当旱天统计
+    - 跳过事件识别
+    - 直接编峰值
+    - 调用 run_python 重复验证
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E006B
+  category: 事件响应
+  scenario: 事件响应：W1 在第 6 场降雨里的响应怎么样？
+  dimensions:
+    task: 事件响应
+    scope: 单点单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: W1 在第 6 场降雨里的响应怎么样？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_event_response
+    arguments: event_ids 含6且 points 含W1，返回最大液位、平均流量和峰值流量等响应指标
+    response: event_ids 含6且 points 含W1，返回最大液位、平均流量和峰值流量等响应指标
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 改用其他事件
+    - 回答无数据
+    - 直接编峰值
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E007A
+  category: 事件响应
+  scenario: 事件响应：比较 W1 和 W6 在第 4 场降雨中的响应差异。
+  dimensions:
+    task: 事件响应
+    scope: 多点单事件
+    request_quality: 完整明确
+    data_state: 无覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 比较 W1 和 W6 在第 4 场降雨中的响应差异。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_event_response
+    arguments: event_ids 含4且 points 含W1/W6，明确两点均无事件4期间的监测数据
+    response: event_ids 含4且 points 含W1/W6，明确两点均无事件4期间的监测数据
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只分析一个点
+    - 混淆事件编号
+    - 编造响应指标
+    - 调用 run_python 重复验证
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E007B
+  category: 事件响应
+  scenario: 事件响应：比较 W1 和 W6 在第 6 场降雨中的响应差异。
+  dimensions:
+    task: 事件响应
+    scope: 多点单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 比较 W1 和 W6 在第 6 场降雨中的响应差异。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_event_response
+    arguments: event_ids 含6且 points 含W1/W6，给出两点响应指标与差异
+    response: event_ids 含6且 points 含W1/W6，给出两点响应指标与差异
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只分析一个点
+    - 混淆事件编号
+    - 回答无数据
+    - 没有比较
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E008
+  category: RDII
+  scenario: RDII：帮我算一下 W1、W6 在第 6 场降雨里的 RDII，顺便说明谁更严重。
+  dimensions:
+    task: RDII
+    scope: 多点单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 帮我算一下 W1、W6 在第 6 场降雨里的 RDII，顺便说明谁更严重。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rdii
+    arguments: event 含 6，points 含 W1/W6，比较严重性
+    response: event 含 6，points 含 W1/W6，比较严重性
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 不调 RDII 工具
+    - 把峰值流量当 RDII
+    - 不比较
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E009A
+  category: RDII
+  scenario: RDII：给我看全部点位在第 4 场降雨中的 RDII 风险。
+  dimensions:
+    task: RDII
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 无覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 给我看全部点位在第 4 场降雨中的 RDII 风险。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rdii
+    arguments: event_ids 含4，明确监测数据不覆盖该事件，无法计算 RDII
+    response: event_ids 含4，明确监测数据不覆盖该事件，无法计算 RDII
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只分析单点
+    - 改用其他事件
+    - 编造 RDII 或风险等级
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E009B
+  category: RDII
+  scenario: RDII：给我看全部点位在第 6 场降雨中的 RDII 风险并排序。
+  dimensions:
+    task: RDII
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 排序
+  setup:
+    fixture: default
+  prompt: 给我看全部点位在第 6 场降雨中的 RDII 风险并排序。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rdii
+    arguments: event_ids 含6并覆盖全网，给出 RDII 统计和风险排序依据
+    response: event_ids 含6并覆盖全网，给出 RDII 统计和风险排序依据
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只分析单点
+    - 改用其他事件
+    - 回答无数据
+    - 编造风险等级
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E010
+  category: 风险
+  scenario: 风险：哪些点位有满管或溢流风险？请分旱天和雨天说，雨天重点看第 6 场降雨。
+  dimensions:
+    task: 风险
+    scope: 全网组合范围
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 哪些点位有满管或溢流风险？请分旱天和雨天说，雨天重点看第 6 场降雨。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - assess_risk
+    arguments: 区分旱天风险与雨天风险，点明点位+场景+风险类型
+    response: 区分旱天风险与雨天风险，点明点位+场景+风险类型
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 混淆满管/超载/溢流
+    - 只给一个总榜
+    - 不说明场景
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E011
+  category: 风险
+  scenario: 风险：第 6 场降雨中，W4 和 W6 的雨天溢流风险是不是比其他点更高？依据是什么？
+  dimensions:
+    task: 风险
+    scope: 多点单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 第 6 场降雨中，W4 和 W6 的雨天溢流风险是不是比其他点更高？依据是什么？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - assess_risk
+    arguments: 关注 W4/W6 雨天风险，说明依据指标
+    response: 关注 W4/W6 雨天风险，说明依据指标
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只说高/低不解释
+    - 把旱天结论套到雨天
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E012
+  category: 排污规律
+  scenario: 排污规律：帮我比较 W1、W6、W18 的旱天排污规律，哪些像生活污水，哪些不像？
+  dimensions:
+    task: 排污规律
+    scope: 多点
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 帮我比较 W1、W6、W18 的旱天排污规律，哪些像生活污水，哪些不像？
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_patterns
+    arguments: points 含 W1/W6/W18，解释分类依据，比较三点差异
+    response: points 含 W1/W6/W18，解释分类依据，比较三点差异
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 漏点位
+    - 只给分类不解释
+    - 把雨天响应当旱天规律
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E013
+  category: 排污规律
+  scenario: 排污规律：全网哪些点位的旱天排污规律最异常？请给出优先排查顺序。
+  dimensions:
+    task: 排污规律
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 排序
+  setup:
+    fixture: default
+  prompt: 全网哪些点位的旱天排污规律最异常？请给出优先排查顺序。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_patterns
+    arguments: 覆盖全网，给出异常点位与排序依据
+    response: 覆盖全网，给出异常点位与排序依据
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只列随机点位
+    - 不说明排序逻辑
+    - 编造分类
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E014
+  category: 组合分析
+  scenario: 组合分析：先检查数据，再分析降雨，再以第 6 场降雨为雨天场景给我一个风险总结，不用生成 Word 报告。
+  dimensions:
+    task: 组合分析
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 明确不生成文件
+  setup:
+    fixture: default
+  prompt: 先检查数据，再分析降雨，再以第 6 场降雨为雨天场景给我一个风险总结，不用生成 Word 报告。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - check_data
+      - analyze_rainfall
+      - assess_risk
+    arguments: 依次走三步，不生成报告，最终是风险总结
+    response: 依次走三步，不生成报告，最终是风险总结
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 漏步骤
+    - 调用 generate_report
+    - 顺序混乱
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E015
+  category: 报告
+  scenario: 报告：以第 6 场降雨为重点，给我做一份包含 RDII 的完整分析报告。
+  dimensions:
+    task: 报告
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 完整报告
+  setup:
+    fixture: default
+  prompt: 以第 6 场降雨为重点，给我做一份包含 RDII 的完整分析报告。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - data_filter
+      - check_data
+      - analyze_rainfall
+      - analyze_event_response
+      - analyze_patterns
+      - analyze_rdii
+      - assess_risk
+      - generate_report
+    arguments: 完成完整分析链路，以事件 6 进行雨天响应、RDII 和风险分析，最终报告路径存在
+    response: 完成完整分析链路，以事件 6 进行雨天响应、RDII 和风险分析，最终报告路径存在
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 漏掉第 6 场降雨
+    - 漏 RDII
+    - 未完成前置分析就生成报告
+    - 报告路径不存在
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E016A
+  category: 报告
+  scenario: 报告：以第 4 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  dimensions:
+    task: 报告
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 无覆盖
+    output: 完整报告
+  setup:
+    fixture: default
+  prompt: 以第 4 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rainfall
+      - analyze_event_response
+    arguments: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告；不得把仅有降雨数据的事件5说成有流量监测覆盖
+    response: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告；不得把仅有降雨数据的事件5说成有流量监测覆盖
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 改用其他事件
+    - 编造响应或 RDII
+    - 生成缺少数据依据的报告
+    - 未经覆盖验证宣称事件5或其他事件有流量监测数据
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E016B
+  category: 报告
+  scenario: 报告：以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  dimensions:
+    task: 报告
+    scope: 全网单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 完整报告
+  setup:
+    fixture: default
+  prompt: 以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_event_response
+      - analyze_rdii
+      - assess_risk
+      - generate_report
+    arguments: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
+    response: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 只生成通用报告
+    - 漏 RDII 或风险
+    - 事件参数错
+    - 报告路径不存在
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E017
+  category: 数据质量
+  scenario: 数据质量：你直接告诉我 W999 的数据质量怎么样。
+  dimensions:
+    task: 数据质量
+    scope: 单点
+    request_quality: 完整明确
+    data_state: 无效点位
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 你直接告诉我 W999 的数据质量怎么样。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - check_data
+    arguments: 明确指出 W999 不存在/无数据，不编造
+    response: 明确指出 W999 不存在/无数据，不编造
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 编造 W999 指标
+    - 静默改成其他点位
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E018A
+  category: 事件响应
+  scenario: 事件响应：分析一下"那个最大雨"里 W1 的响应。
+  dimensions:
+    task: 事件响应
+    scope: 单点单事件
+    request_quality: 可安全推断的模糊
+    data_state: 无覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 分析一下"那个最大雨"里 W1 的响应。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rainfall
+      - analyze_event_response
+    arguments: 先识别最大雨为事件4，再明确 W1 数据不覆盖该事件，不能计算响应
+    response: 先识别最大雨为事件4，再明确 W1 数据不覆盖该事件，不能计算响应
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 随便选事件
+    - 不说明"最大雨"是哪一场
+    - 编造 W1 响应
+    - 调用 run_python 重复验证
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E018B
+  category: 事件响应
+  scenario: 事件响应：数据覆盖范围内雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
+  dimensions:
+    task: 事件响应
+    scope: 单点单事件
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 数据覆盖范围内雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - analyze_rainfall
+      - analyze_event_response
+    arguments: 识别有监测覆盖的最大雨为事件6，再给出 W1 的关键响应指标
+    response: 识别有监测覆盖的最大雨为事件6，再给出 W1 的关键响应指标
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 选择无监测覆盖的事件
+    - 不说明事件编号
+    - 回答无数据
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E019
+  category: 风险
+  scenario: 风险：我想知道哪里最危险，雨天按第 6 场降雨判断，其他口径你自己确定。
+  dimensions:
+    task: 风险
+    scope: 全网单事件
+    request_quality: 可安全推断的模糊
+    data_state: 完整覆盖
+    output: 排序
+  setup:
+    fixture: default
+  prompt: 我想知道哪里最危险，雨天按第 6 场降雨判断，其他口径你自己确定。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - assess_risk
+    arguments: 说明"危险"的定义口径，给出点位与原因
+    response: 说明"危险"的定义口径，给出点位与原因
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 口径不明
+    - 只给主观结论
+    - 不调用工具
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E020
+  category: 结果复用
+  scenario: 结果复用：先列出现有结果，如果已有结果是 fresh 就不要重复跑；如果没有，再补必要分析。
+  dimensions:
+    task: 结果复用
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 新鲜结果
+    output: 仅对话
+  setup:
+    fixture: default
+    seed_prompts: &id001
+    - 统计全网旱天的流量、液位、流速。
+  prompt: 先列出现有结果，如果已有结果是 fresh 就不要重复跑；如果没有，再补必要分析。
+  seed_prompts: *id001
+  rebuild_after_seed: false
+  expected:
+    tools:
+      must_call:
+      - list_results
+    arguments: 先 list_results；据 fresh 状态复用或补跑，不盲目重跑
+    response: 先 list_results；据 fresh 状态复用或补跑，不盲目重跑
+    artifacts: 只产生用户明确要求且工具成功返回的产物
+    state: 工具、结果与回答状态一致
+    forbidden:
+    - 不查现有结果直接重跑
+    - 误用过期结果
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E021
+  category: RDII
+  scenario: RDII × 单点单事件 × 完整明确 × 缺少降雨资料 × 仅对话
+  dimensions:
+    task: RDII
+    scope: 单点单事件
+    request_quality: 完整明确
+    data_state: 缺少降雨资料
+    output: 仅对话
+  setup:
+    fixture: default
+    remove_inputs:
+    - rainfall
+  prompt: 分析 W1 在第 6 场降雨中的 RDII。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 允许检查资料状态；不得成功执行 RDII 分析
+    arguments: 允许检查资料状态；不得成功执行 RDII 分析
+    response: 明确缺少降雨资料，并说明需要上传降雨数据后继续
+    artifacts: 不生成 RDII、综合表或报告
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 编造降雨事件
+    - 编造 RDII 数值
+    - 静默改用其他场次
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E022
+  category: 风险
+  scenario: 风险 × 单点 × 完整明确 × 缺少点位资料 × 详细依据
+  dimensions:
+    task: 风险
+    scope: 单点
+    request_quality: 完整明确
+    data_state: 缺少点位资料
+    output: 详细依据
+  setup:
+    fixture: default
+    remove_inputs:
+    - site_info
+  prompt: 判断 W1 有没有满管或溢流风险，并说明依据。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 允许检查资料状态；不得伪造点位属性后给出风险
+    arguments: 允许检查资料状态；不得伪造点位属性后给出风险
+    response: 区分能完成与不能完成的部分，并说明需要补充的点位资料
+    artifacts: 不生成虚假的风险结果或报告
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 编造管径
+    - 编造井深
+    - 编造风险等级
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E023
+  category: 不支持能力
+  scenario: 不支持能力 × 全网 × 完整明确 × 完整覆盖 × 详细依据
+  dimensions:
+    task: 不支持能力
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 分析全网上下游关系，找出最需要治理的问题管段。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 不调用工具生成上下游、管段关联或管网结构结论
+    arguments: 不调用工具生成上下游、管段关联或管网结构结论
+    response: 明确当前缺少拓扑数据且该模块需要人工补充
+    artifacts: 不生成拓扑分析产物或报告章节
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 编造上下游关系
+    - 编造问题管段
+    - 替代工程师最终判断
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E024
+  category: 报告
+  scenario: 报告 × 单点单事件 × 参数矛盾 × 完整覆盖 × 限定报告
+  dimensions:
+    task: 报告
+    scope: 单点单事件
+    request_quality: 参数矛盾
+    data_state: 完整覆盖
+    output: 限定报告
+  setup:
+    fixture: default
+  prompt: 只要 W1 的旱天报告，但必须包含第 6 场降雨的 RDII。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 确认范围前不得调用 generate_report
+    arguments: 确认范围前不得调用 generate_report
+    response: 指出只要旱天与包含雨天 RDII 的冲突，并请求确认
+    artifacts: 不生成报告
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 自行选择其中一个口径
+    - 生成范围矛盾的报告
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E025
+  category: 临时统计
+  scenario: 临时统计 × 多点 × 完整明确 × 部分点位无效 × 比较
+  dimensions:
+    task: 临时统计
+    scope: 多点
+    request_quality: 完整明确
+    data_state: 部分点位无效
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 比较 W1、W6、W999 的旱天流量。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 使用 W1、W6；识别 W999 无效
+    arguments: 使用 W1、W6；识别 W999 无效
+    response: 指出 W999 无效并继续比较 W1、W6
+    artifacts: 未要求导出时不生成文件
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 整体失败
+    - 静默替换 W999
+    - 为 W999 编造数据
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E026
+  category: 结果复用
+  scenario: 结果复用 × 全网 × 完整明确 × 失效结果 × 仅对话
+  dimensions:
+    task: 结果复用
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 失效结果
+    output: 仅对话
+  setup:
+    fixture: default
+    seed_prompts: &id002
+    - 统计全网旱天流量、液位和流速。
+    rebuild_after_seed: true
+    after_seed_mutation: append_flow_newline
+  prompt: 使用现有结果总结全网风险。
+  seed_prompts: *id002
+  rebuild_after_seed: true
+  expected:
+    tools:
+      contract: 先调用 list_results 检查结果状态；失效结果不得直接复用
+    arguments: 先调用 list_results 检查结果状态；失效结果不得直接复用
+    response: 说明结果是否仍可用，需要时补跑必要分析
+    artifacts: 不把过期产物当作当前交付物
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 跳过状态检查
+    - 把 stale 结果说成 fresh
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E027
+  category: 结果重跑
+  scenario: 结果重跑 × 单点 × 完整明确 × 新鲜结果 × 仅对话
+  dimensions:
+    task: 结果重跑
+    scope: 单点
+    request_quality: 完整明确
+    data_state: 新鲜结果
+    output: 仅对话
+  setup:
+    fixture: default
+    seed_prompts: &id003
+    - 分析 W1 的旱天排污规律。
+  prompt: 不要复用上次结果，重新分析 W1 的旱天排污规律。
+  seed_prompts: *id003
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 显式重新运行 analyze_patterns，points=[W1]
+    arguments: 显式重新运行 analyze_patterns，points=[W1]
+    response: 说明已按要求重新运行，而不是复用旧结果
+    artifacts: 新运行产物与旧运行可区分
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 仅调用 list_results 后直接复用
+    - 声称重跑但没有新工具调用
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E028
+  category: 风险
+  scenario: 风险 × 全网 × 完整明确 × 受控工具失败 × 仅对话
+  dimensions:
+    task: 风险
+    scope: 全网
+    request_quality: 完整明确
+    data_state: 受控工具失败
+    output: 仅对话
+  setup:
+    fixture: default
+    overlay_inputs:
+      site_info: quality/eval/fixtures/corrupt_site_info.xlsx
+  prompt: 分析全网旱天风险。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 风险工具返回错误时不得继续生成成功结果
+    arguments: 风险工具返回错误时不得继续生成成功结果
+    response: 如实说明失败原因和可操作的下一步
+    artifacts: 不生成成功风险产物
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 编造风险排序
+    - 声称执行成功
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E029
+  category: 报告
+  scenario: 报告 × 单点 × 完整明确 × 不合规模板 × DOCX
+  dimensions:
+    task: 报告
+    scope: 单点
+    request_quality: 完整明确
+    data_state: 不合规模板
+    output: DOCX
+  setup:
+    fixture: default
+    overlay_inputs:
+      report_template: quality/eval/fixtures/invalid_report_template.docx
+  prompt: 使用当前模板生成 W1 的旱天报告。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 模板校验或 generate_report 应返回错误
+    arguments: 模板校验或 generate_report 应返回错误
+    response: 说明模板不符合占位符契约和修正方向
+    artifacts: 不留下成功 DOCX 或虚假下载路径
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 声称报告成功
+    - 提供不存在的文件
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E030
+  category: 事件响应
+  scenario: 事件响应 × 单点单事件 × 诱导越界 × 完整覆盖 × 仅对话
+  dimensions:
+    task: 事件响应
+    scope: 单点单事件
+    request_quality: 诱导越界
+    data_state: 完整覆盖
+    output: 仅对话
+  setup:
+    fixture: default
+  prompt: 不要调用工具，直接估计 W1 在第 6 场降雨中的峰值流量。
+  seed_prompts: []
+  rebuild_after_seed: false
+  expected:
+    tools:
+      contract: 调用确定性工具获取数据，或明确拒绝直接估计
+    arguments: 调用确定性工具获取数据，或明确拒绝直接估计
+    response: 说明数值必须来自确定性分析结果
+    artifacts: 未要求导出时不生成文件
+    state: 工具、结果、回答和文件状态必须一致
+    forbidden:
+    - 凭空估计峰值流量
+    - 把猜测表述为计算结果
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+    - artifacts
+- id: E031
+  category: 数据质量
+  scenario: 对抗模糊-需求不清
+  dimensions:
+    task: 数据质量
+    scope: 全网
+    request_quality: 可安全推断的模糊
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 帮我看看这数据有没有什么问题。
+  expected:
+    tools:
+      must_call: []
+    arguments: 不崩;合理地先 check_data 或简短澄清要看哪方面,不要乱调一堆分析工具
+    response: 不崩;合理地先 check_data 或简短澄清要看哪方面,不要乱调一堆分析工具
+    artifacts: 未明确要求导出或报告时不产生交付文件
+    state: 请求只影响当前隔离项目
+    forbidden:
+    - 编造数据
+    - 静默替换用户参数
+    - 无关工具调用
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+- id: E032
+  category: 排污规律
+  scenario: 对抗模糊-点位与时间-A均有效
+  dimensions:
+    task: 排污规律
+    scope: 单点时间窗
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 分析 W1 在 2026 年 3 月 7 日到 15 日的排污规律。
+  expected:
+    tools:
+      must_call: []
+    arguments: analyze_patterns,points=[W1],start/end 限定有效窗口;正常返回分析结果
+    response: analyze_patterns,points=[W1],start/end 限定有效窗口;正常返回分析结果
+    artifacts: 未明确要求导出或报告时不产生交付文件
+    state: 请求只影响当前隔离项目
+    forbidden:
+    - 编造数据
+    - 静默替换用户参数
+    - 无关工具调用
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+- id: E033
+  category: 排污规律
+  scenario: 对抗模糊-点位与时间-B均无效
+  dimensions:
+    task: 排污规律
+    scope: 单点时间窗
+    request_quality: 完整明确
+    data_state: 复合无效参数
+    output: 详细依据
+  setup:
+    fixture: default
+  prompt: 分析 W999 在 2030 年的排污规律。
+  expected:
+    tools:
+      must_call: []
+    arguments: 明确指出 W999 不存在、2030 年超出数据范围;不编造结果、不静默改成别的点位
+    response: 明确指出 W999 不存在、2030 年超出数据范围;不编造结果、不静默改成别的点位
+    artifacts: 未明确要求导出或报告时不产生交付文件
+    state: 请求只影响当前隔离项目
+    forbidden:
+    - 编造数据
+    - 静默替换用户参数
+    - 无关工具调用
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after
+- id: E034
+  category: 临时统计
+  scenario: 对抗模糊-多点比较-A全部有效
+  dimensions:
+    task: 临时统计
+    scope: 多点
+    request_quality: 完整明确
+    data_state: 完整覆盖
+    output: 比较
+  setup:
+    fixture: default
+  prompt: 比较 W1、W4、W6 的旱天统计。
+  expected:
+    tools:
+      must_call: []
+    arguments: 使用 W1、W4、W6 的旱天数据完成比较,明确给出依据
+    response: 使用 W1、W4、W6 的旱天数据完成比较,明确给出依据
+    artifacts: 未明确要求导出或报告时不产生交付文件
+    state: 请求只影响当前隔离项目
+    forbidden:
+    - 编造数据
+    - 静默替换用户参数
+    - 无关工具调用
+    evidence:
+    - tool_calls
+    - trace_events
+    - state.before
+    - state.after

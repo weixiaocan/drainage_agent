@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -40,14 +41,86 @@ def cleanup_artifacts_for_case(case_id: str) -> Path:
     return artifacts_dir / canonical_id
 
 
-def fresh_root(root: Path) -> Path:
+def fresh_root(root: Path, setup: dict | None = None) -> Path:
     """每条用例一个隔离 root：只拷只读输入，var/outputs/记忆全空。"""
+    setup = setup or {}
+    fixture = setup.get("fixture", "default")
+    if fixture != "default":
+        raise ValueError(f"未知 Eval fixture: {fixture}")
     shutil.copytree(PROJECT / "resources" / "data", root / "resources" / "data")
     shutil.copytree(PROJECT / "resources" / "templates", root / "resources" / "templates")
     shutil.copytree(PROJECT / "agent" / "prompts", root / "agent" / "prompts")
+    removable_inputs = {
+        "rainfall": root / "resources" / "data" / "降雨数据.csv",
+        "site_info": root / "resources" / "data" / "点位信息.xlsx",
+        "report_template": root / "resources" / "templates" / "监测数据分析报告模板-更新.docx",
+    }
+    for name in setup.get("remove_inputs", []):
+        path = removable_inputs.get(name)
+        if path is None:
+            raise ValueError(f"未知 remove_inputs 值: {name}")
+        if path.exists():
+            path.unlink()
+    for name, source_text in setup.get("overlay_inputs", {}).items():
+        destination = removable_inputs.get(name)
+        if destination is None:
+            raise ValueError(f"未知 overlay_inputs 值: {name}")
+        source = (PROJECT / source_text).resolve()
+        fixtures_root = (PROJECT / "quality" / "eval" / "fixtures").resolve()
+        if not source.is_relative_to(fixtures_root) or not source.is_file():
+            raise ValueError(f"Eval fixture 文件不存在或越界: {source_text}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
     for d in ("outputs", "workspace", "logs"):
         (root / "var" / d).mkdir(parents=True)
     return root
+
+
+def tree_snapshot(root: Path) -> list[dict]:
+    """记录隔离 root 的可比较文件清单，不读取或保存业务文件正文。"""
+    snapshot = []
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        relative = path.relative_to(root).as_posix()
+        stat = path.stat()
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        snapshot.append({"path": relative, "size": stat.st_size, "sha256": digest.hexdigest()})
+    return snapshot
+
+
+def trace_evidence(trace: TraceLogger | None, run_id: str) -> list[dict]:
+    """提取本轮客观事件，供状态、工具结果和副作用自动判定。"""
+    if trace is None or not trace.path.exists():
+        return []
+    evidence = []
+    for line in trace.path.read_text(encoding="utf-8").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("run_id") == run_id:
+            evidence.append(event)
+    return evidence
+
+
+def apply_after_seed_mutation(root: Path, setup: dict) -> None:
+    """只在临时隔离 root 中制造结果失效，永不修改仓库夹具。"""
+    mutation = setup.get("after_seed_mutation")
+    if mutation in (None, ""):
+        return
+    if mutation != "append_flow_newline":
+        raise ValueError(f"未知 after_seed_mutation: {mutation}")
+    flow_root = (root / "resources" / "data" / "flow").resolve()
+    candidates = sorted(flow_root.glob("*.csv"))
+    if not candidates:
+        raise ValueError("after_seed_mutation 找不到流量 CSV")
+    target = candidates[0].resolve()
+    if not target.is_relative_to(flow_root):
+        raise ValueError("after_seed_mutation 目标越界")
+    with target.open("a", encoding="utf-8", newline="") as stream:
+        stream.write("\n")
 
 
 def preserve_artifacts(root: Path, case_id: str) -> Path:
@@ -86,6 +159,8 @@ def run_turn(prompt, deps, agent, trace, message_history=None):
 def normalize_case(case: dict) -> dict:
     """把单轮和多轮用例统一成 {id, turns:[{prompt, expect, key}], seed_prompts, rebuild_after_seed}。
     单轮用例 turns 只有一个元素，结构统一后下游（runner / view）无需区分两种格式。"""
+    expected = case.get("expected", {})
+    default_expect = expected.get("response", "") if isinstance(expected, dict) else ""
     if "turns" in case:
         turns = [
             {
@@ -99,17 +174,38 @@ def normalize_case(case: dict) -> dict:
     else:
         turns = [{
             "prompt": case["prompt"],
-            "expect": case.get("pass_when", ""),
+            "expect": case.get("pass_when", "") or default_expect,
             "key": True,
             "category": case.get("category", ""),
         }]
     return {
         "id": case["id"],
         "category": case.get("category", ""),
+        "scenario": case.get("scenario", ""),
+        "dimensions": case.get("dimensions", {}),
+        "setup": case.get("setup", {"fixture": "default"}),
+        "expected": expected,
         "turns": turns,
         "seed_prompts": case.get("seed_prompts", []),
         "rebuild_after_seed": bool(case.get("rebuild_after_seed", False)),
     }
+
+
+def validate_cases(cases: list[dict]) -> None:
+    ids = [str(case.get("id") or "") for case in cases]
+    if any(not case_id for case_id in ids):
+        raise ValueError("Eval 用例 id 不能为空")
+    duplicates = sorted({case_id for case_id in ids if ids.count(case_id) > 1})
+    if duplicates:
+        raise ValueError(f"Eval 用例 id 重复: {duplicates}")
+    for case in cases:
+        normalized = normalize_case(case)
+        if not normalized["turns"] or any(not turn["prompt"].strip() for turn in normalized["turns"]):
+            raise ValueError(f"{case['id']}: prompt 不能为空")
+        if case.get("scenario") and not normalized["dimensions"]:
+            raise ValueError(f"{case['id']}: schema v2 用例缺少 dimensions")
+        if case.get("scenario") and not normalized["expected"]:
+            raise ValueError(f"{case['id']}: schema v2 用例缺少 expected")
 
 
 def try_usage(result) -> dict | None:
@@ -190,7 +286,12 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
     rec = {
         "id": case["id"],
         "category": case["category"],
+        "scenario": case["scenario"],
+        "dimensions": case["dimensions"],
+        "setup": case["setup"],
+        "expected": case["expected"],
         "turns": [],
+        "state": {"before": [], "after": []},
         "root": "",
         "trace": "",
         "error": None,
@@ -199,7 +300,8 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"eval-{case['id']}-") as temp_dir:
         root = Path(temp_dir)
         try:
-            fresh_root(root)
+            fresh_root(root, case["setup"])
+            rec["state"]["before"] = tree_snapshot(root)
             deps = build_deps(root)
             deps.session.auto_confirm_filter_result = auto_confirm
             trace = TraceLogger(deps.paths.logs)
@@ -211,6 +313,7 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
             for seed in case["seed_prompts"]:
                 seed_result, _ = run_turn(seed, deps, agent, trace, message_history)
                 message_history = seed_result.all_messages()
+            apply_after_seed_mutation(root, case["setup"])
             if case["rebuild_after_seed"]:
                 deps = build_deps(root)
                 deps.session.auto_confirm_filter_result = auto_confirm
@@ -229,11 +332,14 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
                     "key": turn["key"],
                     "output": str(result.output),
                     "tool_calls": tool_seq(result.new_messages()),
+                    "trace_events": trace_evidence(trace, run_id),
                     "usage": try_usage(result),
                 })
                 message_history = result.all_messages()
         except Exception as exc:
             rec["error"] = repr(exc)
+        finally:
+            rec["state"]["after"] = tree_snapshot(root)
 
         # 无论成功失败都尽量保全已产生的产物
         try:
@@ -257,13 +363,23 @@ def main():
                     help="auto-confirm data_filter results; default for regression eval")
     ap.add_argument("--no-auto-confirm", dest="auto_confirm", action="store_false",
                     help="pause after data_filter for HITL hook eval")
+    ap.add_argument("--validate-only", action="store_true",
+                    help="只验证用例结构和隔离 fixture，不调用模型")
     args = ap.parse_args()
 
     load_dotenv(PROJECT / ".env")
 
     cases_path = (PROJECT / args.cases_file) if not Path(args.cases_file).is_absolute() else Path(args.cases_file)
     raw_cases = yaml.safe_load(cases_path.read_text("utf-8"))
+    validate_cases(raw_cases)
     cases = [normalize_case(c) for c in raw_cases]
+
+    if args.validate_only:
+        for case in cases:
+            with tempfile.TemporaryDirectory(prefix=f"eval-validate-{case['id']}-") as temp_dir:
+                fresh_root(Path(temp_dir), case["setup"])
+        print(f"validated {len(cases)} cases: {cases_path}")
+        return
 
     out_path = Path(args.out) if args.out else (STAGE_DIR / "results.jsonl")
     if not out_path.is_absolute():
@@ -277,6 +393,8 @@ def main():
         "case_count": len(cases),
         "model": None,
         "model_settings": None,
+        "cases_sha256": hashlib.sha256(cases_path.read_bytes()).hexdigest(),
+        "schema_version": 2,
     }
     try:
         with tempfile.TemporaryDirectory(prefix="eval-meta-") as td:
