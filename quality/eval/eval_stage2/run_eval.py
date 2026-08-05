@@ -132,6 +132,9 @@ def preserve_artifacts(root: Path, case_id: str) -> Path:
         source = root / "var" / name
         if source.exists():
             shutil.copytree(source, destination / name)
+    generated = root / "results" / "generated"
+    if generated.exists():
+        shutil.copytree(generated, destination / "results" / "generated")
     return destination
 
 

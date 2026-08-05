@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import base64
 from pathlib import Path
 from types import SimpleNamespace
+
+from docx import Document
 
 from quality.eval.eval_stage2.run_eval import (
     apply_after_seed_mutation,
@@ -18,7 +21,12 @@ from quality.eval.eval_stage2.run_eval import (
     validate_cases,
 )
 from quality.eval.eval_stage2.view import load_checks, load_results, render_report
-from quality.eval.check import CheckContext, check_expected_tool_contract, load_cases
+from quality.eval.check import (
+    CheckContext,
+    check_expected_tool_contract,
+    check_report_has_independent_curve_images,
+    load_cases,
+)
 
 
 def test_fresh_root_copies_prompt_without_copying_env(tmp_path, monkeypatch) -> None:
@@ -119,6 +127,27 @@ def test_preserve_artifacts_replaces_stale_case_directory(tmp_path, monkeypatch)
 
     assert not (destination / "stale.txt").exists()
     assert (destination / "logs" / "trace.jsonl").read_text(encoding="utf-8") == "trace"
+
+
+def test_preserve_artifacts_keeps_generated_report_charts(tmp_path, monkeypatch) -> None:
+    project = tmp_path / "project"
+    root = tmp_path / "isolated"
+    for name in ("outputs", "workspace", "logs"):
+        (root / "var" / name).mkdir(parents=True)
+    charts = root / "results" / "generated" / "特征曲线图" / "W1_全时段"
+    charts.mkdir(parents=True)
+    (charts / "W1_流量特征曲线.png").write_bytes(b"flow-png")
+    (charts / "W1_液位特征曲线.png").write_bytes(b"level-png")
+    monkeypatch.setattr(
+        "quality.eval.eval_stage2.run_eval.STAGE_DIR",
+        project / "quality" / "eval" / "eval_stage2",
+    )
+
+    destination = preserve_artifacts(root, "CI003")
+
+    preserved = destination / "results" / "generated" / "特征曲线图" / "W1_全时段"
+    assert (preserved / "W1_流量特征曲线.png").read_bytes() == b"flow-png"
+    assert (preserved / "W1_液位特征曲线.png").read_bytes() == b"level-png"
 
 
 def test_preserve_artifacts_collapses_derived_case_directories(tmp_path, monkeypatch) -> None:
@@ -284,6 +313,41 @@ def test_eval_view_loads_objective_check_sidecar(tmp_path: Path) -> None:
     assert "Summarize status" in html
     assert "W1 is normal" in html
     assert "整例人工判定" in html
+
+
+def test_report_curve_check_reads_preserved_generated_charts(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts" / "CI003"
+    outputs = root / "outputs"
+    outputs.mkdir(parents=True)
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    charts = root / "results" / "generated" / "特征曲线图" / "W1_全时段"
+    charts.mkdir(parents=True)
+    flow = charts / "W1_流量特征曲线.png"
+    level = charts / "W1_液位特征曲线.png"
+    flow.write_bytes(png)
+    level.write_bytes(png)
+    document = Document()
+    document.add_picture(str(flow))
+    document.add_picture(str(level))
+    document.save(outputs / "W1_全时段_分析报告.docx")
+    manifest = {
+        "results": {"generate_report": {"params": {"points": ["W1"]}}}
+    }
+    (outputs / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    results.write_text(
+        json.dumps({"id": "CI003", "root": str(root), "turns": []}) + "\n",
+        encoding="utf-8",
+    )
+
+    case = load_cases(results)[0]
+    checked = check_report_has_independent_curve_images(
+        case, CheckContext(tmp_path, {"W1"}, None, None, None, None)
+    )
+
+    assert checked[0].status == "pass"
 
 
 def test_completed_case_ids_ignores_meta_and_partial_line(tmp_path: Path) -> None:

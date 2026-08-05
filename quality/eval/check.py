@@ -537,7 +537,12 @@ def check_report_has_independent_curve_images(case: CaseRecord, ctx: CheckContex
     expected_points = _expected_points_for_report(case, ctx)
     if not expected_points:
         return [result(case, name, "artifact", "skip", "no expected report points resolved")]
-    curve_files = _outputs_files(case, {".png"})
+    generated = case.root / "results" / "generated"
+    curve_files = (
+        sorted(path for path in generated.rglob("*.png") if path.is_file())
+        if generated.exists()
+        else []
+    )
     missing: list[str] = []
     for point in expected_points:
         flow = [path for path in curve_files if path.name == f"{point}_流量特征曲线.png"]
