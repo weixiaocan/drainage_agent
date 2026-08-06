@@ -344,6 +344,8 @@ REPORT_COMBINED_SHEETS: tuple[tuple[str, str], ...] = (
     ("data_collection", "数据收集率统计"),
     ("rainfall_daily", "降雨概况"),
     ("rainfall_events", "降雨场次分析"),
+    ("rainy_event_stats", "雨天事件统计"),
+    ("rdii_total", "RDII总量统计"),
     ("pattern_analysis", "排污规律分析"),
     ("dry_analysis", "旱天分析"),
     ("dry_risk", "旱天风险"),
@@ -1965,6 +1967,8 @@ def generate_report_impl(
     wants_full_risk = _section_requested(sections, REPORT_FULL_RISK_SECTIONS)
     wants_dry_risk = wants_full_risk or _section_requested(sections, REPORT_DRY_RISK_SECTIONS)
     wants_rainy_risk = wants_full_risk or _section_requested(sections, REPORT_RAINY_RISK_SECTIONS)
+    wants_event_response = _section_requested(sections, {"事件响应", "雨天事件统计"})
+    wants_rdii = _section_requested(sections, {"RDII"})
     wants_risk = wants_dry_risk or wants_rainy_risk
     dry_only_report = _is_dry_only_report_sections(sections)
     if dry_only_report:
@@ -2015,6 +2019,37 @@ def generate_report_impl(
             summaries.append(rain["summary"])
         tables["rainfall_daily"] = cached_daily
         tables["rainfall_events"] = cached_events
+
+    if wants_event_response or wants_rdii:
+        if not selected_event_ids:
+            return needs_input(
+                "event_ids",
+                "请选择事件响应和 RDII 分析使用的降雨场次编号。",
+                summary="事件响应和 RDII 分析必须基于明确的降雨场次。",
+                options=_event_options(tables.get("rainfall_events", pd.DataFrame())),
+            )
+        if wants_event_response:
+            event_response = analyze_event_response_impl(
+                deps,
+                event_ids=selected_event_ids,
+                points=points,
+                export=False,
+            )
+            if event_response["status"] != "ok":
+                return event_response
+            tables["rainy_event_stats"] = _result_frame(event_response, "table")
+            summaries.append(event_response["summary"])
+        if wants_rdii:
+            rdii = analyze_rdii_impl(
+                deps,
+                event_ids=selected_event_ids,
+                points=points,
+                export=False,
+            )
+            if rdii["status"] != "ok":
+                return rdii
+            tables["rdii_total"] = _result_frame(rdii, "table")
+            summaries.append(rdii["summary"])
 
     if wants_patterns:
         cached = _cached_report_frame(deps, "pattern_analysis", points, start, end)

@@ -30,7 +30,10 @@ from agent.tools.module_tools import (
     _time_result_prefix,
 )
 from analysis.modules.filtering import write_filter_excel
-from analysis.reporting.pipeline_report_assembler.assembler import _scope_period_text
+from analysis.reporting.pipeline_report_assembler.assembler import (
+    _apply_explicit_heading_numbers,
+    _scope_period_text,
+)
 from analysis.reporting.pipeline_report_assembler.facts import ReportFacts
 from analysis.reporting.pipeline_report_assembler.template_scanner import scan_template
 from analysis.reporting.pipeline_report_assembler.validator import validate_report
@@ -923,6 +926,22 @@ def _install_report_stubs(monkeypatch: pytest.MonkeyPatch, captured: dict, count
             rainy_risk=[{"point_id": point, "overflow_value": 0.3} for point in rows],
         )
 
+    def fake_event_response(_deps, event_ids=None, points=None, export=False):
+        counts["event_response"] = counts.get("event_response", 0) + 1
+        captured["event_response_scope"] = (event_ids, points)
+        return ok(
+            "event response",
+            table=[{"event_id": event_ids[0], "point_id": point, "response_minutes": 30} for point in selected(points)],
+        )
+
+    def fake_rdii(_deps, event_ids=None, points=None, export=False):
+        counts["rdii"] = counts.get("rdii", 0) + 1
+        captured["rdii_scope"] = (event_ids, points)
+        return ok(
+            "rdii",
+            table=[{"event_id": event_ids[0], "point_id": point, "rdii_volume_m3": 12.0} for point in selected(points)],
+        )
+
     def fake_build(output_file: Path, *_args, **kwargs):
         counts["build"] = counts.get("build", 0) + 1
         captured["build"] = kwargs
@@ -937,8 +956,61 @@ def _install_report_stubs(monkeypatch: pytest.MonkeyPatch, captured: dict, count
     monkeypatch.setattr("agent.tools.module_tools.check_data_impl", fake_check)
     monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
     monkeypatch.setattr("agent.tools.module_tools.analyze_patterns_impl", fake_patterns)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response_impl", fake_event_response)
+    monkeypatch.setattr("agent.tools.module_tools.analyze_rdii_impl", fake_rdii)
     monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
     monkeypatch.setattr("agent.tools.module_tools.build_report", fake_build)
+
+
+def test_requested_event_response_and_rdii_are_written_to_combined_workbook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    captured: dict = {}
+    counts: dict = {}
+    _install_report_stubs(monkeypatch, captured, counts)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._event_data_coverage",
+        lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), ["W1", "W2"], []),
+    )
+
+    result = generate_report_impl(
+        deps,
+        points=["W1", "W2"],
+        sections=["事件响应", "RDII", "雨天风险"],
+        event_ids=[1],
+    )
+
+    assert result["status"] == "ok"
+    assert counts["event_response"] == counts["rdii"] == 1
+    assert captured["event_response_scope"] == ([1], ["W1", "W2"])
+    assert captured["rdii_scope"] == ([1], ["W1", "W2"])
+    assert set(captured["build"]["analysis_tables"]) >= {"rainy_event_stats", "rdii_total"}
+    assert result["data"]["report_combined_sheets"] == [
+        "降雨概况",
+        "降雨场次分析",
+        "雨天事件统计",
+        "RDII总量统计",
+        "雨天溢流风险",
+    ]
+
+
+def test_partial_report_headings_are_explicitly_renumbered() -> None:
+    doc = Document()
+    doc.add_heading("排水监测数据分析报告", level=0)
+    rainfall = doc.add_heading("降雨分析", level=2)
+    daily = doc.add_heading("降雨日分析", level=3)
+    events = doc.add_heading("降雨场次分析", level=3)
+    risk = doc.add_heading("污水系统运行风险分析", level=1)
+    method = doc.add_heading("运行风险评估方法", level=2)
+
+    _apply_explicit_heading_numbers(doc, ["rainfall_analysis", "operation_risk_analysis"])
+
+    assert rainfall.text == "1 降雨分析"
+    assert daily.text == "1.1 降雨日分析"
+    assert events.text == "1.2 降雨场次分析"
+    assert risk.text == "2 污水系统运行风险分析"
+    assert method.text == "2.1 运行风险评估方法"
 
 
 def test_default_full_report_has_all_scope_and_nonempty_rainy_risk(

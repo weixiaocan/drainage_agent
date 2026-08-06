@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -141,6 +142,7 @@ def run_report_assembler(
         warnings.extend(validation.critical)
         raise ValueError("报告校验失败: " + "；".join(validation.critical))
 
+    _apply_explicit_heading_numbers(doc, selected)
     doc.save(output_file)
     if not is_zipfile(output_file):
         raise ValueError(f"生成的报告不是有效 Word 文档: {output_file}")
@@ -161,6 +163,13 @@ SECTION_ALIASES = {
         "污水系统运行风险分析", "污水系统运行风险", "风险评估", "旱天风险",
         "旱天运行风险评估", "结论与建议", "雨天风险", "溢流风险",
     },
+}
+
+SECTION_CHAPTER_TITLES = {
+    "monitoring_overview": {"监测概况", "概述与数据质量"},
+    "rainfall_analysis": {"降雨分析"},
+    "dry_pattern_analysis": {"旱天排污规律统计分析", "旱天排污规律分析"},
+    "operation_risk_analysis": {"污水系统运行风险分析", "污水系统运行风险"},
 }
 
 
@@ -274,6 +283,68 @@ def _heading_level(style_name: str) -> int | None:
         suffix = style_name.removeprefix("Heading ")
         return int(suffix) if suffix.isdigit() else None
     return None
+
+
+def _apply_explicit_heading_numbers(doc: Document, selected: list[str]) -> None:
+    """Renumber retained chapters after template pruning.
+
+    The source template uses Word list numbering. Once preceding chapters are
+    removed, a retained chapter can start at Heading 2 and Word may display no
+    number at all. Explicit prefixes make the partial report deterministic in
+    Word, browser previews, and converted PDFs.
+    """
+    chapter_titles = {
+        title
+        for key in selected
+        for title in SECTION_CHAPTER_TITLES[key]
+    }
+    heading_styles = [style for style in doc.styles if _heading_level(style.name)]
+    for style in heading_styles:
+        p_pr = style.element.pPr
+        if p_pr is not None and p_pr.numPr is not None:
+            p_pr.remove(p_pr.numPr)
+
+    chapter = 0
+    sublevels = [0, 0]
+    chapter_source_level: int | None = None
+    for paragraph in doc.paragraphs:
+        source_level = _heading_level(paragraph.style.name)
+        if source_level is None or source_level == 0:
+            continue
+        plain_text = re.sub(r"^\d+(?:\.\d+)*\s+", "", paragraph.text.strip())
+        if plain_text in chapter_titles:
+            chapter += 1
+            sublevels = [0, 0]
+            chapter_source_level = source_level
+            target_level = 1
+            prefix = f"{chapter} "
+        elif chapter and chapter_source_level is not None:
+            target_level = max(2, min(3, source_level - chapter_source_level + 1))
+            index = target_level - 2
+            sublevels[index] += 1
+            if index == 0:
+                sublevels[1] = 0
+                prefix = f"{chapter}.{sublevels[0]} "
+            else:
+                prefix = f"{chapter}.{sublevels[0]}.{sublevels[1]} "
+        else:
+            continue
+
+        style_name = next(
+            (name for name in (f"标题{target_level}", f"Heading {target_level}") if name in doc.styles),
+            None,
+        )
+        if style_name:
+            paragraph.style = doc.styles[style_name]
+        p_pr = paragraph._p.pPr
+        if p_pr is not None and p_pr.numPr is not None:
+            p_pr.remove(p_pr.numPr)
+        if paragraph.runs:
+            paragraph.runs[0].text = prefix + plain_text
+            for run in paragraph.runs[1:]:
+                run.text = ""
+        else:
+            paragraph.add_run(prefix + plain_text)
 
 
 def _build_config(config: Optional[Dict[str, Any]]) -> ReportConfig:
