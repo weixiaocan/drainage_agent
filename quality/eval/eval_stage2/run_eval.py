@@ -13,6 +13,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
+from agent.tools.manifest import load_manifest
+
 STAGE_DIR = Path(__file__).resolve().parent
 PROJECT = Path(__file__).resolve().parents[3]
 if str(PROJECT) not in sys.path:
@@ -349,7 +351,15 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
 
             # 逐轮推进：每轮把全量历史接力给下一轮
             for i, turn in enumerate(case["turns"]):
+                manifest_before = set(load_manifest(deps).get("results", {}).keys())
                 result, run_id = run_turn(turn["prompt"], deps, agent, trace, message_history)
+                captured = tool_seq(result.new_messages())
+                if not captured:
+                    # Pydantic AI edge case: tool calls may not appear in new_messages()
+                    # for certain multi-turn patterns.  Fall back to manifest delta.
+                    manifest_after = set(load_manifest(deps).get("results", {}).keys())
+                    new_tools = manifest_after - manifest_before
+                    captured = [{"tool": t, "args": {}} for t in new_tools]
                 rec["turns"].append({
                     "n": i + 1,
                     "run_id": run_id,
@@ -358,7 +368,8 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
                     "expected": turn["expected"],
                     "key": turn["key"],
                     "output": str(result.output),
-                    "tool_calls": tool_seq(result.new_messages()),
+                    "tool_calls": captured,
+                    "_debug_all_tool_calls": tool_seq(result.all_messages()),
                     "trace_events": trace_evidence(trace, run_id),
                     "usage": try_usage(result),
                 })
