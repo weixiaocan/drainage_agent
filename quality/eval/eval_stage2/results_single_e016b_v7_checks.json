@@ -1,0 +1,100 @@
+{
+  "checks": [
+    {
+      "case_id": "E016B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['generate_report']",
+      "turn": 1
+    },
+    {
+      "case_id": "E016B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    }
+  ]
+}

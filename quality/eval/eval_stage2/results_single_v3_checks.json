@@ -1,0 +1,3844 @@
+{
+  "checks": [
+    {
+      "case_id": "E001",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'check_data']",
+      "turn": 1
+    },
+    {
+      "case_id": "E001",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E001",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'check_data', 'check_data', 'run_python', 'run_python', 'run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E002",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E002",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E003",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E003",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'run_python', 'run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E004A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E004B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E004B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall']",
+      "turn": 1
+    },
+    {
+      "case_id": "E005",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_rainfall']",
+      "turn": 1
+    },
+    {
+      "case_id": "E005",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E005",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E006A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E006A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E006B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E006B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E006B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response', 'check_data', 'run_python', 'run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E007A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E007A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E007B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E007B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E007B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_rdii']",
+      "turn": 1
+    },
+    {
+      "case_id": "E008",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_rdii']",
+      "turn": 1
+    },
+    {
+      "case_id": "E008",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E008",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['analyze_rdii']",
+      "turn": 1
+    },
+    {
+      "case_id": "E009A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E009A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_rdii']",
+      "turn": 1
+    },
+    {
+      "case_id": "E009B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E009B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'assess_risk', 'assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E010",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E010",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E010",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E011",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E011",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E011",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'data_filter', 'analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E012",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E012",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E012",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'data_filter', 'analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E013",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E013",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E013",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'check_data', 'analyze_rainfall', 'assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E014",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E014",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'generate_report']",
+      "turn": 1
+    },
+    {
+      "case_id": "E015",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report artifact extensions ok: ['全网_全时段_分析报告.docx']",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "19 point(s) have independent flow/level curve files and report images",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "no template blacklist terms or fake site ids found",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "only selected section kinds present: ['dry', 'monitoring', 'rainfall', 'risk']",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report contains real flow bounds 2026-03-07 to 2026-03-15",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "combined table name matches report name",
+      "turn": null
+    },
+    {
+      "case_id": "E015",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "rainfall event ids are contiguous from 1",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E016A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E016A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report artifact extensions ok: ['全网_全时段_分析报告.docx']",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "report has no dry-weather curve section",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "no template blacklist terms or fake site ids found",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "only selected section kinds present: ['rainfall', 'risk']",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report contains real flow bounds 2026-03-07 to 2026-03-15",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "combined table name matches report name",
+      "turn": null
+    },
+    {
+      "case_id": "E016A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "rainfall event ids are contiguous from 1",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'generate_report']",
+      "turn": 1
+    },
+    {
+      "case_id": "E016B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report artifact extensions ok: ['全网_全时段_分析报告.docx']",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "report has no dry-weather curve section",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "no template blacklist terms or fake site ids found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "only selected section kinds present: ['rainfall', 'risk']",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report contains real flow bounds 2026-03-07 to 2026-03-15",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "combined table name matches report name",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "rainfall event ids are contiguous from 1",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'check_data']",
+      "turn": 1
+    },
+    {
+      "case_id": "E017",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E017",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E017",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response']",
+      "turn": 1
+    },
+    {
+      "case_id": "E018A",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018A",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'analyze_event_response', 'check_data', 'run_python']",
+      "turn": 1
+    },
+    {
+      "case_id": "E018B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E018B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'data_filter', 'assess_risk', 'assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E019",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E019",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results']",
+      "turn": 1
+    },
+    {
+      "case_id": "E020",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E020",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_rdii']",
+      "turn": 1
+    },
+    {
+      "case_id": "E021",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E021",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E022",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E022",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E023",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E024",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E025",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E026",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E026",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E027",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E027",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 1
+    },
+    {
+      "case_id": "E028",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E028",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "partial scope belongs to report generation; covered by artifact checks",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E029",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E030",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no partial point/time analysis detected",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E031",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E032",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E032",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "no forbidden analysis result was materialized",
+      "turn": 1
+    },
+    {
+      "case_id": "E033",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E033",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no machine-readable tool names",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "E034",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "E034",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    }
+  ]
+}

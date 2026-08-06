@@ -1,0 +1,100 @@
+{
+  "checks": [
+    {
+      "case_id": "E016B",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'analyze_rainfall', 'run_python', 'analyze_rainfall', 'generate_report']",
+      "turn": 1
+    },
+    {
+      "case_id": "E016B",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no single-analysis turn detected",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "partial scope belongs to report generation; covered by artifact checks",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "report artifact extensions ok: ['2点_W1等_2026-03-10_之后_分析报告.docx']",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "report has no dry-weather curve section",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "no template blacklist terms or fake site ids found",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "only selected section kinds present: ['rainfall', 'risk']",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "report has explicit start/end; skip full-period guard for baseline compatibility",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "combined table name matches report name",
+      "turn": null
+    },
+    {
+      "case_id": "E016B",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "pass",
+      "reason": "rainfall event ids are contiguous from 1",
+      "turn": null
+    }
+  ]
+}
