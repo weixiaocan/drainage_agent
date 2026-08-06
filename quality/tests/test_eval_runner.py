@@ -424,6 +424,31 @@ def test_structured_per_turn_tool_contract_is_loaded_and_checked(tmp_path: Path)
     assert checked[0].turn == 1
 
 
+def test_single_turn_tool_contract_is_not_checked_twice(tmp_path: Path) -> None:
+    contract = {"must_call": ["check_data"]}
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "E001",
+        "expected": {"tools": contract},
+        "turns": [{
+            "n": 1,
+            "prompt": "检查数据",
+            "expected": {"tools": contract},
+            "tool_calls": [{"tool": "check_data", "args": {}}],
+        }],
+        "root": str(tmp_path / "artifacts"),
+    }, ensure_ascii=False), encoding="utf-8")
+    case = load_cases(results)[0]
+
+    checked = check_expected_tool_contract(
+        case, CheckContext(tmp_path, set(), None, None, None, None)
+    )
+
+    assert len(checked) == 1
+    assert checked[0].status == "pass"
+    assert checked[0].turn == 1
+
+
 def test_coverage_guard_allows_analysis_for_mixed_valid_and_invalid_points(tmp_path: Path) -> None:
     root = tmp_path / "artifacts"
     outputs = root / "outputs"
@@ -450,6 +475,43 @@ def test_coverage_guard_allows_analysis_for_mixed_valid_and_invalid_points(tmp_p
     assert checked[0].status == "skip"
 
 
+def test_coverage_guard_allows_analysis_tool_to_return_needs_input(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    outputs = root / "outputs"
+    outputs.mkdir(parents=True)
+    (outputs / "manifest.json").write_text(
+        json.dumps({"results": {"assess_risk": {"status": "needs_input"}}}),
+        encoding="utf-8",
+    )
+    trace = root / "trace.jsonl"
+    trace.write_text(json.dumps({
+        "event": "tool_result",
+        "run_id": "run-1",
+        "tool_name": "assess_risk",
+        "status": "needs_input",
+    }), encoding="utf-8")
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "E009A",
+        "root": str(root),
+        "trace": str(trace),
+        "turns": [{
+            "n": 1,
+            "run_id": "run-1",
+            "prompt": "分析第 4 场降雨风险，该事件没有流量覆盖。",
+            "expect": "说明无覆盖",
+            "tool_calls": [{"tool": "assess_risk", "args": {"event_ids": [4]}}],
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+
+    checked = check_coverage_guard_no_analysis_without_data(
+        load_cases(results)[0],
+        CheckContext(tmp_path, set(), None, None, None, None),
+    )
+
+    assert checked[0].status == "pass"
+
+
 def test_rainy_risk_allows_event_response_analysis(tmp_path: Path) -> None:
     results = tmp_path / "results.jsonl"
     results.write_text(json.dumps({
@@ -472,3 +534,33 @@ def test_rainy_risk_allows_event_response_analysis(tmp_path: Path) -> None:
     )
 
     assert checked[0].status == "pass"
+
+
+def test_rain_only_report_does_not_require_dry_weather_curve_images(tmp_path: Path) -> None:
+    from quality.eval.check import check_report_has_independent_curve_images
+
+    root = tmp_path / "artifacts"
+    outputs = root / "outputs"
+    outputs.mkdir(parents=True)
+    (outputs / "manifest.json").write_text(json.dumps({
+        "results": {
+            "generate_report": {
+                "params": {"sections": ["响应", "RDII", "风险"], "event_ids": [6]}
+            }
+        }
+    }, ensure_ascii=False), encoding="utf-8")
+    (outputs / "雨天报告.docx").write_bytes(b"not inspected after scope skip")
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "E016B",
+        "root": str(root),
+        "turns": [{"n": 1, "prompt": "生成含响应、RDII 和风险的报告"}],
+    }, ensure_ascii=False), encoding="utf-8")
+
+    checked = check_report_has_independent_curve_images(
+        load_cases(results)[0],
+        CheckContext(tmp_path, {"W1"}, None, None, None, None),
+    )
+
+    assert checked[0].status == "skip"
+    assert "dry-weather" in checked[0].reason

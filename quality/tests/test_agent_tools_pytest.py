@@ -29,6 +29,7 @@ from agent.tools.module_tools import (
     _report_actual_time_range,
     _time_result_prefix,
 )
+from analysis.modules.filtering import write_filter_excel
 from analysis.reporting.pipeline_report_assembler.assembler import _scope_period_text
 from analysis.reporting.pipeline_report_assembler.template_scanner import scan_template
 from agent.tools.python_tool import run_python_impl
@@ -651,7 +652,23 @@ def test_event_response_rdii_and_risk_with_event_ids(tmp_path: Path) -> None:
 
     assert response["status"] == "ok"
     assert rdii["status"] == "ok"
+    assert rdii["data"]["units"]["rdii_total"] == "m³"
+    assert "单位 m³" in rdii["summary"]
     assert risk["status"] == "ok"
+
+
+def test_rainfall_uses_dataset_year_when_user_omits_year(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    deps.session.current_user_prompt = "分析 1 月 1 日这场雨。"
+
+    result = analyze_rainfall_impl(
+        deps, time_range=["2025-01-01", "2025-01-01 23:59:59"]
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["has_rainfall_coverage"] is True
+    assert result["data"]["resolved_time_range"][0].startswith("2026-01-01")
 
 
 def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1529,3 +1546,23 @@ def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.Monkey
     assert result["status"] == "error"
     assert elapsed < 10
     assert result["data"]["script"]
+def test_filter_excel_replaces_target_only_after_complete_write(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "筛选结果.xlsx"
+    output.write_bytes(b"existing-complete-file")
+    day = pd.Timestamp("2026-03-08")
+
+    def fail_formatting(*_args, **_kwargs):
+        raise RuntimeError("formatting failed")
+
+    monkeypatch.setattr("analysis.modules.filtering._apply_filter_excel_formatting", fail_formatting)
+
+    with pytest.raises(RuntimeError, match="formatting failed"):
+        write_filter_excel(
+            output,
+            {"W1": {day: 1.0}},
+            {"W1": {day}},
+            pd.Series(dtype=float),
+            {"W1": []},
+        )
+
+    assert output.read_bytes() == b"existing-complete-file"

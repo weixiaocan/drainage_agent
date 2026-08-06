@@ -4,6 +4,11 @@ import ast
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+from pydantic_ai import ModelRetry
+
+from agent.core import reject_internal_monologue
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PROMPT_PATH = PROJECT_ROOT / "agent" / "prompts" / "system.md"
@@ -12,6 +17,16 @@ CORE_PATH = PROJECT_ROOT / "agent" / "core" / "__init__.py"
 
 def read_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def test_final_response_validator_rejects_internal_monologue() -> None:
+    with pytest.raises(ModelRetry):
+        reject_internal_monologue("现在我有完整数据了。让我整理一下结果，再告诉用户。")
+
+
+def test_final_response_validator_accepts_user_facing_answer() -> None:
+    answer = "W1 当前没有流量数据覆盖，请确认点位编号。"
+    assert reject_internal_monologue(answer) == answer
 
 
 def test_prompt_requires_fresh_result_reuse_and_stale_rerun() -> None:
@@ -161,6 +176,41 @@ def test_dry_report_intent_uses_existing_report_tool_without_model(
     assert called["sections"] == DRY_REPORT_SECTIONS
     assert "旱天分析报告已生成" in result.output
     assert len(result.all_messages()) == 2
+
+
+def test_dry_report_with_rdii_requests_scope_confirmation(monkeypatch) -> None:
+    from agent.core import _ReportIntentAgent
+
+    monkeypatch.setattr(
+        "agent.core.generate_report_impl",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("口径冲突时不应生成报告")
+        ),
+    )
+
+    class UnexpectedModel:
+        def run_sync(self, *args, **kwargs):
+            raise AssertionError("明确可识别的口径冲突不应交给模型猜测")
+
+    result = _ReportIntentAgent(UnexpectedModel()).run_sync(
+        "生成 W1 旱天分析报告，并包含 RDII 分析。",
+        deps=SimpleNamespace(),
+        message_history=[],
+    )
+
+    assert "口径冲突" in result.output
+    assert "旱天报告" in result.output
+    assert "雨天/RDII" in result.output
+
+
+def test_prompt_requires_public_professional_terms() -> None:
+    prompt = read_prompt()
+    assert "最大充满度" in prompt
+    assert "溢流风险值" in prompt
+    assert "禁止使用“装满率”" in prompt
+    assert "禁止向用户展示 `max_fullness`、`overflow_value`" in prompt
+    assert "负流量的成因" in prompt
+    assert "不得写成已确认原因" in prompt
 
 
 def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:

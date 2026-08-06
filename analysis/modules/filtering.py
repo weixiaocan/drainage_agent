@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 from typing import Any
 
 import numpy as np
@@ -256,7 +257,7 @@ class DataFilter:
         return selected, matrix, notes
 
 
-def write_filter_excel(
+def _write_filter_excel_uncommitted(
     output_file: Path,
     matrix: dict[str, dict[pd.Timestamp, float]],
     selected: dict[str, set[pd.Timestamp]],
@@ -285,6 +286,31 @@ def write_filter_excel(
     ws = wb["筛选结果"]
     _apply_filter_excel_formatting(ws, selected, notes)
     wb.save(output_file)
+
+
+def write_filter_excel(
+    output_file: Path,
+    matrix: dict[str, dict[pd.Timestamp, float]],
+    selected: dict[str, set[pd.Timestamp]],
+    rain_daily: pd.Series,
+    notes: dict[str, list[str]],
+) -> None:
+    """Write a complete workbook and atomically publish it at ``output_file``."""
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=output_file.parent,
+        prefix=f".{output_file.stem}-",
+        suffix=".xlsx",
+        delete=False,
+    ) as temporary:
+        temporary_file = Path(temporary.name)
+    try:
+        _write_filter_excel_uncommitted(
+            temporary_file, matrix, selected, rain_daily, notes
+        )
+        temporary_file.replace(output_file)
+    finally:
+        temporary_file.unlink(missing_ok=True)
 
 
 def _apply_filter_excel_formatting(ws: Any, selected: dict[str, set[pd.Timestamp]], notes: dict[str, list[str]]) -> None:

@@ -441,10 +441,21 @@ def check_coverage_guard_no_analysis_without_data(case: CaseRecord, ctx: CheckCo
         if not turn.tool_calls:
             results.append(result(case, name, "trace", "skip", "no tool_calls available for this turn", turn.n))
             continue
+        trace_events = _turn_trace_events(case, turn)
+        successful_tools = {
+            str(event.get("tool_name"))
+            for event in trace_events
+            if event.get("event") == "tool_result" and event.get("status") == "ok"
+        }
         bad = [
             call.tool
             for call in turn.tool_calls
-            if call.tool in forbidden and _manifest_result(case, call.tool)
+            if call.tool in forbidden
+            and (
+                call.tool in successful_tools
+                if trace_events
+                else bool(_manifest_result(case, call.tool))
+            )
         ]
         status: Status = "fail" if bad else "pass"
         reason = (
@@ -547,6 +558,12 @@ def check_report_has_independent_curve_images(case: CaseRecord, ctx: CheckContex
     reports = [path for path in _report_paths(case) if path.suffix.lower() == ".docx"]
     if not reports:
         return [result(case, name, "artifact", "skip", "no docx report artifact found")]
+    sections = _report_params(case).get("sections")
+    if isinstance(sections, list) and sections and not any(
+        any(marker in str(section) for marker in ("旱天", "排污规律", "特征曲线"))
+        for section in sections
+    ):
+        return [result(case, name, "artifact", "skip", "report has no dry-weather curve section")]
     expected_points = _expected_points_for_report(case, ctx)
     if not expected_points:
         return [result(case, name, "artifact", "skip", "no expected report points resolved")]
@@ -786,7 +803,10 @@ def check_expected_tool_contract(case: CaseRecord, ctx: CheckContext) -> list[Ch
     name = "expected_tool_contract"
     contracts: list[tuple[int | None, dict[str, Any], list[str]]] = []
     case_tools = case.expected.get("tools") if isinstance(case.expected, dict) else None
-    if isinstance(case_tools, dict):
+    single_turn_tools = None
+    if len(case.turns) == 1 and isinstance(case.turns[0].expected, dict):
+        single_turn_tools = case.turns[0].expected.get("tools")
+    if isinstance(case_tools, dict) and case_tools != single_turn_tools:
         contracts.append((None, case_tools, [call.tool for call in case.all_tool_calls]))
     for turn in case.turns:
         turn_tools = turn.expected.get("tools") if isinstance(turn.expected, dict) else None

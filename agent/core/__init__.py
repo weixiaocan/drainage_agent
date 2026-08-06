@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from pydantic_ai import RunContext
+from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from agent.deps import AgentDeps
@@ -28,6 +28,22 @@ from agent.types import FilterConfirmationRequired
 
 
 _cancel_flags: dict[str, bool] = {}
+
+_INTERNAL_MONOLOGUE_PATTERNS = (
+    r"让我(?:先|确认|思考|整理|向用户|调用)",
+    r"这里我应该",
+    r"我必须.*(?:用户|规则|工具)",
+    r"(?:用户要求|用户需要|告知用户)",
+    r"(?:规则强调|根据规则|实际上，?规则)",
+    r"我认为应该",
+)
+
+
+def reject_internal_monologue(output: str) -> str:
+    """Require model output to contain only the user-facing answer."""
+    if any(re.search(pattern, output) for pattern in _INTERNAL_MONOLOGUE_PATTERNS):
+        raise ModelRetry("只输出面向用户的最终回答；删除思考、规划、规则复述和自我对话。")
+    return output
 
 
 def request_cancel(session_id: str) -> None:
@@ -259,6 +275,10 @@ class _FakeToolMessage:
 
 FILTER_CONFIRMATION_CLARIFICATION = "是确认用当前筛选结果继续吗？如果是，请回复“确认继续”；如果要重新筛选或改需求，请直接说明。"
 DRY_REPORT_SECTIONS = ["监测概况", "旱天排污规律统计分析", "旱天风险"]
+REPORT_SCOPE_CONFLICT_REPLY = (
+    "检测到报告口径冲突：旱天报告应排除降雨相关内容，但 RDII 属于雨天分析。"
+    "请确认要生成纯旱天报告，还是生成包含雨天/RDII 内容的综合报告。"
+)
 
 
 def _is_dry_report_request(message: str) -> bool:
@@ -269,6 +289,16 @@ def _is_dry_report_request(message: str) -> bool:
         and any(marker in compact for marker in ("旱天", "干天"))
         and not any(marker in compact for marker in ("雨天", "降雨", "RDII"))
         and not re.search(r"(?<![A-Za-z0-9])W\d+|20\d{2}[-/.年]", user_request, re.IGNORECASE)
+    )
+
+
+def _has_report_scope_conflict(message: str) -> bool:
+    user_request = message.split("[本轮补充资料]", 1)[0]
+    compact = re.sub(r"\s+", "", user_request)
+    return (
+        "报告" in compact
+        and any(marker in compact for marker in ("旱天", "干天"))
+        and any(marker in compact for marker in ("雨天", "降雨", "RDII"))
     )
 
 
@@ -289,6 +319,13 @@ class _ReportIntentAgent:
 
     def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
         history = list(message_history or [])
+        if _has_report_scope_conflict(message):
+            saved_history = [
+                *history,
+                ModelRequest(parts=[UserPromptPart(content=message)]),
+                ModelResponse(parts=[TextPart(content=REPORT_SCOPE_CONFLICT_REPLY)]),
+            ]
+            return _PreflightResult(REPORT_SCOPE_CONFLICT_REPLY, saved_history)
         if not _is_dry_report_request(message):
             return self._inner.run_sync(message, deps=deps, message_history=history)
         result = generate_report_impl(deps, sections=DRY_REPORT_SECTIONS)
@@ -417,6 +454,10 @@ def build_agent(deps: AgentDeps) -> Any:
             model_settings=ModelSettings(request_limit=100, timeout=90),
             capabilities=[ProcessHistory(compact_history)],
         )
+
+        @agent.output_validator
+        def validate_user_facing_output(output: str) -> str:
+            return reject_internal_monologue(output)
 
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
             call_id = uuid.uuid4().hex

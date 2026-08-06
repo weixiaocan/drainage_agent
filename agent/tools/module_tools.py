@@ -1279,6 +1279,29 @@ def _filter_rainfall_result_to_window(
     return {"daily": window_daily, "events": events.reset_index(drop=True)}
 
 
+def _resolve_implicit_rainfall_year(
+    deps: AgentDeps,
+    rain: pd.DataFrame,
+    time_range: list[str] | None,
+) -> list[str] | None:
+    """Use the dataset year when the user's date omitted a calendar year."""
+    if not time_range or re.search(r"\b(?:19|20)\d{2}\b", deps.session.current_user_prompt or ""):
+        return time_range
+    years = rain["timestamp"].dropna().dt.year.unique()
+    if len(years) != 1:
+        return time_range
+    dataset_year = int(years[0])
+    resolved: list[str] = []
+    for value in time_range:
+        timestamp = pd.to_datetime(value, errors="coerce")
+        if pd.isna(timestamp):
+            return time_range
+        resolved.append(
+            value if timestamp.year == dataset_year else str(timestamp.replace(year=dataset_year))
+        )
+    return resolved
+
+
 def analyze_rainfall_impl(
     deps: AgentDeps,
     time_range: list[str] | None = None,
@@ -1286,26 +1309,27 @@ def analyze_rainfall_impl(
     rainfall_gap_hours: int = 12,
     export: bool = False,
 ) -> ToolResult:
+    rain = io.load_rain(root=deps.paths.root)
+    resolved_time_range = _resolve_implicit_rainfall_year(deps, rain, time_range)
     params = {
-        "time_range": time_range or [],
+        "time_range": resolved_time_range or [],
         "output": output,
         "rainfall_gap_hours": rainfall_gap_hours,
         "export": export,
     }
 
     def work() -> tuple[str, dict[str, Any]]:
-        rain = io.load_rain(root=deps.paths.root)
         result = analyze_rainfall(rain, gap_hours=rainfall_gap_hours)
-        if time_range:
-            result = _filter_rainfall_result_to_window(rain, result, time_range)
+        if resolved_time_range:
+            result = _filter_rainfall_result_to_window(rain, result, resolved_time_range)
             deps.session.window_event_id_map = {
                 int(local): int(source)
                 for local, source in zip(result["events"]["event_id"], result["events"]["source_event_id"])
             }
         else:
             deps.session.window_event_id_map = {}
-        range_start = time_range[0] if time_range else None
-        range_end = time_range[1] if time_range else None
+        range_start = resolved_time_range[0] if resolved_time_range else None
+        range_end = resolved_time_range[1] if resolved_time_range else None
         chart_paths: dict[str, str] = {}
         destinations: list[dict[str, Any]] = []
         if output in {"all", "daily"}:
@@ -1345,6 +1369,7 @@ def analyze_rainfall_impl(
         summary = f"降雨分析完成：雨日 {rainy_days} 天，总雨量 {total:.1f} mm，场次 {len(result['events'])} 场。"
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
         data["has_rainfall_coverage"] = bool(rainy_days or not result["events"].empty)
+        data["resolved_time_range"] = resolved_time_range or []
         data["chart_paths"] = chart_paths
         data["result_destinations"] = destinations
         return summary, data
@@ -1522,12 +1547,14 @@ def analyze_rdii_impl(
                 f"RDII 分析无可用数据：场次 {event_ids} 与点位 {points or ['全部点位']} 的监测数据"
                 "无时间重叠，无法计算 RDII。"
             )
+            summary += " RDII 总量单位 m³，RDII 曲线单位 L/s。"
             destination = _route_table_result(deps, public_table, "RDII总量统计", points, export)
             return summary, {
                 "table": [],
                 "chart_paths": {},
                 "no_data": True,
                 "event_ids": event_ids,
+                "units": {"rdii_total": "m³", "rdii_curve": "L/s"},
                 "result_destinations": [destination],
             }
         rain = io.load_rain(root=deps.paths.root)
@@ -1549,10 +1576,12 @@ def analyze_rdii_impl(
         chart_count = sum(len(point_paths) for point_paths in chart_paths.values())
         excluded_note = f"；剔除无覆盖点位 {[item['point_id'] for item in excluded]}" if excluded else ""
         summary = f"RDII 分析完成：场次 {event_ids}，输出 {len(table)} 行统计，生成 {chart_count} 张 RDII 曲线图{excluded_note}。"
+        summary += " RDII 总量单位 m³，RDII 曲线单位 L/s。"
         return summary, {
             "table": public_table.to_dict(orient="records"),
             "chart_paths": chart_paths,
             "no_data": False,
+            "units": {"rdii_total": "m³", "rdii_curve": "L/s"},
             "covered_points": covered,
             "excluded_points": excluded,
             "result_destinations": [destination],

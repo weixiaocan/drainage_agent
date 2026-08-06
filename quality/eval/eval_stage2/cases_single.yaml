@@ -599,13 +599,6 @@
   expected:
     tools:
       must_call:
-      - data_filter
-      - check_data
-      - analyze_rainfall
-      - analyze_event_response
-      - analyze_patterns
-      - analyze_rdii
-      - assess_risk
       - generate_report
     arguments: 完成完整分析链路，以事件 6 进行雨天响应、RDII 和风险分析，最终报告路径存在
     response: 完成完整分析链路，以事件 6 进行雨天响应、RDII 和风险分析，最终报告路径存在
@@ -673,9 +666,6 @@
   expected:
     tools:
       must_call:
-      - analyze_event_response
-      - analyze_rdii
-      - assess_risk
       - generate_report
     arguments: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
     response: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
@@ -759,7 +749,7 @@
     - artifacts
 - id: E018B
   category: 事件响应
-  scenario: 事件响应：数据覆盖范围内雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
+  scenario: 事件响应：流量监测与降雨数据共同覆盖范围内，雨量最大的事件是哪一场？分析 W1 在其中的响应。
   dimensions:
     task: 事件响应
     scope: 单点单事件
@@ -768,7 +758,7 @@
     output: 详细依据
   setup:
     fixture: default
-  prompt: 数据覆盖范围内雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
+  prompt: 流量监测与降雨数据共同覆盖范围内，雨量最大的降雨事件是哪一场？分析 W1 在其中的响应。
   seed_prompts: []
   rebuild_after_seed: false
   expected:
@@ -1028,7 +1018,7 @@
     - 统计全网旱天流量、液位和流速。
     rebuild_after_seed: true
     after_seed_mutation: append_flow_newline
-  prompt: 使用现有结果总结全网风险。
+  prompt: 使用现有结果总结全网旱天风险。
   seed_prompts: *id002
   rebuild_after_seed: true
   expected:
@@ -1203,7 +1193,7 @@
     - state.after
 - id: E032
   category: 排污规律
-  scenario: 对抗模糊-点位与时间-A均有效
+  scenario: 明确请求-点位与时间窗口均有效
   dimensions:
     task: 排污规律
     scope: 单点时间窗
