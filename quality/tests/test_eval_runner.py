@@ -311,6 +311,8 @@ def test_eval_view_loads_objective_check_sidecar(tmp_path: Path) -> None:
     html = destination.read_text(encoding="utf-8")
     assert "Drainage Agent Eval 评审" in html
     assert "自动失败" in html
+    assert 'data-filter="uncertain">人工不确定' in html
+    assert 'if(filter==="uncertain")return g.verdict==="uncertain"' in html
     assert "Inspect W1" in html
     assert "Summarize status" in html
     assert "W1 is normal" in html

@@ -651,30 +651,32 @@
     - artifacts
 - id: E016B
   category: 报告
-  scenario: 报告：以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  scenario: 报告：为 W1、W2 生成 3 月 10 日之后、第 6 场降雨的响应、RDII 和风险专题报告。
   dimensions:
     task: 报告
-    scope: 全网单事件
+    scope: 双点限定时段单事件
     request_quality: 完整明确
     data_state: 完整覆盖
     output: 完整报告
   setup:
     fixture: default
-  prompt: 以第 6 场降雨为重点，生成包含响应、RDII 和风险的报告。
+  prompt: 为 W1、W2 生成 2026 年 3 月 10 日之后的专题报告，重点分析第 6 场降雨，报告包含事件响应、RDII 和雨天风险。
   seed_prompts: []
   rebuild_after_seed: false
   expected:
     tools:
       must_call:
       - generate_report
-    arguments: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
-    response: 各雨天工具及 generate_report 均使用事件6，回答说明包含响应、RDII和风险，报告路径存在
+    arguments: generate_report 使用 points=[W1,W2]、start=2026-03-10、event_ids=[6]，章节包含响应、RDII和雨天风险
+    response: 明确报告仅覆盖 W1、W2 和 2026-03-10 之后的数据，以事件6为重点，并给出存在的报告路径
     artifacts: 只产生用户明确要求且工具成功返回的产物
     state: 工具、结果与回答状态一致
     forbidden:
     - 只生成通用报告
     - 漏 RDII 或风险
     - 事件参数错
+    - 扩大到全网或 3 月 10 日之前
+    - 混入其他点位的数据或结论
     - 报告路径不存在
     evidence:
     - tool_calls
