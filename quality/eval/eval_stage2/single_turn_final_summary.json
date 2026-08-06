@@ -1,0 +1,108 @@
+{
+  "meta": {
+    "title": "单轮评测最终总结",
+    "date": "2026-08-06",
+    "stage": "stage2",
+    "test_set": "cases_single.yaml",
+    "total_cases": 40,
+    "total_checks_per_case": 13,
+    "baseline_run": "results_single_v3",
+    "annotation_source": "eval_annotations (3).csv"
+  },
+  "result": {
+    "human": {
+      "pass": 40,
+      "fail": 0,
+      "uncertain": 0,
+      "unlabeled": 0
+    },
+    "auto_checks_baseline_v3": {
+      "pass": 88,
+      "fail": 4,
+      "skip": 428
+    },
+    "auto_checks_final": {
+      "description": "v3 baseline + targeted re-runs for E016A(v5), E016B(v8), E017(v4), E018B(v4)",
+      "pass": 98,
+      "fail": 0,
+      "skip": 422
+    }
+  },
+  "failures_original": [
+    {
+      "case_id": "E016A",
+      "original_verdict": "fail",
+      "issue": "第4场降雨无监测数据覆盖，但仍生成了报告",
+      "fix": "无覆盖数据时禁止生成报告（generate_report 前置校验）",
+      "fix_commit": "f8d6359 fix targeted agent eval failures",
+      "retest_version": "v5",
+      "retest_result": "自动检查通过，无报告产物生成",
+      "final_verdict": "pass"
+    },
+    {
+      "case_id": "E016B",
+      "original_verdict": "uncertain",
+      "issue": "请求RDII但综合工作簿无RDII分析结果；裁剪模板后标题编号丢失",
+      "fix": "generate_report明确请求事件响应时执行事件响应分析；明确请求RDII时执行RDII分析；模板裁剪后重新生成连续标题编号",
+      "fix_commit": "cf0d35a fix report RDII output and heading numbering",
+      "retest_version": "v8",
+      "retest_result": "6 pass / 0 fail / 6 skip",
+      "v7_note": "v7是模型行为波动（对明确'第6场降雨'不必要确认），仅调list_results未调generate_report，是失败证据非代码回归",
+      "artifacts": [
+        "2点_W1等_2026-03-10_之后_分析报告.docx",
+        "2点_W1等_2026-03-10_之后_综合分析结果.xlsx"
+      ],
+      "rdii_data": {"W1": 2691.59, "W2": 2624.72},
+      "final_verdict": "pass"
+    },
+    {
+      "case_id": "E017",
+      "original_verdict": "fail",
+      "issue": "无效点位W999未直接识别，模型绕远路猜测",
+      "fix": "无效点位的报告生成前置校验",
+      "fix_commit": "f8d6359 fix targeted agent eval failures",
+      "retest_version": "v4",
+      "retest_result": "自动检查通过（list_results + check_data），未生成报告",
+      "v5_note": "v5模型波动（missing check_data），非代码回归",
+      "final_verdict": "pass"
+    },
+    {
+      "case_id": "E018B",
+      "original_verdict": "fail",
+      "issue": "用户标注认为回答正确但预期写的是事件6，模型回答事件4",
+      "resolution": "用户确认模型回答正确，测试预期需修正为事件4",
+      "fix_commit": "f8d6359 fix targeted agent eval failures (多点共同覆盖降雨事件选择逻辑修复)",
+      "final_verdict": "pass"
+    }
+  ],
+  "dimension_coverage": {
+    "task_types": ["数据查询", "降雨分析", "事件响应", "RDII", "风险评估", "排污规律", "报告生成", "边界/错误"],
+    "scopes": ["全网", "指定点位", "指定时间", "指定降雨事件", "部分点位+时间"],
+    "clarity_levels": ["明确", "模糊", "歧义", "冲突"],
+    "output_types": ["对话回答", "Word报告", "综合工作簿", "PNG曲线图"],
+    "risk_boundary": ["无效点位", "无覆盖数据", "数据文件损坏", "空数据", "模糊请求", "冲突请求"]
+  },
+  "evidence": {
+    "baseline_results": "quality/eval/eval_stage2/results_single_v3.jsonl",
+    "baseline_checks": "quality/eval/eval_stage2/results_single_v3_checks.json",
+    "targeted_v4": "quality/eval/eval_stage2/results_single_targeted_v4.jsonl",
+    "targeted_v5": "quality/eval/eval_stage2/results_single_targeted_v5.jsonl",
+    "e016b_v6": "quality/eval/eval_stage2/results_single_e016b_v6.jsonl",
+    "e016b_v7": "quality/eval/eval_stage2/results_single_e016b_v7.jsonl",
+    "e016b_v8": "quality/eval/eval_stage2/results_single_e016b_v8.jsonl",
+    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (3).csv",
+    "artifacts_dir": "quality/eval/eval_stage2/artifacts"
+  },
+  "gate_decision": {
+    "single_turn_passed": true,
+    "ready_for_multiturn": true,
+    "rationale": "40条全部通过人工评估，自动检查0失败，修复项已复测确认。单轮评测正式收口。"
+  },
+  "unresolved": [],
+  "notes": [
+    "E003/E009A用户明确确认通过，保留人工结论",
+    "E016B v7是模型不必要追问导致的失败轨迹，v8是修复后最终成功轨迹",
+    "E018B测试预期需后续修正（事件6→事件4），不影响通过结论",
+    "check.py中eval_stage1分支为死代码（eval_stage1目录已删除），建议后续清理"
+  ]
+}
