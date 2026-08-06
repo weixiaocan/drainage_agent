@@ -216,6 +216,16 @@ def validate_cases(cases: list[dict]) -> None:
             raise ValueError(f"{case['id']}: schema v2 用例缺少 expected")
 
 
+def select_cases(cases: list[dict], case_ids: list[str] | None) -> list[dict]:
+    if not case_ids:
+        return cases
+    by_id = {str(case["id"]): case for case in cases}
+    missing = [case_id for case_id in case_ids if case_id not in by_id]
+    if missing:
+        raise ValueError(f"未知 Eval case id: {missing}")
+    return [by_id[case_id] for case_id in dict.fromkeys(case_ids)]
+
+
 def try_usage(result) -> dict | None:
     """尽力取 token 用量；不同 pydantic-ai 版本接口不一，取不到就返回 None。"""
     try:
@@ -382,6 +392,8 @@ def main():
                     help="pause after data_filter for HITL hook eval")
     ap.add_argument("--validate-only", action="store_true",
                     help="只验证用例结构和隔离 fixture，不调用模型")
+    ap.add_argument("--case-id", action="append", dest="case_ids",
+                    help="只运行指定 case id；可重复传入")
     args = ap.parse_args()
 
     load_dotenv(PROJECT / ".env")
@@ -389,6 +401,7 @@ def main():
     cases_path = (PROJECT / args.cases_file) if not Path(args.cases_file).is_absolute() else Path(args.cases_file)
     raw_cases = yaml.safe_load(cases_path.read_text("utf-8"))
     validate_cases(raw_cases)
+    raw_cases = select_cases(raw_cases, args.case_ids)
     cases = [normalize_case(c) for c in raw_cases]
 
     if args.validate_only:

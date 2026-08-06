@@ -210,7 +210,6 @@
     tools:
       must_call:
       - analyze_rainfall
-      - analyze_event_response
     arguments: 先识别为事件4，再明确 W1 监测数据与该事件无时间重叠，不编造响应指标
     response: 先识别为事件4，再明确 W1 监测数据与该事件无时间重叠，不编造响应指标
     artifacts: 只产生用户明确要求且工具成功返回的产物
@@ -633,7 +632,6 @@
     tools:
       must_call:
       - analyze_rainfall
-      - analyze_event_response
     arguments: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告；不得把仅有降雨数据的事件5说成有流量监测覆盖
     response: 识别事件4与流量监测数据无时间重叠，明确无法完成可靠的响应、RDII和风险报告；不得把仅有降雨数据的事件5说成有流量监测覆盖
     artifacts: 只产生用户明确要求且工具成功返回的产物
@@ -700,7 +698,8 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call:
+      must_call: []
+      must_not_call:
       - check_data
     arguments: 明确指出 W999 不存在/无数据，不编造
     response: 明确指出 W999 不存在/无数据，不编造

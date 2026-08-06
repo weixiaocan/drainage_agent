@@ -25,6 +25,7 @@ from agent.tools.module_tools import (
 )
 from agent.tools.python_tool import run_python_impl
 from agent.types import FilterConfirmationRequired
+from analysis import io
 
 
 _cancel_flags: dict[str, bool] = {}
@@ -36,6 +37,8 @@ _INTERNAL_MONOLOGUE_PATTERNS = (
     r"(?:用户要求|用户需要|告知用户)",
     r"(?:规则强调|根据规则|实际上，?规则)",
     r"我认为应该",
+    r"我注意到.*(?:问题|需要)",
+    r"需要向您说明.*确认下一步",
 )
 
 
@@ -336,6 +339,48 @@ class _ReportIntentAgent:
             ModelResponse(parts=[TextPart(content=reply)]),
         ]
         return _PreflightResult(reply, saved_history)
+
+
+def _known_point_ids(deps: AgentDeps) -> set[str]:
+    sites = io.load_sites(root=deps.paths.root)
+    known = (
+        {str(value).upper() for value in sites["point_id"].dropna()}
+        if "point_id" in sites.columns
+        else set()
+    )
+    if not known:
+        known = {
+            str(value).upper()
+            for value in sites.to_numpy().ravel()
+            if re.fullmatch(r"W\d+", str(value), re.IGNORECASE)
+        }
+    if known:
+        return known
+    flow = io.load_flow(root=deps.paths.root)
+    if "point_id" in flow.columns:
+        known.update(str(value).upper() for value in flow["point_id"].dropna())
+    return known
+
+
+class _InvalidPointAgent:
+    def __init__(self, inner: Any):
+        self._inner = inner
+
+    def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
+        history = list(message_history or [])
+        mentioned = {match.upper() for match in re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, re.IGNORECASE)}
+        known = _known_point_ids(deps)
+        if mentioned and known and mentioned.isdisjoint(known):
+            invalid = "、".join(sorted(mentioned))
+            examples = "、".join(sorted(known, key=lambda value: int(value[1:]) if value[1:].isdigit() else value)[:10])
+            reply = f"{invalid} 不是有效点位编号，当前数据中不存在该点位。当前有效点位包括：{examples}。请重新指定点位。"
+            saved_history = [
+                *history,
+                ModelRequest(parts=[UserPromptPart(content=message)]),
+                ModelResponse(parts=[TextPart(content=reply)]),
+            ]
+            return _PreflightResult(reply, saved_history)
+        return self._inner.run_sync(message, deps=deps, message_history=history)
 
 
 def _has_pending_filter_confirmation(deps: AgentDeps) -> bool:
@@ -658,6 +703,6 @@ def build_agent(deps: AgentDeps) -> Any:
             args = {"code": code}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
 
-        return _ReportIntentAgent(_FilterConfirmationAgent(agent))
+        return _InvalidPointAgent(_ReportIntentAgent(_FilterConfirmationAgent(agent)))
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc

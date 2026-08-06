@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from types import SimpleNamespace
+import pandas as pd
 
 import pytest
 from pydantic_ai import ModelRetry
@@ -22,6 +23,8 @@ def read_prompt() -> str:
 def test_final_response_validator_rejects_internal_monologue() -> None:
     with pytest.raises(ModelRetry):
         reject_internal_monologue("现在我有完整数据了。让我整理一下结果，再告诉用户。")
+    with pytest.raises(ModelRetry):
+        reject_internal_monologue("我注意到一个关键问题，需要向您说明情况并确认下一步。")
 
 
 def test_final_response_validator_accepts_user_facing_answer() -> None:
@@ -203,6 +206,45 @@ def test_dry_report_with_rdii_requests_scope_confirmation(monkeypatch) -> None:
     assert "雨天/RDII" in result.output
 
 
+def test_all_invalid_point_ids_are_rejected_before_model(monkeypatch) -> None:
+    from agent.core import _InvalidPointAgent
+
+    monkeypatch.setattr("agent.core._known_point_ids", lambda deps: {"W1", "W2"})
+
+    class UnexpectedModel:
+        def run_sync(self, *args, **kwargs):
+            raise AssertionError("全无效点位不应交给模型猜测")
+
+    result = _InvalidPointAgent(UnexpectedModel()).run_sync(
+        "你直接告诉我 W999 的数据质量怎么样。",
+        deps=SimpleNamespace(),
+        message_history=[],
+    )
+
+    assert "W999" in result.output
+    assert "不是有效点位" in result.output
+    assert "W1、W2" in result.output
+
+
+def test_known_point_ids_falls_back_to_flow_when_site_headers_are_unreadable(
+    monkeypatch,
+) -> None:
+    from agent.core import _known_point_ids
+
+    monkeypatch.setattr(
+        "agent.core.io.load_sites", lambda **kwargs: pd.DataFrame({"garbled": ["unknown"]})
+    )
+    monkeypatch.setattr(
+        "agent.core.io.load_flow",
+        lambda **kwargs: pd.DataFrame({"point_id": ["W1", "W2"]}),
+    )
+
+    assert _known_point_ids(SimpleNamespace(paths=SimpleNamespace(root="."))) == {
+        "W1",
+        "W2",
+    }
+
+
 def test_prompt_requires_public_professional_terms() -> None:
     prompt = read_prompt()
     assert "最大充满度" in prompt
@@ -211,6 +253,7 @@ def test_prompt_requires_public_professional_terms() -> None:
     assert "禁止向用户展示 `max_fullness`、`overflow_value`" in prompt
     assert "负流量的成因" in prompt
     assert "不得写成已确认原因" in prompt
+    assert "largest_monitoring_covered_event_id" in prompt
 
 
 def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:

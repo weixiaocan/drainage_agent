@@ -129,7 +129,13 @@ def run_report_assembler(
                 )
         _merge_stats(stats, section_stats)
 
-    validation = validate_report(doc, facts, selected_sections=selected)
+    validation = validate_report(
+        doc,
+        facts,
+        selected_sections=selected,
+        include_dry_risk=include_dry_risk,
+        include_rainy_risk=include_rainy_risk,
+    )
     warnings.extend(validation.warnings)
     if validation.critical:
         warnings.extend(validation.critical)

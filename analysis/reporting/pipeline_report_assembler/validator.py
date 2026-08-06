@@ -24,6 +24,8 @@ def validate_report(
     doc: Document,
     facts: ReportFacts,
     selected_sections: list[str] | None = None,
+    include_dry_risk: bool = True,
+    include_rainy_risk: bool = True,
 ) -> ValidationResult:
     result = ValidationResult()
     text = _document_text(doc)
@@ -64,9 +66,9 @@ def validate_report(
     for key, heading in headings.items():
         if key not in selected and heading in text:
             result.critical.append(f"报告仍包含未选择章节: {heading}")
-    if "operation_risk_analysis" in selected and "表 12 旱天运行状态统计表" not in text:
+    if "operation_risk_analysis" in selected and include_dry_risk and "表 12 旱天运行状态统计表" not in text:
         result.critical.append("报告缺少表题: 表 12 旱天运行状态统计表")
-    if "operation_risk_analysis" in selected and "雨天运行风险分析" in text and "表 13 第二轮监测雨天运行状态统计表" not in text:
+    if "operation_risk_analysis" in selected and include_rainy_risk and "雨天运行风险分析" in text and "表 13 第二轮监测雨天运行状态统计表" not in text:
         result.critical.append("报告缺少表题: 表 13 第二轮监测雨天运行状态统计表")
 
     pattern_start = text.find("旱天排污规律统计分析")

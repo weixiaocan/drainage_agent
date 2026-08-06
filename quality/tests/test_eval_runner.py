@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from docx import Document
+import pytest
 
 from quality.eval.eval_stage2.run_eval import (
     apply_after_seed_mutation,
@@ -15,6 +16,7 @@ from quality.eval.eval_stage2.run_eval import (
     fresh_root,
     normalize_case,
     preserve_artifacts,
+    select_cases,
     trace_evidence,
     tree_snapshot,
     tool_seq,
@@ -228,6 +230,17 @@ def test_validate_cases_rejects_duplicate_ids() -> None:
         assert "重复" in str(exc)
     else:
         raise AssertionError("duplicate Eval ids should fail validation")
+
+
+def test_select_cases_keeps_requested_order_and_rejects_unknown_ids() -> None:
+    cases = [{"id": "E001"}, {"id": "E002"}, {"id": "E003"}]
+
+    assert [case["id"] for case in select_cases(cases, ["E003", "E001"])] == [
+        "E003",
+        "E001",
+    ]
+    with pytest.raises(ValueError, match="E999"):
+        select_cases(cases, ["E999"])
 
 
 def test_tree_snapshot_and_trace_evidence_capture_objective_state(tmp_path: Path) -> None:

@@ -31,7 +31,9 @@ from agent.tools.module_tools import (
 )
 from analysis.modules.filtering import write_filter_excel
 from analysis.reporting.pipeline_report_assembler.assembler import _scope_period_text
+from analysis.reporting.pipeline_report_assembler.facts import ReportFacts
 from analysis.reporting.pipeline_report_assembler.template_scanner import scan_template
+from analysis.reporting.pipeline_report_assembler.validator import validate_report
 from agent.tools.python_tool import run_python_impl
 from agent.types import ToolStatus, ok
 
@@ -671,6 +673,37 @@ def test_rainfall_uses_dataset_year_when_user_omits_year(tmp_path: Path) -> None
     assert result["data"]["resolved_time_range"][0].startswith("2026-01-01")
 
 
+def test_rainfall_identifies_largest_event_with_monitoring_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deps = make_deps(tmp_path)
+    rain = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                ["2026-01-01 00:00", "2026-01-01 01:00", "2026-02-01 00:00"]
+            ),
+            "rain_mm": [8.0, 3.0, 5.0],
+        }
+    )
+    flow = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2026-02-01 00:30"]),
+            "point_id": ["W1"],
+            "flow_lps": [1.0],
+            "level_m": [0.2],
+            "velocity_mps": [0.3],
+        }
+    )
+    monkeypatch.setattr("agent.tools.module_tools.io.load_rain", lambda **kwargs: rain)
+    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda **kwargs: flow)
+
+    result = analyze_rainfall_impl(deps, output="events")
+
+    assert result["status"] == "ok"
+    assert result["data"]["monitoring_covered_event_ids"] == [2]
+    assert result["data"]["largest_monitoring_covered_event_id"] == 2
+
+
 def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
@@ -793,14 +826,35 @@ def test_event_tools_exclude_uncovered_points_and_continue(
 def test_report_refuses_event_without_monitoring_coverage(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     write_sample_data(deps)
-    deps.session.selected_event_ids = [4]
-    deps.session.unavailable_event_ids = [4]
+    pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-02-01", periods=3, freq="h"),
+            "rain": [1.0, 2.0, 0.0],
+        }
+    ).to_csv(deps.paths.rainfall_file, index=False)
 
-    report = generate_report_impl(deps, sections=["RDII", "雨天风险"], event_ids=[4])
+    report = generate_report_impl(deps, sections=["RDII", "雨天风险"], event_ids=[1])
 
-    assert report["status"] == "error"
-    assert "无时间重叠" in report["summary"]
+    assert report["status"] == "needs_input"
+    assert "无数据" in report["summary"]
     assert not (deps.paths.outputs / "分析报告.docx").exists()
+
+
+def test_rainy_only_report_validation_does_not_require_dry_risk_table() -> None:
+    doc = Document()
+    doc.add_heading("污水系统运行风险", level=1)
+    doc.add_paragraph("雨天运行风险分析")
+    doc.add_paragraph("表 13 第二轮监测雨天运行状态统计表")
+
+    result = validate_report(
+        doc,
+        ReportFacts([], 0, 0, "", ""),
+        selected_sections=["operation_risk_analysis"],
+        include_dry_risk=False,
+        include_rainy_risk=True,
+    )
+
+    assert result.critical == []
 
 
 def test_patterns_and_report_success(tmp_path: Path) -> None:
@@ -1418,6 +1472,15 @@ def test_window_report_keeps_source_event_internal_and_renders_local_id(
 
     monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
     monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
+    monkeypatch.setattr(
+        "agent.tools.module_tools._event_data_coverage",
+        lambda *_args, **_kwargs: (
+            pd.DataFrame(),
+            pd.DataFrame(),
+            ["W1"],
+            [],
+        ),
+    )
     monkeypatch.setattr(
         "agent.tools.module_tools._resolved_report_time_range",
         lambda *_args: ["2026-03-10", "2026-03-12"],

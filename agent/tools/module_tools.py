@@ -1302,6 +1302,33 @@ def _resolve_implicit_rainfall_year(
     return resolved
 
 
+def _monitoring_covered_rainfall_events(
+    deps: AgentDeps, events: pd.DataFrame, delay_hours: float = 12.0
+) -> tuple[list[int], int | None]:
+    flow = io.load_flow(root=deps.paths.root)
+    covered_rows: list[pd.Series] = []
+    for _, event in events.iterrows():
+        start = pd.to_datetime(event.get("start_time"), errors="coerce")
+        end = pd.to_datetime(event.get("end_time"), errors="coerce")
+        if pd.isna(start) or pd.isna(end):
+            continue
+        window = flow[
+            (flow["timestamp"] >= start)
+            & (flow["timestamp"] <= end + pd.Timedelta(hours=delay_hours))
+        ]
+        if not window.empty:
+            covered_rows.append(event)
+    id_column = "source_event_id" if "source_event_id" in events.columns else "event_id"
+    covered_ids = [int(row[id_column]) for row in covered_rows]
+    if not covered_rows:
+        return covered_ids, None
+    largest = max(
+        covered_rows,
+        key=lambda row: float(row.get("total_rain_mm") or 0.0),
+    )
+    return covered_ids, int(largest[id_column])
+
+
 def analyze_rainfall_impl(
     deps: AgentDeps,
     time_range: list[str] | None = None,
@@ -1367,9 +1394,21 @@ def analyze_rainfall_impl(
         rainy_days = int(result["daily"]["is_rainy"].sum()) if not result["daily"].empty else 0
         total = float(result["daily"]["rain_mm"].sum()) if not result["daily"].empty else 0.0
         summary = f"降雨分析完成：雨日 {rainy_days} 天，总雨量 {total:.1f} mm，场次 {len(result['events'])} 场。"
+        covered_event_ids, largest_covered_event_id = _monitoring_covered_rainfall_events(
+            deps, result["events"]
+        )
+        if covered_event_ids:
+            summary += (
+                f" 与流量监测共同覆盖的场次为 {covered_event_ids}，"
+                f"其中总雨量最大的是场次 {largest_covered_event_id}。"
+            )
+        else:
+            summary += " 当前没有与流量监测时间重叠的降雨场次。"
         data = {key: df.to_dict(orient="records") for key, df in result.items()}
         data["has_rainfall_coverage"] = bool(rainy_days or not result["events"].empty)
         data["resolved_time_range"] = resolved_time_range or []
+        data["monitoring_covered_event_ids"] = covered_event_ids
+        data["largest_monitoring_covered_event_id"] = largest_covered_event_id
         data["chart_paths"] = chart_paths
         data["result_destinations"] = destinations
         return summary, data
@@ -1766,6 +1805,21 @@ def generate_report_impl(
     event_ids: list[int] | None = None,
 ) -> ToolResult:
     sections = sections or list(DEFAULT_REPORT_SECTIONS)
+    requested_event_ids = _source_event_ids(
+        deps, list(event_ids or deps.session.selected_event_ids)
+    )
+    requests_rainy_analysis = _section_requested(
+        sections, REPORT_RAINY_RISK_SECTIONS | {"事件响应", "响应", "RDII"}
+    )
+    if requests_rainy_analysis and requested_event_ids:
+        _, _, covered, excluded = _event_data_coverage(
+            deps, requested_event_ids, points
+        )
+        coverage_failure = _coverage_guard_result(
+            deps, requested_event_ids, covered, excluded
+        )
+        if coverage_failure:
+            return coverage_failure
     if (
         deps.report_templates is not None
         and deps.analysis_runner is not None
