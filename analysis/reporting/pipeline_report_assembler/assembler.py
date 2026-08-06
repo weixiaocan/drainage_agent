@@ -62,9 +62,6 @@ def run_report_assembler(
     doc = Document(template_file)
     selected = _selected_section_keys(sections)
     dry_only = _is_dry_only_report(sections, selected)
-    _prune_unselected_sections(doc, selected)
-    if dry_only:
-        _prune_heading_blocks(doc, {"雨天运行风险分析", "雨天风险"})
     context = build_report_context(
         analysis_results=analysis_results,
         site_info_file=site_info_file,
@@ -129,6 +126,10 @@ def run_report_assembler(
                     f"实际 {section_stats.get('images_inserted', 0)} 张"
                 )
         _merge_stats(stats, section_stats)
+
+    _prune_unselected_sections(doc, selected)
+    if dry_only:
+        _prune_heading_blocks(doc, {"雨天运行风险分析", "雨天风险"})
 
     validation = validate_report(
         doc,
