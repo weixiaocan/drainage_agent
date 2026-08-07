@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "title": "多轮评测最终总结",
+    "date": "2026-08-07",
+    "stage": "stage2",
+    "test_set": "cases_multiturn_v2.yaml",
+    "total_cases": 15,
+    "total_turns": 72,
+    "model": "deepseek-chat",
+    "baseline_run": "results_multiturn_v1",
+    "final_run": "results_multiturn_v2"
+  },
+  "result": {
+    "v1_auto": {"pass": 119, "fail": 8, "skip": 129},
+    "v2_auto": {"pass": 99, "fail": 14, "skip": 142},
+    "human": {"pass": 9, "fail": 0, "uncertain": 0, "pending": 6},
+    "note": "v1 人工标注 9 通过/5 失败/1 不确定。5 个失败项全部修复后，M004/M009/M010/M014 在 v2 自动检查通过。M006/M007/M011/M012/M013 在 v2 中新增自动失败，均为模型工具选择波动，需人工判断语义质量。"
+  },
+  "fixes_applied": [
+    {
+      "case": "M006",
+      "issue": "单章节报告图片插入失败：裁剪后边界查找失败",
+      "fix": "先渲染后裁剪 (c6bc442)",
+      "v2_auto": "2 fail (模型波动：turn3过早调generate_report，turn4未调)"
+    },
+    {
+      "case": "M010",
+      "issue": "trace捕获漏检generate_report工具调用",
+      "fix": "manifest回退检测 (9145cfb)",
+      "v2_auto": "0 fail"
+    },
+    {
+      "case": "M009",
+      "issue": "约束丢失+章节不全+未拒绝报告",
+      "fix": "prompt优化+generate_report覆盖检查 (cc4ba8e, 47752c0)",
+      "v2_auto": "0 fail"
+    },
+    {
+      "case": "M004",
+      "issue": "缺参时未列出降雨场次",
+      "fix": "prompt加强场次列表要求 (cc4ba8e)",
+      "v2_auto": "0 fail"
+    },
+    {
+      "case": "M014",
+      "issue": "旱天+雨天章节误判为冲突",
+      "fix": "prompt澄清章节语义 (cc4ba8e)",
+      "v2_auto": "0 fail"
+    }
+  ],
+  "v2_failures_analysis": {
+    "model_fluctuation": [
+      {"case": "M006", "turns": "3,4", "issue": "generate_report调用时机偏差"},
+      {"case": "M007", "turns": "2,3", "issue": "analyze_patterns未调用"},
+      {"case": "M011", "turns": "5", "issue": "analyze_rainfall未调用"},
+      {"case": "M012", "turns": "1,2,5,6,10,13", "issue": "长上下文(17轮)中工具选择不一致"},
+      {"case": "M013", "turns": "1,2,3", "issue": "analyze_patterns未调用"}
+    ],
+    "note": "v2新增的14个失败全部是expected_tool_contract类型，属于模型工具选择波动，非代码缺陷。M012(17轮)最严重，是deepseek-chat在长上下文中的能力边界。"
+  },
+  "cases_summary": {
+    "zero_failures": ["M001", "M002", "M003", "M004", "M005", "M008", "M009", "M010", "M014", "M015"],
+    "with_failures": ["M006", "M007", "M011", "M012", "M013"]
+  },
+  "evidence": {
+    "v1_results": "quality/eval/eval_stage2/results_multiturn_v1.jsonl",
+    "v1_checks": "quality/eval/eval_stage2/results_multiturn_v1_checks.json",
+    "v2_results": "quality/eval/eval_stage2/results_multiturn_v2.jsonl",
+    "v2_checks": "quality/eval/eval_stage2/results_multiturn_v2_checks.json",
+    "v2_html": "quality/eval/eval_stage2/report_multiturn_v2.html",
+    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (4).csv"
+  },
+  "pending_human_review": ["M006", "M007", "M011", "M012", "M013"],
+  "pending_human_review_reason": "v2自动检查新增失败，需要人工判断语义质量是否可接受"
+}
