@@ -1807,6 +1807,20 @@ def generate_report_impl(
     event_ids: list[int] | None = None,
 ) -> ToolResult:
     sections = sections or list(DEFAULT_REPORT_SECTIONS)
+    report_start, report_end = _report_actual_time_range(deps, points, start, end)
+    if start is not None or end is not None:
+        flow = io.load_flow(points=points, root=deps.paths.root)
+        if not flow.empty:
+            start_ts, end_ts = _window_bounds(start, end)
+            if start_ts is not None:
+                flow = flow[flow["timestamp"] >= start_ts]
+            if end_ts is not None:
+                flow = flow[flow["timestamp"] <= end_ts]
+            if flow.empty:
+                return error(
+                    f"请求的时间范围 [{start or '不限'}, {end or '不限'}] 内无监测数据覆盖，"
+                    "无法生成报告。请修改时间范围后重试。"
+                )
     requested_event_ids = _source_event_ids(
         deps, list(event_ids or deps.session.selected_event_ids)
     )
@@ -1980,12 +1994,6 @@ def generate_report_impl(
     pattern_chart_paths: dict[str, list[str]] = {}
     summaries: list[str] = []
     time_range = _resolved_report_time_range(deps, start, end) if start is not None or end is not None else None
-    report_start, report_end = _report_actual_time_range(
-        deps,
-        points,
-        start,
-        end,
-    )
     report_sections = list(sections)
     if dry_only_report and not _section_requested(report_sections, REPORT_MONITORING_SECTIONS):
         report_sections.insert(0, "监测概况")
