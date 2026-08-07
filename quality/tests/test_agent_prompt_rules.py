@@ -85,8 +85,11 @@ def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:
     assert "点位无覆盖时明确告知" in prompt
     assert "不调分析工具，不猜测原因" in prompt
     assert "剔除无覆盖点位并说明理由" in prompt
-    assert "禁止自行补年份" in prompt
-    assert "先不传 `time_range`" in prompt
+    assert "年份必须从当前任务对应的数据时间范围推断" in prompt
+    assert "流量监测数据年份为准" in prompt
+    assert "降雨数据年份为准" in prompt
+    assert "若跨多个年份而无法唯一确定，再向用户询问" in prompt
+    assert "不要为了确定流量任务的年份而调用 `analyze_rainfall`" in prompt
     assert "降雨事件存在" in prompt
     assert "推荐替代事件前必须验证" in prompt
 

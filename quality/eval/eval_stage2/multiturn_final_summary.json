@@ -13,8 +13,8 @@
   "result": {
     "v1_auto": {"pass": 119, "fail": 8, "skip": 129},
     "v2_auto": {"pass": 99, "fail": 14, "skip": 142},
-    "human": {"pass": 9, "fail": 0, "uncertain": 0, "pending": 6},
-    "note": "v1 人工标注 9 通过/5 失败/1 不确定。5 个失败项全部修复后，M004/M009/M010/M014 在 v2 自动检查通过。M006/M007/M011/M012/M013 在 v2 中新增自动失败，均为模型工具选择波动，需人工判断语义质量。"
+    "human": {"pass": 11, "fail": 2, "uncertain": 1, "pending": 1},
+    "note": "最新人工标注来自 eval_annotations (5).csv：11 通过、M012/M013 失败、M008 不确定、M010 未标注。M008 的 v2 运行实际在首轮因隐式年份闰日映射异常而崩溃，旧检查器因 turns 为空漏记失败；该问题已修复并由 M008 v3 定向复测验证。"
   },
   "fixes_applied": [
     {
@@ -46,6 +46,12 @@
       "issue": "旱天+雨天章节误判为冲突",
       "fix": "prompt澄清章节语义 (cc4ba8e)",
       "v2_auto": "0 fail"
+    },
+    {
+      "case": "M008",
+      "issue": "省略年份时模型传入闰年2月29日，工具映射到非闰年数据年份时抛出日期越界；零 turns 又被旧检查器漏判",
+      "fix": "按任务数据源的唯一年份归一化日期、闰日收敛到月末，并新增 case execution error 客观检查",
+      "targeted_v3_auto": "3 pass / 0 fail / 11 skip；两轮均正确拒绝无覆盖分析"
     }
   ],
   "v2_failures_analysis": {
@@ -56,11 +62,16 @@
       {"case": "M012", "turns": "1,2,5,6,10,13", "issue": "长上下文(17轮)中工具选择不一致"},
       {"case": "M013", "turns": "1,2,3", "issue": "analyze_patterns未调用"}
     ],
-    "note": "v2新增的14个失败全部是expected_tool_contract类型，属于模型工具选择波动，非代码缺陷。M012(17轮)最严重，是deepseek-chat在长上下文中的能力边界。"
+    "execution_failure": [
+      {"case": "M008", "turns": "首轮", "issue": "日期年份归一化触发非闰年2月29日异常，旧检查器漏判；已在定向v3修复"}
+    ],
+    "note": "v2 记录的14个显式失败是 expected_tool_contract 类型；此外 M008 存在一项被旧检查器漏掉的执行异常。M012(17轮)仍是长上下文中最明显的模型能力问题，且最新人工标注判定 M012/M013 失败。"
   },
   "cases_summary": {
-    "zero_failures": ["M001", "M002", "M003", "M004", "M005", "M008", "M009", "M010", "M014", "M015"],
-    "with_failures": ["M006", "M007", "M011", "M012", "M013"]
+    "v2_zero_recorded_failures": ["M001", "M002", "M003", "M004", "M005", "M009", "M010", "M014", "M015"],
+    "v2_with_failures_or_execution_error": ["M006", "M007", "M008", "M011", "M012", "M013"],
+    "targeted_fix_verified": ["M008"],
+    "human_failures": ["M012", "M013"]
   },
   "evidence": {
     "v1_results": "quality/eval/eval_stage2/results_multiturn_v1.jsonl",
@@ -68,8 +79,11 @@
     "v2_results": "quality/eval/eval_stage2/results_multiturn_v2.jsonl",
     "v2_checks": "quality/eval/eval_stage2/results_multiturn_v2_checks.json",
     "v2_html": "quality/eval/eval_stage2/report_multiturn_v2.html",
-    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (4).csv"
+    "m008_targeted_results": "quality/eval/eval_stage2/results_multiturn_m008_v3.jsonl",
+    "m008_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m008_v3_checks.json",
+    "m008_targeted_html": "quality/eval/eval_stage2/report_multiturn_m008_v3.html",
+    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (5).csv"
   },
-  "pending_human_review": ["M006", "M007", "M011", "M012", "M013"],
-  "pending_human_review_reason": "v2自动检查新增失败，需要人工判断语义质量是否可接受"
+  "pending_human_review": ["M008", "M010"],
+  "pending_human_review_reason": "M008 已完成定向修复和自动复测，仍需用户将不确定更新为最终人工结论；M010 在最新标注中尚未判定。"
 }

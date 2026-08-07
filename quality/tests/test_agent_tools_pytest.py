@@ -676,6 +676,38 @@ def test_rainfall_uses_dataset_year_when_user_omits_year(tmp_path: Path) -> None
     assert result["data"]["resolved_time_range"][0].startswith("2026-01-01")
 
 
+def test_rainfall_clamps_implicit_leap_day_to_dataset_month_end(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    deps.session.current_user_prompt = "只看 2 月这段的全网排污规律。"
+
+    result = analyze_rainfall_impl(
+        deps, time_range=["2024-02-01", "2024-02-29"]
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["resolved_time_range"] == [
+        "2026-02-01 00:00:00",
+        "2026-02-28 00:00:00",
+    ]
+
+
+def test_flow_window_uses_monitoring_data_year_when_user_omits_year(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    deps.session.current_user_prompt = "只看 2 月这段的数据质量。"
+
+    result = check_data_impl(
+        deps,
+        start="2024-02-01",
+        end="2024-02-29",
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["window_coverage"]["requested_start"] == "2026-02-01 00:00:00"
+    assert result["data"]["window_coverage"]["requested_end"] == "2026-02-28 00:00:00"
+
+
 def test_rainfall_identifies_largest_event_with_monitoring_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

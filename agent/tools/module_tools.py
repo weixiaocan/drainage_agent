@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import calendar
 from copy import deepcopy
 import hashlib
 import json
@@ -1208,6 +1209,7 @@ def check_data_impl(
     end: str | None = None,
     force_rerun: bool = False,
 ) -> ToolResult:
+    start, end = _resolve_implicit_flow_year(deps, start, end)
     windowed = start is not None or end is not None
 
     def work() -> tuple[str, dict[str, Any]]:
@@ -1287,21 +1289,55 @@ def _resolve_implicit_rainfall_year(
     time_range: list[str] | None,
 ) -> list[str] | None:
     """Use the dataset year when the user's date omitted a calendar year."""
-    if not time_range or re.search(r"\b(?:19|20)\d{2}\b", deps.session.current_user_prompt or ""):
+    if not time_range:
         return time_range
-    years = rain["timestamp"].dropna().dt.year.unique()
+    return _resolve_implicit_dataset_year(deps, rain["timestamp"], time_range)
+
+
+def _resolve_implicit_dataset_year(
+    deps: AgentDeps,
+    timestamps: pd.Series,
+    values: list[str],
+) -> list[str]:
+    """Map model-supplied placeholder years to the unique source-data year."""
+    if re.search(r"\b(?:19|20)\d{2}\b", deps.session.current_user_prompt or ""):
+        return values
+    parsed_timestamps = pd.to_datetime(timestamps, errors="coerce").dropna()
+    years = parsed_timestamps.dt.year.unique()
     if len(years) != 1:
-        return time_range
+        return values
     dataset_year = int(years[0])
     resolved: list[str] = []
-    for value in time_range:
+    for value in values:
         timestamp = pd.to_datetime(value, errors="coerce")
         if pd.isna(timestamp):
-            return time_range
+            return values
+        if timestamp.year != dataset_year:
+            last_day = calendar.monthrange(dataset_year, timestamp.month)[1]
+            timestamp = timestamp.replace(
+                year=dataset_year,
+                day=min(timestamp.day, last_day),
+            )
         resolved.append(
-            value if timestamp.year == dataset_year else str(timestamp.replace(year=dataset_year))
+            value if timestamp.year == dataset_year and str(value).startswith(str(dataset_year)) else str(timestamp)
         )
     return resolved
+
+
+def _resolve_implicit_flow_year(
+    deps: AgentDeps,
+    start: str | None,
+    end: str | None,
+) -> tuple[str | None, str | None]:
+    values = [value for value in (start, end) if value is not None]
+    if not values:
+        return start, end
+    flow = io.load_flow(root=deps.paths.root)
+    resolved = iter(_resolve_implicit_dataset_year(deps, flow["timestamp"], values))
+    return (
+        next(resolved) if start is not None else None,
+        next(resolved) if end is not None else None,
+    )
 
 
 def _monitoring_covered_rainfall_events(
@@ -1435,6 +1471,7 @@ def analyze_patterns_impl(
     end: str | None = None,
     report_charts: bool = False,
 ) -> ToolResult:
+    start, end = _resolve_implicit_flow_year(deps, start, end)
     params = {
         "points": points or [],
         "start": start,
@@ -1640,6 +1677,7 @@ def assess_risk_impl(
     start: str | None = None,
     end: str | None = None,
 ) -> ToolResult:
+    start, end = _resolve_implicit_flow_year(deps, start, end)
     scope = {"旱天": "dry", "雨天": "rainy", "全部": "all"}.get(scope, scope)
     if scope in {"rainy", "all"}:
         precheck = _require_event_ids(deps, event_ids)
@@ -1806,6 +1844,7 @@ def generate_report_impl(
     sections: list[str] | None = None,
     event_ids: list[int] | None = None,
 ) -> ToolResult:
+    start, end = _resolve_implicit_flow_year(deps, start, end)
     sections = sections or list(DEFAULT_REPORT_SECTIONS)
     report_start, report_end = _report_actual_time_range(deps, points, start, end)
     if start is not None or end is not None:

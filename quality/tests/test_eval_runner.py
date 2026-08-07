@@ -25,6 +25,7 @@ from quality.eval.eval_stage2.run_eval import (
 from quality.eval.eval_stage2.view import load_checks, load_results, render_report
 from quality.eval.check import (
     CheckContext,
+    check_case_execution_completed,
     check_coverage_guard_no_analysis_without_data,
     check_expected_tool_contract,
     check_report_has_independent_curve_images,
@@ -415,6 +416,24 @@ def test_structured_expected_tools_are_loaded_and_checked(tmp_path: Path) -> Non
 
     assert case.expected["tools"]["must_call"] == ["check_data"]
     assert checked[0].status == "pass"
+
+
+def test_case_execution_error_fails_even_when_no_turn_was_recorded(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    results.write_text(json.dumps({
+        "id": "M008",
+        "turns": [],
+        "root": str(tmp_path / "artifacts"),
+        "error": "ValueError('day is out of range for month')",
+    }, ensure_ascii=False), encoding="utf-8")
+    case = load_cases(results)[0]
+
+    checked = check_case_execution_completed(
+        case, CheckContext(tmp_path, set(), None, None, None, None)
+    )
+
+    assert checked[0].status == "fail"
+    assert "day is out of range for month" in checked[0].reason
 
 
 def test_structured_per_turn_tool_contract_is_loaded_and_checked(tmp_path: Path) -> None:

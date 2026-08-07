@@ -124,6 +124,14 @@ class CheckContext:
 CheckFn = Callable[[CaseRecord, CheckContext], list[CheckResult]]
 
 
+def check_case_execution_completed(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
+    """Treat runner/tool crashes as objective failures, even with zero turns."""
+    name = "case_execution_completed"
+    if case.error:
+        return [result(case, name, "trace", "fail", f"case has error: {case.error}")]
+    return [result(case, name, "trace", "pass", "case execution completed without runner error")]
+
+
 def _parse_args_value(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -833,6 +841,7 @@ def check_expected_tool_contract(case: CaseRecord, ctx: CheckContext) -> list[Ch
 
 
 CHECKS: list[CheckFn] = [
+    check_case_execution_completed,
     check_expected_tool_contract,
     check_hitl_filter_confirmation,
     check_coverage_guard_no_analysis_without_data,
