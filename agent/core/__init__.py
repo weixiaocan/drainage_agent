@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from time import monotonic
 from pathlib import Path
@@ -702,6 +703,9 @@ def build_agent(deps: AgentDeps) -> Any:
             """执行长尾现场 Python 分析，预置 analysis.io 数据访问函数。"""
             args = {"code": code}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
+
+        if os.getenv("DRAINAGE_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:
+            agent._function_toolset.tools.pop("run_python", None)
 
         return _InvalidPointAgent(_ReportIntentAgent(_FilterConfirmationAgent(agent)))
     except ImportError as exc:

@@ -96,6 +96,35 @@ def test_index_returns_utf8_html_with_expected_copy(client: TestClient) -> None:
     assert "快捷指令" in response.text
 
 
+def test_demo_mode_blocks_data_mutation_and_exposes_health(
+    tmp_path: Path,
+    fake_agent: FakeAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRAINAGE_DEMO_MODE", "true")
+    monkeypatch.setenv("DRAINAGE_DEMO_REQUESTS_PER_MINUTE", "2")
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: fake_agent,
+    )
+
+    with TestClient(app) as demo_client:
+        health = demo_client.get("/healthz")
+        assert health.json() == {"status": "ok", "demo_mode": True}
+        assert demo_client.get("/api/demo").json() == {"enabled": True}
+        assert demo_client.get("/").status_code == 200
+        assert '<body class="demo-mode">' in demo_client.get("/").text
+        assert demo_client.post("/api/projects", json={"name": "blocked"}).status_code == 403
+        assert demo_client.post("/api/upload").status_code == 403
+        assert demo_client.get("/docs").status_code == 404
+        assert demo_client.post("/api/chat", json={"message": ""}).status_code == 400
+        assert demo_client.post("/api/chat", json={"message": ""}).status_code == 400
+        limited = demo_client.post("/api/chat", json={"message": ""})
+        assert limited.status_code == 429
+        assert limited.headers["retry-after"] == "60"
+
+
 def test_index_renders_agent_markdown(client: TestClient) -> None:
     response = client.get("/")
 

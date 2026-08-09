@@ -9,15 +9,18 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
+from collections import defaultdict, deque
 from copy import copy
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path, PurePath
+from threading import Lock
+from time import monotonic
 from typing import Any, Callable
 
 import pandas as pd
-from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -70,6 +73,39 @@ MAX_UPLOAD_BYTES = int(
     os.getenv("DRAINAGE_MAX_UPLOAD_BYTES", str(256 * 1024 * 1024))
 )
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _demo_request_is_blocked(method: str, path: str) -> bool:
+    """Keep public demos useful while denying data replacement and destructive APIs."""
+    if path in {"/api/upload", "/api/results"} or path.startswith("/files/"):
+        return True
+    if path.endswith("/raw") or path.endswith("/downloads/all"):
+        return True
+    if method == "DELETE":
+        return True
+    if method not in {"POST", "PUT", "PATCH"}:
+        return False
+    if path == "/api/projects" or path.endswith("/batches"):
+        return True
+    blocked_markers = (
+        "/imports",
+        "/auxiliary-data",
+        "/chat-attachments",
+        "/filters/upload",
+        "/revisions",
+        "/workspace/reset",
+        "/report-templates",
+    )
+    if any(marker in path for marker in blocked_markers):
+        return True
+    return method == "POST" and path.endswith("/files")
 
 
 class ChatRequest(BaseModel):
@@ -413,6 +449,7 @@ def create_app(
     mapping_suggester: MappingSuggester | None = None,
     background_job_workers: int = 2,
 ) -> FastAPI:
+    demo_mode = _env_flag("DRAINAGE_DEMO_MODE")
     @asynccontextmanager
     async def lifespan(lifespan_app: FastAPI):
         yield
@@ -420,9 +457,60 @@ def create_app(
 
     app = FastAPI(
         title="Drainage Agent",
-        docs_url="/docs",
+        docs_url=None if demo_mode else "/docs",
+        redoc_url=None if demo_mode else "/redoc",
         lifespan=lifespan,
     )
+    app.state.demo_mode = demo_mode
+    app.state.demo_rate_hits = defaultdict(deque)
+    app.state.demo_rate_lock = Lock()
+    app.state.demo_active_chats = 0
+    app.state.demo_requests_per_minute = max(
+        1, int(os.getenv("DRAINAGE_DEMO_REQUESTS_PER_MINUTE", "3"))
+    )
+    app.state.demo_max_concurrent_chats = max(
+        1, int(os.getenv("DRAINAGE_DEMO_MAX_CONCURRENT_CHATS", "2"))
+    )
+
+    @app.middleware("http")
+    async def public_demo_guard(request: Request, call_next: Callable[..., Any]) -> Response:
+        if app.state.demo_mode and _demo_request_is_blocked(request.method, request.url.path):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "公开演示环境不允许上传、替换或删除数据。"},
+            )
+        is_chat = app.state.demo_mode and request.method == "POST" and request.url.path == "/api/chat"
+        if not is_chat:
+            return await call_next(request)
+
+        forwarded = request.headers.get("x-forwarded-for", "")
+        client_ip = forwarded.split(",", 1)[0].strip() or (
+            request.client.host if request.client else "unknown"
+        )
+        now = monotonic()
+        with app.state.demo_rate_lock:
+            hits = app.state.demo_rate_hits[client_ip]
+            while hits and now - hits[0] >= 60:
+                hits.popleft()
+            if len(hits) >= app.state.demo_requests_per_minute:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "演示请求过于频繁，请一分钟后再试。"},
+                    headers={"Retry-After": "60"},
+                )
+            if app.state.demo_active_chats >= app.state.demo_max_concurrent_chats:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "演示任务正在排队，请稍后重试。"},
+                    headers={"Retry-After": "10"},
+                )
+            hits.append(now)
+            app.state.demo_active_chats += 1
+        try:
+            return await call_next(request)
+        finally:
+            with app.state.demo_rate_lock:
+                app.state.demo_active_chats -= 1
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
     model_settings = available_agent_settings()
@@ -501,14 +589,25 @@ def create_app(
                 for model_id, (_, settings) in app.state.model_agents.items()
             ],
         }
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, object]:
+        return {"status": "ok", "demo_mode": app.state.demo_mode}
+
+    @app.get("/api/demo")
+    def demo_status() -> dict[str, bool]:
+        return {"enabled": app.state.demo_mode}
     app.state.current_project_id: str | None = None
     app.state.current_batch_id: str | None = None
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> HTMLResponse:
         html_path = Path(__file__).resolve().parent / "static" / "index.html"
+        html = html_path.read_text(encoding="utf-8")
+        if app.state.demo_mode:
+            html = html.replace("<body>", '<body class="demo-mode">', 1)
         return HTMLResponse(
-            html_path.read_text(encoding="utf-8"),
+            html,
             headers={"Cache-Control": "no-store"},
         )
 

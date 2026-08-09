@@ -610,6 +610,26 @@
       background: linear-gradient(transparent, var(--panel) 18%);
     }
     .dialog-actions button { width: auto; min-width: 150px; }
+    .demo-notice { display: none; }
+    body.demo-mode .demo-notice {
+      display: block;
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border: 1px solid #f0c36d;
+      border-radius: 8px;
+      background: #fff8e6;
+      color: #704b00;
+      line-height: 1.5;
+    }
+    body.demo-mode #dataImportForm,
+    body.demo-mode #uploadStatus,
+    body.demo-mode #batchImportStatus,
+    body.demo-mode #continueAuxiliaryMapping,
+    body.demo-mode #continueImportMapping,
+    body.demo-mode #resetWorkspaceBtn,
+    body.demo-mode #deleteProjectBtn,
+    body.demo-mode .advanced,
+    body.demo-mode .attach-button { display: none !important; }
     @media (max-width: 860px) {
       .app {
         grid-template-columns: 1fr;
@@ -624,6 +644,7 @@
   <div class="app">
     <aside>
       <h1>Drainage Agent</h1>
+      <div class="demo-notice">公开演示环境仅使用脱敏示例数据，不支持上传、替换或删除数据。运行数据会定期重置。</div>
       <div class="sub">本地排水监测数据分析网页</div>
 
       <h2><span class="step-no">1</span>监测项目</h2>
