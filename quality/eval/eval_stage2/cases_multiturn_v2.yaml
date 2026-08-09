@@ -1409,11 +1409,10 @@
     key: false
     expected:
       tools:
-        must_call:
-        - assess_risk
+        must_call: []
         must_not_call: []
       arguments: ''
-      response: 仍为三点旱天风险
+      response: 仍为三点旱天风险；允许复用参数一致且 fresh=true 的已有结果
       inherited:
       - points
       - dry_scope
@@ -1470,11 +1469,10 @@
     key: false
     expected:
       tools:
-        must_call:
-        - analyze_patterns
+        must_call: []
         must_not_call: []
       arguments: ''
-      response: 仍为三点旱天规律
+      response: 仍为三点旱天规律；允许复用参数一致且 fresh=true 的已有结果
       inherited:
       - points
       - dry_scope
@@ -1511,11 +1509,10 @@
     key: false
     expected:
       tools:
-        must_call:
-        - analyze_rdii
+        must_call: []
         must_not_call: []
       arguments: ''
-      response: 三点事件6 RDII
+      response: 三点事件6 RDII；允许复用参数一致且 fresh=true 的已有结果
       inherited:
       - points
       - event
@@ -1574,11 +1571,10 @@
     key: true
     expected:
       tools:
-        must_call:
-        - analyze_patterns
+        must_call: []
         must_not_call: []
       arguments: ''
-      response: 压缩后仍执行三点旱天分析
+      response: 压缩后仍保持三点旱天分析；允许复用参数一致且 fresh=true 的已有结果
       inherited:
       - points
       - dry_scope

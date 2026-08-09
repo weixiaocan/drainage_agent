@@ -111,6 +111,15 @@ def test_prompt_defines_full_month_against_available_data() -> None:
     assert "直接按该数据月份的完整可用范围分析" in prompt
 
 
+def test_prompt_rejects_direct_comparison_across_mismatched_scopes() -> None:
+    prompt = read_prompt()
+
+    assert "比较两个分析结果前必须核对" in prompt
+    assert "不具备直接可比性" in prompt
+    assert "禁止直接给出高低、优劣或排名结论" in prompt
+    assert "请求用户选择一个统一口径后再比较" in prompt
+
+
 def test_core_registers_exactly_the_documented_tools() -> None:
     tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
     registered = {

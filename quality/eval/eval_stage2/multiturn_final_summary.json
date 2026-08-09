@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "多轮评测最终总结",
-    "date": "2026-08-07",
+    "date": "2026-08-09",
     "stage": "stage2",
     "test_set": "cases_multiturn_v2.yaml",
     "total_cases": 15,
@@ -13,8 +13,8 @@
   "result": {
     "v1_auto": {"pass": 119, "fail": 8, "skip": 129},
     "v2_auto": {"pass": 99, "fail": 14, "skip": 142},
-    "human": {"pass": 11, "fail": 2, "uncertain": 1, "pending": 1},
-    "note": "最新人工标注来自 eval_annotations (5).csv：11 通过、M012/M013 失败、M008 不确定、M010 未标注。M008 的 v2 运行实际在首轮因隐式年份闰日映射异常而崩溃，旧检查器因 turns 为空漏记失败；该问题已修复并由 M008 v3 定向复测验证。"
+    "human": {"pass": 15, "fail": 0, "uncertain": 0, "pending": 0},
+    "note": "用户确认 M008、M010 通过。M012 的剩余自动失败经复核属于评测契约与 fresh=true 结果复用原则冲突，已修正契约并按实际回答判定通过。M013 已由 v4 定向复测验证：明确识别时间口径不一致、拒绝直接高低比较并请求统一口径。"
   },
   "fixes_applied": [
     {
@@ -52,6 +52,18 @@
       "issue": "省略年份时模型传入闰年2月29日，工具映射到非闰年数据年份时抛出日期越界；零 turns 又被旧检查器漏判",
       "fix": "按任务数据源的唯一年份归一化日期、闰日收敛到月末，并新增 case execution error 客观检查",
       "targeted_v3_auto": "3 pass / 0 fail / 11 skip；两轮均正确拒绝无覆盖分析"
+    },
+    {
+      "case": "M012",
+      "issue": "重复查看请求被 expected_tool_contract 强制要求重新调用工具，与 fresh=true 时禁止重复调用的产品规则冲突",
+      "fix": "允许复用参数一致且 fresh=true 的已有结果，继续检查点位、事件和旱天范围是否保持",
+      "review": "原 v3 回答保持了 W1/W6/W18、旱天和事件6约束，判定通过"
+    },
+    {
+      "case": "M013",
+      "issue": "不同点位且不同时间范围的结果被直接进行数值比较",
+      "fix": "比较前核对口径；不一致时声明不具备直接可比性、禁止排名并请求统一口径",
+      "targeted_v4_auto": "6 pass / 0 fail / 9 skip；最终回答符合人工判定标准"
     }
   ],
   "v2_failures_analysis": {
@@ -65,13 +77,13 @@
     "execution_failure": [
       {"case": "M008", "turns": "首轮", "issue": "日期年份归一化触发非闰年2月29日异常，旧检查器漏判；已在定向v3修复"}
     ],
-    "note": "v2 记录的14个显式失败是 expected_tool_contract 类型；此外 M008 存在一项被旧检查器漏掉的执行异常。M012(17轮)仍是长上下文中最明显的模型能力问题，且最新人工标注判定 M012/M013 失败。"
+    "note": "本节保留 v2 历史运行的失败快照。M008 已由定向 v3 修复；M012 经评测契约校正后通过；M013 已由定向 v4 修复。"
   },
   "cases_summary": {
     "v2_zero_recorded_failures": ["M001", "M002", "M003", "M004", "M005", "M009", "M010", "M014", "M015"],
     "v2_with_failures_or_execution_error": ["M006", "M007", "M008", "M011", "M012", "M013"],
-    "targeted_fix_verified": ["M008"],
-    "human_failures": ["M012", "M013"]
+    "targeted_fix_verified": ["M008", "M012", "M013"],
+    "human_failures": []
   },
   "evidence": {
     "v1_results": "quality/eval/eval_stage2/results_multiturn_v1.jsonl",
@@ -82,8 +94,14 @@
     "m008_targeted_results": "quality/eval/eval_stage2/results_multiturn_m008_v3.jsonl",
     "m008_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m008_v3_checks.json",
     "m008_targeted_html": "quality/eval/eval_stage2/report_multiturn_m008_v3.html",
+    "m012_m013_targeted_results": "quality/eval/eval_stage2/results_multiturn_m012_m013_v3.jsonl",
+    "m012_m013_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m012_m013_v3_checks.json",
+    "m012_m013_targeted_html": "quality/eval/eval_stage2/report_multiturn_m012_m013_v3.html",
+    "m013_targeted_results": "quality/eval/eval_stage2/results_multiturn_m013_v4.jsonl",
+    "m013_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m013_v4_checks.json",
+    "m013_targeted_html": "quality/eval/eval_stage2/report_multiturn_m013_v4.html",
     "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (5).csv"
   },
-  "pending_human_review": ["M008", "M010"],
-  "pending_human_review_reason": "M008 已完成定向修复和自动复测，仍需用户将不确定更新为最终人工结论；M010 在最新标注中尚未判定。"
+  "pending_human_review": [],
+  "pending_human_review_reason": "全部 15 条多轮用例均已完成最终判定。"
 }
