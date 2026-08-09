@@ -150,7 +150,7 @@ python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_singl
 
 GitHub Actions 的 `Quality Gate` 分成两个层级：
 
-- 每次 push 和 pull request 自动运行全量 pytest、单轮/多轮题库结构与隔离夹具验证，并构建 Docker 镜像。这一层不调用外部模型，不依赖密钥，是合并前必须稳定通过的门禁。
+- 每次 push 和 pull request 自动运行全量 pytest、单轮/多轮题库结构与隔离夹具验证，并构建 Docker 镜像。这一层使用仅供客户端初始化的假测试密钥，所有模型调用均由测试替身接管，不调用外部模型，也不依赖仓库 Secret，是合并前必须稳定通过的门禁。
 - 真实模型 CI 冒烟集通过 `workflow_dispatch` 手动触发。它需要仓库 Secret `AGENT_API_KEY`，可选配置 `AGENT_BASE_URL` 和 `AGENT_MODEL`；运行结束后保存 JSONL 结果与客观检查文件 30 天。
 
 完整 40 条单轮和 15 条多轮评测仍在版本发布前手动运行。日常修改只在线复测受影响场景；历史故障对应的确定性规则必须由 pytest 长期保护。

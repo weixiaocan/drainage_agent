@@ -18,13 +18,16 @@ jobs:
   deterministic-quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Tests replace model calls with fakes; this only allows import-time client construction.
+      AGENT_API_KEY: ci-test-key-not-used-for-network-calls
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -69,10 +72,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
