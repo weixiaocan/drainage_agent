@@ -1,0 +1,412 @@
+{
+  "checks": [
+    {
+      "case_id": "M012",
+      "check": "case_execution_completed",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "case execution completed without runner error",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'data_filter', 'analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['assess_risk']",
+      "turn": 2
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_rainfall']",
+      "turn": 4
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_event_response']",
+      "turn": 5
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_rdii']",
+      "turn": 6
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['assess_risk']",
+      "turn": 10
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['check_data']",
+      "turn": 11
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['analyze_patterns']",
+      "turn": 13
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_event_response']",
+      "turn": 14
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['analyze_rdii']",
+      "turn": 15
+    },
+    {
+      "case_id": "M012",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "fail",
+      "reason": "missing required tools: ['analyze_patterns']",
+      "turn": 18
+    },
+    {
+      "case_id": "M012",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['assess_risk']",
+      "turn": 2
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_rainfall']",
+      "turn": 4
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_event_response']",
+      "turn": 5
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_rdii']",
+      "turn": 6
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 7
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 8
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 9
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 10
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 13
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_event_response']",
+      "turn": 14
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 15
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 16
+    },
+    {
+      "case_id": "M012",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no tool_calls available for this turn",
+      "turn": 18
+    },
+    {
+      "case_id": "M012",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M012",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "case_execution_completed",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "case execution completed without runner error",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['list_results', 'check_data', 'data_filter', 'analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "M013",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_patterns']",
+      "turn": 2
+    },
+    {
+      "case_id": "M013",
+      "check": "expected_tool_contract",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tool contract satisfied: ['analyze_patterns']",
+      "turn": 3
+    },
+    {
+      "case_id": "M013",
+      "check": "hitl_filter_confirmation",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no hitl filter expectation",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "coverage_guard_no_analysis_without_data",
+      "basis": "trace",
+      "status": "skip",
+      "reason": "no explicit no-coverage request detected",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "single_analysis_no_unrelated_tools",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "tools match intent=['analyze_patterns']",
+      "turn": 1
+    },
+    {
+      "case_id": "M013",
+      "check": "partial_scope_no_combined_xlsx",
+      "basis": "trace",
+      "status": "pass",
+      "reason": "partial analysis did not write combined table",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "report_extension_doc_or_docx",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "report_has_independent_curve_images",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "report_no_placeholders_or_fake_sites",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "report_excludes_unselected_sections",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "report_period_matches_real_data_bounds",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no docx report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "combined_table_name_matches_report",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no report artifact found",
+      "turn": null
+    },
+    {
+      "case_id": "M013",
+      "check": "rainfall_event_ids_contiguous_in_window",
+      "basis": "artifact",
+      "status": "skip",
+      "reason": "no combined table artifact found",
+      "turn": null
+    }
+  ]
+}

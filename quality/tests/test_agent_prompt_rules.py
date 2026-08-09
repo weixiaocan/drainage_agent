@@ -94,6 +94,23 @@ def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:
     assert "推荐替代事件前必须验证" in prompt
 
 
+def test_prompt_avoids_redundant_scope_and_baseline_confirmations() -> None:
+    prompt = read_prompt()
+
+    assert "合法的 `W数字` 形式直接视为监测点位编号" in prompt
+    assert "未指定时间范围表示使用该数据的完整可用覆盖时段" in prompt
+    assert "缺少旱天筛选基线时直接调用 `data_filter`" in prompt
+    assert "禁止询问用户是否需要执行筛选" in prompt
+
+
+def test_prompt_defines_full_month_against_available_data() -> None:
+    prompt = read_prompt()
+
+    assert "用户只说“全月”但没有指定月份" in prompt
+    assert "数据仅覆盖一个自然月" in prompt
+    assert "直接按该数据月份的完整可用范围分析" in prompt
+
+
 def test_core_registers_exactly_the_documented_tools() -> None:
     tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
     registered = {
