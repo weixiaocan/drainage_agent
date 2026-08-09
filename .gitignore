@@ -18,3 +18,4 @@ quality/eval/eval_stage2/artifacts/
 quality/eval/*/results.jsonl
 quality/eval/*/results.jsonl.tmp
 .scratch/capacity/
+.scratch/*.log

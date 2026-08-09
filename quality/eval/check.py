@@ -157,8 +157,6 @@ def _tool_call(raw: dict[str, Any], turn: int | None = None, run_id: str | None 
 
 def _stage_from_path(path: Path) -> str:
     parts = {part.lower() for part in path.parts}
-    if "eval_stage1" in parts:
-        return "stage1"
     if "eval_stage2" in parts:
         return "stage2"
     return path.parent.name
@@ -913,19 +911,13 @@ def print_summary_report(results: list[CheckResult]) -> None:
 
 
 def default_results_paths(stage: str) -> list[Path]:
-    if stage == "stage1":
-        return [PROJECT / "quality" / "eval" / "eval_stage1" / "results.jsonl"]
-    if stage == "stage2":
-        return [PROJECT / "quality" / "eval" / "eval_stage2" / "results.jsonl"]
-    return [
-        PROJECT / "quality" / "eval" / "eval_stage1" / "results.jsonl",
-        PROJECT / "quality" / "eval" / "eval_stage2" / "results.jsonl",
-    ]
+    del stage
+    return [PROJECT / "quality" / "eval" / "eval_stage2" / "results.jsonl"]
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Objective eval artifact checker.")
-    parser.add_argument("--stage", choices=["stage1", "stage2", "all"], default="all")
+    parser.add_argument("--stage", choices=["stage2", "all"], default="all")
     parser.add_argument("--results", action="append", type=Path, help="results.jsonl path; can be passed multiple times")
     parser.add_argument("--artifacts-root", type=Path, default=None, help="override artifacts root for injection copies")
     parser.add_argument("--format", choices=["text", "json"], default="text")

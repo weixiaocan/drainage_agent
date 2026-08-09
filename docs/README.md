@@ -8,6 +8,7 @@
 - `ARCHITECTURE_AUDIT.md`：现有代码到目标架构的模块、接缝与增量重构方案。
 - `EVALUATION.md`：项目级评测策略、测试分层和发布门槛。
 - `EVALUATION_CASE_PLAN.md`：Agent Eval 场景维度、用例规范和题库重构计划。
+- `RELEASE_READINESS.md`：v1.0 发布验收结论、证据和剩余门禁。
 - `STANDARD_DATA_CONTRACT.md`：批次标准流量数据的 v1 文件格式、manifest 和公开读取契约。
 - `../.scratch/mature-drainage-agent/issues/`：按依赖顺序执行的本地实施票据。
 

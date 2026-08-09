@@ -1,27 +1,67 @@
-name: Agent Eval CI
+name: Quality Gate
 
 on:
   push:
     branches: [main]
-    paths:
-      - "agent/**"
-      - "analysis/**"
-      - "quality/eval/**"
-      - ".github/workflows/agent-eval-ci.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "agent/**"
-      - "analysis/**"
-      - "quality/eval/**"
-      - ".github/workflows/agent-eval-ci.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  agent-eval:
+  deterministic-quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run full test suite
+        run: python -m pytest
+
+      - name: Validate single-turn eval suite
+        run: >
+          python -m quality.eval.eval_stage2.run_eval
+          quality/eval/eval_stage2/cases_single.yaml
+          --validate-only
+          -o quality/eval/eval_stage2/validation_single.jsonl
+
+      - name: Validate multi-turn eval suite
+        run: >
+          python -m quality.eval.eval_stage2.run_eval
+          quality/eval/eval_stage2/cases_multiturn_v2.yaml
+          --validate-only
+          -o quality/eval/eval_stage2/validation_multiturn.jsonl
+
+      - name: Build Docker image
+        run: docker build -t drainage-agent:${{ github.sha }} .
+
+  online-agent-eval:
+    if: github.event_name == 'workflow_dispatch'
+    needs: deterministic-quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
       AGENT_BASE_URL: ${{ secrets.AGENT_BASE_URL }}
@@ -35,6 +75,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install system packages
         run: |
@@ -44,22 +85,16 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Verify model secrets
+      - name: Verify model secret
         run: |
           if [ -z "$AGENT_API_KEY" ]; then
-            echo "::error::AGENT_API_KEY secret is required for per-commit Agent eval."
+            echo "::error::AGENT_API_KEY is required for the manually triggered online eval."
             exit 1
           fi
-          if [ -z "$AGENT_MODEL" ]; then
-            echo "AGENT_MODEL is empty; the application default will be used."
-          fi
 
-      - name: Run unit tests
-        run: python -m pytest
-
-      - name: Run CI Agent eval cases
+      - name: Run online Agent eval smoke cases
         run: >
-          python quality/eval/eval_stage2/run_eval.py
+          python -m quality.eval.eval_stage2.run_eval
           quality/eval/eval_stage2/cases_ci.yaml
           -o quality/eval/eval_stage2/results_ci.jsonl
           --auto-confirm
@@ -70,5 +105,13 @@ jobs:
           --results quality/eval/eval_stage2/results_ci.jsonl
           --format text
 
-      - name: Build Docker image
-        run: docker build -t drainage-agent .
+      - name: Upload eval evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: online-agent-eval-${{ github.run_id }}
+          path: |
+            quality/eval/eval_stage2/results_ci.jsonl
+            quality/eval/eval_stage2/results_ci_checks.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -129,22 +129,31 @@ Agent Eval 的用例、运行器、人工标注数据和 HTML 报告位于 `qual
 在不调用模型的情况下验证 schema v2 单轮题库和隔离夹具：
 
 ```powershell
-python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_single.yaml --validate-only
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml --validate-only
 ```
 
 验证 schema v2 多轮题库：
 
 ```powershell
-python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_multiturn_v2.yaml --validate-only
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multiturn_v2.yaml --validate-only
 ```
 
 正式运行时显式指定输出文件，避免覆盖历史结果：
 
 ```powershell
-python quality/eval/eval_stage2/run_eval.py quality/eval/eval_stage2/cases_single.yaml -o quality/eval/eval_stage2/results_single_v2.jsonl
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml -o quality/eval/eval_stage2/results_single_v2.jsonl
 ```
 
 每个 Eval 回合记录独立的 `run_id`。评测结果使用该标识定位对应 trace 或项目内 Agent 运行记录，不要求默认保存完整提示词和模型回复。
+
+## 持续评测
+
+GitHub Actions 的 `Quality Gate` 分成两个层级：
+
+- 每次 push 和 pull request 自动运行全量 pytest、单轮/多轮题库结构与隔离夹具验证，并构建 Docker 镜像。这一层不调用外部模型，不依赖密钥，是合并前必须稳定通过的门禁。
+- 真实模型 CI 冒烟集通过 `workflow_dispatch` 手动触发。它需要仓库 Secret `AGENT_API_KEY`，可选配置 `AGENT_BASE_URL` 和 `AGENT_MODEL`；运行结束后保存 JSONL 结果与客观检查文件 30 天。
+
+完整 40 条单轮和 15 条多轮评测仍在版本发布前手动运行。日常修改只在线复测受影响场景；历史故障对应的确定性规则必须由 pytest 长期保护。
 
 ## 历史材料
 

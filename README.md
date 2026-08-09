@@ -124,6 +124,19 @@ quality/eval/          回归评测
 - `docs/PERFORMANCE.md`: 50 点位、30 天容量基线与已知边界。
 - `docs/README.md`: 文档索引及优先级。
 
+## Quality Gate
+
+本地发布前检查：
+
+```powershell
+python -m pytest
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml --validate-only
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multiturn_v2.yaml --validate-only
+docker build -t drainage-agent .
+```
+
+GitHub Actions 会在每次 push 和 pull request 自动执行上述确定性门禁。需要调用真实模型并产生费用的 CI Agent 冒烟评测只通过 Actions 页面手动触发，详见 `docs/EVALUATION.md`。
+
 ## Tool Result Protocol
 
 工具统一返回：
