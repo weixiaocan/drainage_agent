@@ -622,6 +622,9 @@
       line-height: 1.5;
     }
     body.demo-mode #dataImportForm,
+    body.demo-mode #projectForm,
+    body.demo-mode #projectForm,
+    body.demo-mode #projectForm,
     body.demo-mode #uploadStatus,
     body.demo-mode #batchImportStatus,
     body.demo-mode #continueAuxiliaryMapping,
@@ -2090,6 +2093,15 @@
           await selectProject(data.current_project);
         } else {
           await refreshProjects();
+          if (document.body.classList.contains("demo-mode") && projectOptions.length) {
+            await selectProject(projectOptions[0]);
+          }
+          if (document.body.classList.contains("demo-mode") && projectOptions.length) {
+            await selectProject(projectOptions[0]);
+          }
+          if (document.body.classList.contains("demo-mode") && projectOptions.length) {
+            await selectProject(projectOptions[0]);
+          }
         }
       });
   </script>

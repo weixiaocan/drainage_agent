@@ -115,6 +115,7 @@ def test_demo_mode_blocks_data_mutation_and_exposes_health(
         assert demo_client.get("/api/demo").json() == {"enabled": True}
         assert demo_client.get("/").status_code == 200
         assert '<body class="demo-mode">' in demo_client.get("/").text
+        assert 'await selectProject(projectOptions[0]);' in demo_client.get("/").text
         assert demo_client.post("/api/projects", json={"name": "blocked"}).status_code == 403
         assert demo_client.post("/api/upload").status_code == 403
         assert demo_client.get("/docs").status_code == 404
