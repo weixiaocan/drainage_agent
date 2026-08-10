@@ -66,6 +66,27 @@ def test_web_user_can_create_list_view_and_switch_projects(tmp_path: Path) -> No
     assert reselected.json()["current_workspace"]["id"] == workspace["id"]
 
 
+def test_web_user_can_delete_project_before_any_conversation_is_archived(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        tmp_path,
+        deps_factory=make_deps,
+        agent_factory=lambda _deps: FakeAgent(),
+    )
+    client = TestClient(app)
+    project = client.post("/api/projects", json={"name": "待删除项目"}).json()
+    client.post(
+        f"/api/projects/{project['id']}/batches",
+        json={"name": "第一批"},
+    )
+
+    response = client.delete(f"/api/projects/{project['id']}")
+
+    assert response.status_code == 200
+    assert client.get("/api/projects").json() == []
+
+
 def test_project_file_download_is_confined_to_requested_project(tmp_path: Path) -> None:
     app = create_app(
         tmp_path,

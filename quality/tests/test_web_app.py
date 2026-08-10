@@ -94,6 +94,8 @@ def test_index_returns_utf8_html_with_expected_copy(client: TestClient) -> None:
     assert "text/html" in response.headers["content-type"]
     assert "charset=utf-8" in response.headers["content-type"].lower()
     assert "快捷指令" in response.text
+    assert "async function responseError(res, fallback)" in response.text
+    assert 'throw await responseError(res, "删除失败")' in response.text
 
 
 def test_demo_mode_blocks_data_mutation_and_exposes_health(

@@ -158,6 +158,12 @@ class ProjectRepository:
     def delete(self, project_id: str) -> None:
         with self._connect() as connection:
             connection.execute("PRAGMA foreign_keys = OFF")
+            existing_tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
             batch_ids = [
                 row[0]
                 for row in connection.execute(
@@ -165,18 +171,21 @@ class ProjectRepository:
                     (project_id,),
                 )
             ]
-            run_ids = [
-                row[0]
-                for row in connection.execute(
-                    "SELECT run_id FROM agent_runs WHERE project_id = ?",
-                    (project_id,),
-                )
-            ]
-            for run_id in run_ids:
-                connection.execute(
-                    "DELETE FROM agent_run_steps WHERE run_id = ?",
-                    (run_id,),
-                )
+            run_ids = []
+            if "agent_runs" in existing_tables:
+                run_ids = [
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT run_id FROM agent_runs WHERE project_id = ?",
+                        (project_id,),
+                    )
+                ]
+            if "agent_run_steps" in existing_tables:
+                for run_id in run_ids:
+                    connection.execute(
+                        "DELETE FROM agent_run_steps WHERE run_id = ?",
+                        (run_id,),
+                    )
             batch_tables = (
                 "current_analysis_baselines",
                 "current_analysis_results",
@@ -191,21 +200,26 @@ class ProjectRepository:
                 "filter_results",
             )
             for table in batch_tables:
+                if table not in existing_tables:
+                    continue
                 for batch_id in batch_ids:
                     connection.execute(
                         f"DELETE FROM {table} WHERE project_id = ? AND batch_id = ?",
                         (project_id, batch_id),
                     )
-            for batch_id in batch_ids:
-                connection.execute(
-                    "DELETE FROM derived_batch_sources WHERE derived_batch_id = ? OR source_batch_id = ?",
-                    (batch_id, batch_id),
-                )
+            if "derived_batch_sources" in existing_tables:
+                for batch_id in batch_ids:
+                    connection.execute(
+                        "DELETE FROM derived_batch_sources WHERE derived_batch_id = ? OR source_batch_id = ?",
+                        (batch_id, batch_id),
+                    )
             project_tables = (
                 "report_templates",
                 "import_profiles",
             )
             for table in project_tables:
+                if table not in existing_tables:
+                    continue
                 connection.execute(
                     f"DELETE FROM {table} WHERE project_id = ?",
                     (project_id,),

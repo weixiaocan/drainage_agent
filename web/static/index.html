@@ -915,6 +915,18 @@
       return `${Date.now()}${Math.random().toString(16).slice(2)}`;
     }
 
+    async function responseError(res, fallback) {
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        return new Error(data.detail || fallback);
+      }
+      const message = (await res.text()).trim();
+      return new Error(message && !message.startsWith("Internal Server Error")
+        ? message
+        : `${fallback}（HTTP ${res.status}）`);
+    }
+
     function chatStorageKey() {
       return sessionId ? `drainage-agent-chat-${sessionId}` : "";
     }
@@ -1558,8 +1570,7 @@
       try {
         const res = await fetch(`/api/projects/${currentProjectId}`, {method: "DELETE"});
         if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.detail || "删除失败");
+          throw await responseError(res, "删除失败");
         }
         currentProjectId = "";
         currentBatchId = "";
