@@ -477,7 +477,7 @@ def build_agent(deps: AgentDeps) -> Any:
     try:
         from pydantic_ai import Agent
         from pydantic_ai.capabilities import ProcessHistory
-        from pydantic_ai.models.openai import OpenAIModel
+        from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
         from pydantic_ai.settings import ModelSettings
 
@@ -487,7 +487,7 @@ def build_agent(deps: AgentDeps) -> Any:
         if deps.settings.api_key:
             provider_kwargs["api_key"] = deps.settings.api_key
         try:
-            model = OpenAIModel(deps.settings.model, provider=OpenAIProvider(**provider_kwargs))
+            model = OpenAIChatModel(deps.settings.model, provider=OpenAIProvider(**provider_kwargs))
         except Exception as exc:
             raise RuntimeError(
                 "OpenAI-compatible model initialization failed. Check AGENT_API_KEY/AGENT_BASE_URL/AGENT_MODEL in .env."

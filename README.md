@@ -1,23 +1,98 @@
 # Drainage Agent
 
-排水监测数据分析 Agent。它把监测数据读取、清洗、统计分析、降雨响应、RDII、风险评估和报告生成组织成可对话调用的工具。
+面向排水监测分析人员的本地 AI 数据分析应用。它将监测数据导入、字段与单位确认、旱天筛选、降雨响应、RDII、排污规律、风险评估和报告初稿组织成一个可追溯的 Web 工作流。
 
-## Run
+> 在线演示：[https://drainage.weixiaocan.com/](https://drainage.weixiaocan.com/)
+>
+> 公开演示仅使用脱敏示例数据，不支持上传、替换或删除数据，运行数据会定期重置。
+
+## 它解决什么问题
+
+排水监测分析往往需要反复整理不同来源的 CSV/XLSX、确认字段和单位、筛选有效旱天、运行多种分析并制作图表和报告。Drainage Agent 将这些步骤放在同一个项目工作台中：
+
+1. 创建或选择监测项目。
+2. 导入监测 CSV，并按需加入降雨 CSV 和点位 XLSX。
+3. 由确定性规则识别字段，无法确定的映射交给用户确认。
+4. 自动生成筛选结果，用户检查或修改后明确确认为分析基线。
+5. 通过对话调用确定性分析工具，查看运行步骤并下载结果。
+
+LLM 负责理解意图、选择工具和组织文字；数值计算、数据边界、项目隔离和状态门禁由代码强制执行。报告是待工程师审核的初稿，不替代专业判断。
+
+## 当前能力
+
+- 多监测项目隔离，SQLite 保存元数据，文件系统保存输入和产物。
+- 监测、降雨和点位数据的字段识别、单位统一与人工确认。
+- 筛选结果下载、修改、重新上传和明确确认。
+- 数据质量、降雨场次、事件响应、RDII、旱天规律和风险分析。
+- 基于内置 DOCX 契约模板生成报告初稿和综合结果工作簿。
+- 分析结果身份、新鲜度和复用判断。
+- 后台任务、运行状态、耗时、Token、工具步骤、错误和产物追踪。
+- DeepSeek 等 OpenAI Chat Completions 兼容模型；可选配置第二个 GLM 模型。
+- Docker 单容器自部署和受限公开演示模式。
+
+网页没有报告模板上传入口，当前用户流程使用内置报告模板。代码保留项目级自定义模板 API，供后续集成或高级调用使用。
+
+## 快速开始
+
+### Docker Compose（推荐）
+
+复制环境变量示例并填写至少一个模型密钥：
 
 ```powershell
-pip install -r requirements.txt
-python app/agent_run.py
+Copy-Item .env.example .env
 ```
 
-Web 版启动：
+```env
+AGENT_API_KEY=你的模型密钥
+AGENT_BASE_URL=https://api.deepseek.com
+AGENT_MODEL=deepseek-chat
+```
+
+启动：
 
 ```powershell
+docker compose up -d --build
+```
+
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。`docker-compose.yml` 将 `/app/var` 挂载到命名卷 `drainage-state`，重建容器不会清空项目；`docker compose down -v` 会删除该卷及其中的数据。
+
+### 本地 Python
+
+项目以 Python 3.11 为发布基线：
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 python app/web_run.py
 ```
 
-浏览器打开 `http://127.0.0.1:8000`。Web 版支持上传流量 CSV、降雨 CSV、点位信息 XLSX 和报告模板 DOCX，并复用同一套 Agent 工具。对话必须绑定当前监测项目和分析批次；会话状态与 Agent 运行摘要保存在 SQLite。工作台可按批次查看模型、工具步骤、耗时、Token、错误和产物，完整对话默认不写入运行记录。
+CLI 调试入口：
 
-`.env` 使用 OpenAI 兼容配置：
+```powershell
+python app/agent_run.py
+```
+
+## 数据与模板
+
+- `resources/data/`：仓库随附的脱敏演示输入。
+- `resources/templates/`：内置报告模板，网页生成报告时直接使用，不要求用户上传模板。
+- `var/`：运行时数据库、项目文件、分析结果、工作区和日志；默认不提交 Git。
+
+自部署版本的网页可上传：
+
+- 一个或多个监测 CSV；
+- 可选降雨 CSV；
+- 可选点位信息 XLS/XLSX；
+- 筛选结果修改版 XLSX；
+- 对话补充附件。
+
+公开 Demo 会禁用上传、替换、删除、项目创建和工作区重置接口。
+
+## 模型配置
+
+默认模型使用 OpenAI Chat Completions 兼容接口：
 
 ```env
 AGENT_API_KEY=...
@@ -25,108 +100,27 @@ AGENT_BASE_URL=https://api.deepseek.com
 AGENT_MODEL=deepseek-chat
 ```
 
-如需在网页对话框中切换到 GLM-5.2，再加入以下配置；只有配置了密钥的模型会显示在下拉框中：
+可选第二模型只有在配置密钥后才出现在网页下拉框：
 
 ```env
-GLM_API_KEY=你的智谱API密钥
+GLM_API_KEY=...
 GLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 GLM_MODEL=glm-5.2
 ```
 
-## Docker
+模型兼容不等于质量已经验证。当前评测证据对应仓库中记录的具体模型和版本。
 
-构建镜像：
+## 质量与评测
 
-```powershell
-docker build -t drainage-agent .
-```
+发布基线包括：
 
-默认启动 Web 服务。密钥在运行时通过环境变量文件注入，不会写入镜像：
+- 279 项 pytest 单元与集成测试；
+- 40 条单轮 Agent Eval，最终人工判定 40/40；
+- 15 组多轮 Agent Eval，最终人工判定 15/15；
+- 真实模型 CI 冒烟和人工 Web 端到端验收；
+- Docker 构建门禁。
 
-```powershell
-docker run --rm -p 8000:8000 --env-file .env drainage-agent
-```
-
-浏览器打开 `http://127.0.0.1:8000`。
-
-推荐使用命名卷保存 SQLite、项目文件、结果与日志：
-
-```powershell
-docker compose up -d --build
-```
-
-`docker-compose.yml` 将完整的 `/app/var` 挂载到 `drainage-state`。删除并重建容器不会删除命名卷；只有显式执行 `docker compose down -v` 才会删除持久数据。
-
-把产物目录挂载到宿主机，容器删除后仍保留 `var/outputs/`、`var/workspace/` 和 `var/logs/`：
-
-```powershell
-docker run --rm -p 8000:8000 --env-file .env `
-  -v "${PWD}/var/outputs:/app/var/outputs" `
-  -v "${PWD}/var/workspace:/app/var/workspace" `
-  -v "${PWD}/var/logs:/app/var/logs" `
-  drainage-agent
-```
-
-镜像内已经包含脱敏演示数据 `resources/data/` 和报告模板 `resources/templates/`，所以零准备也可以跑通 demo。要使用自己的数据或模板，可以用挂载覆盖镜像内目录：
-
-```powershell
-docker run --rm -p 8000:8000 --env-file .env `
-  -v "${PWD}/resources/data:/app/resources/data" `
-  -v "${PWD}/resources/templates:/app/resources/templates" `
-  -v "${PWD}/var/outputs:/app/var/outputs" `
-  drainage-agent
-```
-
-进入 CLI 模式：
-
-```powershell
-docker run --rm -it --env-file .env `
-  -v "${PWD}/var/outputs:/app/var/outputs" `
-  drainage-agent python app/agent_run.py
-```
-
-## Structure
-
-```text
-analysis/              领域分析层：schema、数据读取、清洗、统计、降雨、RDII、风险、报告底料
-agent/                 Agent 层：Pydantic AI 注册、CLI、工具薄封装
-web/                   本地网页入口：FastAPI + 原生 HTML/CSS/JS
-app/                   CLI 和 Web 启动入口
-resources/data/        演示输入数据
-resources/templates/   报告模板
-var/outputs/           固化工具标准输出
-var/workspace/         run_python 可写目录
-var/logs/              运行 trace
-quality/tests/         pytest 测试
-quality/eval/          回归评测
-```
-
-## Tools
-
-- `data_filter`
-- `check_data`
-- `analyze_rainfall`
-- `analyze_event_response`
-- `analyze_patterns`
-- `analyze_rdii`
-- `assess_risk`
-- `generate_report`
-- `list_results`
-- `run_python`
-
-## Documentation
-
-- `docs/PRD.md`: 成熟开源版本的目标规格。
-- `CONTEXT.md`: 领域词汇。
-- `docs/adr/`: 已接受的架构决策。
-- `docs/adr/0013-keep-pydantic-ai-behind-project-aware-conversation-runner.md`: Agent 框架选型与对话运行 seam。
-- `docs/EVALUATION.md`: 当前评测策略与发布门槛。
-- `docs/PERFORMANCE.md`: 50 点位、30 天容量基线与已知边界。
-- `docs/README.md`: 文档索引及优先级。
-
-## Quality Gate
-
-本地发布前检查：
+本地确定性门禁：
 
 ```powershell
 python -m pytest
@@ -135,37 +129,41 @@ python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multi
 docker build -t drainage-agent .
 ```
 
-GitHub Actions 会在每次 push 和 pull request 自动执行上述确定性门禁。需要调用真实模型并产生费用的 CI Agent 冒烟评测只通过 Actions 页面手动触发，详见 `docs/EVALUATION.md`。
+完整策略和证据见 [评测策略](docs/EVALUATION.md) 与 [v1.0 发布验收](docs/RELEASE_READINESS.md)。需要真实模型并产生费用的 CI 冒烟只在 GitHub Actions 中手动触发。
 
-## Tool Result Protocol
+## 项目结构
 
-工具统一返回：
-
-```python
-{
-    "status": "ok | needs_input | needs_confirmation | error",
-    "summary": "...",
-    "artifacts": ["var/outputs/..."],
-    "data": {},
-}
+```text
+analysis/          确定性领域分析、标准数据、任务、结果和报告组装
+agent/             对话编排、工具适配、提示词、会话与运行记录
+web/               FastAPI 接口和原生 HTML/CSS/JavaScript 工作台
+app/               Web 与 CLI 启动入口
+resources/         脱敏演示数据和内置报告模板
+quality/tests/     pytest 单元与集成测试
+quality/eval/      Agent Eval 题库、运行器、总结和 HTML 证据
+docs/              产品、契约、架构决策、评测和发布文档
+var/               本地运行状态，不作为源码发布内容
 ```
 
-`needs_input` 用于缺少必须输入，`needs_confirmation` 用于筛选结果等待工程师确认。
+## 安全边界
 
-## Freshness
+- API 密钥只通过环境变量注入，不写入镜像、数据库或运行日志。
+- 完整提示词和模型回复默认不进入运行记录。
+- 原始监测文件按项目隔离；分析只读取经确认的标准数据。
+- 筛选确认、数据替换和删除等状态变更需要明确操作。
+- 下载路径限制在当前项目空间内。
+- 公开 Demo 禁用数据上传和破坏性接口，并设置请求频率及并发上限。
 
-固化工具成功后写入 `var/outputs/manifest.json`，记录输入数据指纹、参数和产物。`list_results` 会标记结果是否 fresh。
+## 文档
 
-## run_python Boundary
+- [产品规格](docs/PRD.md)
+- [领域词汇](CONTEXT.md)
+- [标准数据契约](docs/STANDARD_DATA_CONTRACT.md)
+- [报告模板契约](docs/REPORT_TEMPLATE_CONTRACT.md)
+- [评测策略](docs/EVALUATION.md)
+- [性能基线](docs/PERFORMANCE.md)
+- [架构决策](docs/adr/)
 
-`run_python` 以子进程执行，超时 60 秒。它注入：
+## License
 
-- `DATA_DIR`
-- `OUTPUTS_DIR`
-- `WORKSPACE_DIR`
-- `load_flow`
-- `load_filtered_flow`
-- `load_rain`
-- `load_sites`
-
-`load_flow` 只读取并规范化原始字段；`load_filtered_flow` 读取 `data_filter` 生成的有效旱天结果。`run_python` 应写入 `WORKSPACE_DIR`，固化结果由标准工具写入 `OUTPUTS_DIR`。
+Apache License 2.0，详见 [LICENSE](LICENSE)。

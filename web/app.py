@@ -1250,6 +1250,12 @@ def create_app(
         ):
             shutil.rmtree(baseline_root)
         baseline_root.mkdir(parents=True, exist_ok=True)
+        filters_root = (root / "exports" / "filters").resolve()
+        if (
+            filters_root.is_relative_to(root.resolve())
+            and filters_root.is_dir()
+        ):
+            shutil.rmtree(filters_root)
 
     @app.post(
         "/api/projects/{project_id}/batches/{batch_id}/filters",

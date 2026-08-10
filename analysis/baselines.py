@@ -62,7 +62,9 @@ class AnalysisBaseline:
     confirmed_at: str
 
 
-FILTER_ARTIFACT = "exports/筛选结果.xlsx"
+def _filter_artifact(filter_id: str) -> str:
+    """Return an immutable project-relative path for one filter result."""
+    return f"exports/filters/{filter_id}/筛选结果.xlsx"
 
 
 class FilterBaselineService:
@@ -138,7 +140,7 @@ class FilterBaselineService:
         parameters = self._parameters(request)
         version = self._next_filter_version(request.project_id, request.batch_id)
         filter_id = uuid.uuid4().hex
-        artifact = FILTER_ARTIFACT
+        artifact = _filter_artifact(filter_id)
         artifact_path = (
             self._batch_root(request.project_id, request.batch_id) / artifact
         )
@@ -306,7 +308,7 @@ class FilterBaselineService:
         standard_sha256 = self._standard_sha256(project_id, batch_id)
         version = self._next_filter_version(project_id, batch_id)
         filter_id = uuid.uuid4().hex
-        artifact = FILTER_ARTIFACT
+        artifact = _filter_artifact(filter_id)
         artifact_path = self._batch_root(project_id, batch_id) / artifact
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_bytes(content)
@@ -376,7 +378,7 @@ class FilterBaselineService:
 
         version = self._next_filter_version(project_id, batch_id)
         filter_id = uuid.uuid4().hex
-        artifact = FILTER_ARTIFACT
+        artifact = _filter_artifact(filter_id)
         artifact_path = self._batch_root(project_id, batch_id) / artifact
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_bytes(content)

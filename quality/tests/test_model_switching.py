@@ -7,6 +7,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from agent.conversations import ConversationRepository, ConversationRunner
+from agent.core import build_agent
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.run_records import RunRecorder
 from web.app import create_app
@@ -46,6 +47,22 @@ def make_deps(root: Path) -> AgentDeps:
         logger=logging.getLogger("test.model-switching"),
         session=SessionState(),
     )
+
+
+def test_build_agent_uses_current_openai_chat_model_without_deprecation_warning(
+    tmp_path: Path,
+) -> None:
+    import warnings
+
+    deps = make_deps(tmp_path)
+    deps.settings = AgentSettings(
+        model="deepseek-test",
+        base_url="https://api.example.test/v1",
+        api_key="test-key-not-used",
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        build_agent(deps)
 
 
 def test_conversation_can_switch_model_without_losing_history(tmp_path: Path) -> None:

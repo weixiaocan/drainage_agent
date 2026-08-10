@@ -92,7 +92,7 @@ def test_filter_uses_confirmed_standard_v1_and_waits_for_confirmation(
     assert result.identity["batch_id"] == batch.id
     assert result.identity["standard_input"]["contract_version"] == 1
     assert result.identity["parameters"]["expected_rows_per_day"] == 1
-    assert result.artifact == "exports/筛选结果.xlsx"
+    assert result.artifact == f"exports/filters/{result.filter_id}/筛选结果.xlsx"
     assert (workspace / result.artifact).is_file()
     assert FilterBaselineService(database, files_root).current_baseline(
         project.id, batch.id
@@ -240,7 +240,10 @@ def test_uploaded_revision_is_validated_and_confirmed_as_baseline(
     baseline_path = workspace / baseline.artifact
     assert baseline_path.is_file()
     assert baseline_path.read_bytes() == edited.read_bytes()
-    assert baseline.artifact == revision.artifact == "exports/筛选结果.xlsx"
+    assert baseline.artifact == revision.artifact
+    assert revision.artifact == (
+        f"exports/filters/{revision.filter_id}/筛选结果.xlsx"
+    )
     selected_flow = service.load_flow(project.id, batch.id)
     assert set(selected_flow["timestamp"].dt.strftime("%Y-%m-%d")) == {
         "2026-03-03",
@@ -305,6 +308,7 @@ def test_changed_parameters_or_baseline_file_invalidate_current_without_overwrit
         )
     )
 
+    assert second_filter.artifact != first.artifact
     assert service.current_baseline(project.id, batch.id) is None
     with pytest.raises(BaselinePreconditionError, match="已过期"):
         service.confirm(project.id, batch.id, first_filter.filter_id)

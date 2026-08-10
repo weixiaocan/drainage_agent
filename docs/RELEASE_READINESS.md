@@ -2,13 +2,13 @@
 
 ## 结论
 
-截至 2026-08-09，项目已经满足首个可演示、可评估、可追溯版本的代码与评测条件。完成演示视频并确认 GitHub `Quality Gate` 通过后，可以发布 `v1.0.0`。
+截至 2026-08-10，项目已经满足首个可演示、可评估、可追溯版本的代码与评测条件。公开演示已部署到 `https://drainage.weixiaocan.com/`，可以发布 `v1.0.0`。
 
 ## 评测基线
 
 | 层级 | 范围 | 最终结果 | 证据 |
 |---|---:|---:|---|
-| 确定性测试 | 全量 pytest | 277 passed | `quality/tests/` |
+| 确定性测试 | 全量 pytest | 279 passed | `quality/tests/` |
 | 单轮 Agent Eval | 40 条 | 人工 40/40；最终客观检查 0 失败 | `quality/eval/eval_stage2/single_turn_final_summary.json` |
 | 多轮 Agent Eval | 15 组 | 最终判定 15/15；无待判定项 | `quality/eval/eval_stage2/multiturn_final_summary.json` |
 | CI Agent 冒烟 | CI001-CI003 | 已建立客观检查与 HTML 证据 | `quality/eval/eval_stage2/results_ci_checks.json` |
@@ -33,11 +33,11 @@
 4. 新发现的缺陷先增加确定性回归测试，再修复；需要模型判断的历史故障保留为 Eval 用例。
 5. 人工标注以版本化总结和 HTML/JSONL 证据为准，不把下载目录中的临时 CSV 作为唯一依据。
 
-## 发布前剩余事项
+## 发布门禁状态
 
-1. 录制并检查网页端完整业务演示视频。
-2. 在 GitHub Actions 手动运行一次在线 Agent 冒烟任务并确认通过。
-3. 确认 main 分支 `Quality Gate` 通过。
-4. 由项目负责人创建并推送 `v1.0.0` 标签。
+1. 网页端完整业务流程已经人工验收，公开 Demo 已部署。
+2. 单轮、多轮和 CI Agent 冒烟证据已经保留；发布后若修改提示词、工具路由或状态管理，再复测受影响用例。
+3. main 分支持续通过 `Quality Gate`；标签发布工作流会再次运行 pytest、题库校验和 Docker 构建。
+4. 推送 `v1.0.0` 标签后，GitHub Actions 自动创建 Release 并发布 GHCR 镜像。
 
-以上剩余事项不涉及继续扩充评测题库；若其中任一门禁失败，应修复后重新执行对应层级，而不是跳过发布门槛。
+以上门禁不要求继续扩充评测题库；若标签工作流失败，应修复后重新执行对应层级，而不是跳过发布门槛。
