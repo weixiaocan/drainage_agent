@@ -86,21 +86,12 @@
     "human_failures": []
   },
   "evidence": {
-    "v1_results": "quality/eval/eval_stage2/results_multiturn_v1.jsonl",
-    "v1_checks": "quality/eval/eval_stage2/results_multiturn_v1_checks.json",
-    "v2_results": "quality/eval/eval_stage2/results_multiturn_v2.jsonl",
-    "v2_checks": "quality/eval/eval_stage2/results_multiturn_v2_checks.json",
+    "v1_html": "quality/eval/eval_stage2/report_multiturn_v1.html",
     "v2_html": "quality/eval/eval_stage2/report_multiturn_v2.html",
-    "m008_targeted_results": "quality/eval/eval_stage2/results_multiturn_m008_v3.jsonl",
-    "m008_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m008_v3_checks.json",
     "m008_targeted_html": "quality/eval/eval_stage2/report_multiturn_m008_v3.html",
-    "m012_m013_targeted_results": "quality/eval/eval_stage2/results_multiturn_m012_m013_v3.jsonl",
-    "m012_m013_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m012_m013_v3_checks.json",
     "m012_m013_targeted_html": "quality/eval/eval_stage2/report_multiturn_m012_m013_v3.html",
-    "m013_targeted_results": "quality/eval/eval_stage2/results_multiturn_m013_v4.jsonl",
-    "m013_targeted_checks": "quality/eval/eval_stage2/results_multiturn_m013_v4_checks.json",
     "m013_targeted_html": "quality/eval/eval_stage2/report_multiturn_m013_v4.html",
-    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (5).csv"
+    "retention_note": "迭代期 JSONL 和 checks 已在仓库收尾时清理；保留最终总结和 HTML 报告。"
   },
   "pending_human_review": [],
   "pending_human_review_reason": "全部 15 条多轮用例均已完成最终判定。"

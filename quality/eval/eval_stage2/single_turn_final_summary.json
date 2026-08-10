@@ -6,8 +6,7 @@
     "test_set": "cases_single.yaml",
     "total_cases": 40,
     "total_checks_per_case": 13,
-    "baseline_run": "results_single_v3",
-    "annotation_source": "eval_annotations (3).csv"
+    "baseline_run": "results_single_v3"
   },
   "result": {
     "human": {
@@ -83,14 +82,9 @@
     "risk_boundary": ["无效点位", "无覆盖数据", "数据文件损坏", "空数据", "模糊请求", "冲突请求"]
   },
   "evidence": {
-    "baseline_results": "quality/eval/eval_stage2/results_single_v3.jsonl",
-    "baseline_checks": "quality/eval/eval_stage2/results_single_v3_checks.json",
-    "targeted_v4": "quality/eval/eval_stage2/results_single_targeted_v4.jsonl",
-    "targeted_v5": "quality/eval/eval_stage2/results_single_targeted_v5.jsonl",
-    "e016b_v6": "quality/eval/eval_stage2/results_single_e016b_v6.jsonl",
-    "e016b_v7": "quality/eval/eval_stage2/results_single_e016b_v7.jsonl",
-    "e016b_v8": "quality/eval/eval_stage2/results_single_e016b_v8.jsonl",
-    "human_annotations": "C:\\Users\\mugua\\Downloads\\eval_annotations (3).csv",
+    "baseline_v2_html": "quality/eval/eval_stage2/report_single_v2.html",
+    "baseline_v3_html": "quality/eval/eval_stage2/report_single_v3.html",
+    "e016b_v6_html": "quality/eval/eval_stage2/report_single_e016b_v6.html",
     "artifacts_dir": "quality/eval/eval_stage2/artifacts"
   },
   "gate_decision": {
@@ -103,6 +97,7 @@
     "E003/E009A用户明确确认通过，保留人工结论",
     "E016B v7是模型不必要追问导致的失败轨迹，v8是修复后最终成功轨迹",
     "E018B测试预期需后续修正（事件6→事件4），不影响通过结论",
-    "check.py 中已删除不存在的 eval_stage1 兼容分支，当前客观检查器只面向 schema v2。"
+    "check.py 中已删除不存在的 eval_stage1 兼容分支，当前客观检查器只面向 schema v2。",
+    "迭代期 JSONL 和 checks 已在仓库收尾时清理；保留最终总结、HTML 报告和 artifacts。"
   ]
 }
