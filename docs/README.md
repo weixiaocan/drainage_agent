@@ -7,6 +7,7 @@
 - `adr/`：已经确认且需要长期保留原因的架构决策。
 - `EVALUATION.md`：项目级评测策略、测试分层和发布门槛。
 - `RELEASE_READINESS.md`：v1.0 发布验收结论、证据和剩余门禁。
+- `NEXT_VERSION_ISSUES.md`：v1.0 之后待规划的产品与工程升级事项。
 - `STANDARD_DATA_CONTRACT.md`：批次标准流量数据的 v1 文件格式、manifest 和公开读取契约。
 
 ## 运行文档
