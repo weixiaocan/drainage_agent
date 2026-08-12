@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from agent.python_sandbox import SandboxLimits
+from agent.docker_python_sandbox import DockerPythonSandbox
+from agent.python_sandbox import SandboxRequest
 from sandbox_controller.controller import DockerCliRuntime, SandboxController
 
 
@@ -72,6 +74,20 @@ def _execute(controller: SandboxController, helper: str, jobs_root: Path,
         time.sleep(0.1)
     controller.cancel(job_id)
     pytest.fail("real sandbox did not finish before the test deadline")
+
+
+class _DirectControllerClient:
+    def __init__(self, controller: SandboxController) -> None:
+        self.controller = controller
+
+    def submit(self, job_id: str):
+        return self.controller.submit(job_id).__dict__
+
+    def status(self, job_id: str):
+        return self.controller.status(job_id).__dict__
+
+    def cancel(self, job_id: str):
+        return self.controller.cancel(job_id).__dict__
 
 
 @pytest.mark.parametrize(
@@ -187,6 +203,74 @@ def test_real_sandbox_enforces_output_limit_and_collects_artifacts(real_controll
 
     assert exhausted.status == "failed"
     assert exhausted.exit_code != 0
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        (
+            "from pathlib import Path\n"
+            "for index in range(101):\n"
+            " Path('/job/output', f'{index}.json').write_text('{}')\n"
+        ),
+        (
+            "import os\n"
+            "os.symlink('/etc/passwd', '/job/output/escape-link')\n"
+        ),
+    ],
+)
+def test_real_sandbox_rejects_unsafe_output_collections(real_controller, code: str) -> None:
+    controller, helper, jobs_root = real_controller
+    result = _execute(controller, helper, jobs_root, code)
+
+    assert result.status == "failed"
+    assert result.artifacts == ()
+    assert "output collection failed" in (result.error or "")
+
+
+def test_real_sandbox_times_out_and_removes_infinite_loop(real_controller) -> None:
+    controller, helper, jobs_root = real_controller
+    job_id = f"attack-{uuid.uuid4().hex}"
+    local = jobs_root / job_id
+    (local / "code").mkdir(parents=True)
+    (local / "input").mkdir()
+    (local / "output").mkdir()
+    code = "while True:\n pass\n"
+    (local / "code" / "main.py").write_text(code, encoding="utf-8")
+    _docker("exec", helper, "mkdir", "-p", f"/jobs/{job_id}")
+    _docker("cp", f"{local}{os.sep}.", f"{helper}:/jobs/{job_id}")
+    sandbox = DockerPythonSandbox(
+        _DirectControllerClient(controller), image_digest="sha256:test", poll_interval_seconds=0.05,
+    )
+
+    result = sandbox.execute(SandboxRequest(
+        job_id, code, "snapshot", SandboxLimits(timeout_seconds=1, memory_megabytes=64,
+                                                 process_limit=8, tmp_megabytes=16),
+    ))
+
+    assert result.status == "timed_out"
+    names = _docker("ps", "--all", "--format", "{{.Names}}").stdout.splitlines()
+    assert f"drainage-python-{job_id}" not in names
+
+
+def test_real_controller_restart_removes_orphan(real_controller) -> None:
+    controller, helper, jobs_root = real_controller
+    job_id = f"attack-{uuid.uuid4().hex}"
+    local = jobs_root / job_id
+    (local / "code").mkdir(parents=True)
+    (local / "input").mkdir()
+    (local / "output").mkdir()
+    (local / "code" / "main.py").write_text("while True:\n pass\n", encoding="utf-8")
+    _docker("exec", helper, "mkdir", "-p", f"/jobs/{job_id}")
+    _docker("cp", f"{local}{os.sep}.", f"{helper}:/jobs/{job_id}")
+    controller.submit(job_id, SandboxLimits(timeout_seconds=10, memory_megabytes=64,
+                                            process_limit=8, tmp_megabytes=16))
+    restarted = SandboxController(controller.jobs_root, controller.state_file, controller.runtime)
+
+    removed = restarted.recover_orphans()
+
+    assert f"drainage-python-{job_id}" in removed
+    assert restarted.status(job_id).status == "failed"
 
 
 def test_real_sandbox_cleanup_leaves_no_job_container(real_controller) -> None:

@@ -178,3 +178,33 @@ def test_docker_runtime_rejects_output_archive_path_escape(monkeypatch, tmp_path
         )
 
     assert not (tmp_path / "escape.txt").exists()
+
+
+def test_docker_runtime_rejects_too_many_output_members(monkeypatch, tmp_path) -> None:
+    archive = BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as bundle:
+        for index in range(101):
+            member = tarfile.TarInfo(f"item-{index}.json")
+            member.size = 0
+            bundle.addfile(member, BytesIO())
+    monkeypatch.setattr(DockerCliRuntime, "_run_bytes", staticmethod(lambda command: archive.getvalue()))
+
+    with pytest.raises(RuntimeError, match="too many"):
+        DockerCliRuntime("drainage-python-sandbox@sha256:abc").collect_output(
+            "container-1", tmp_path / "output",
+        )
+
+
+def test_docker_runtime_rejects_output_links(monkeypatch, tmp_path) -> None:
+    archive = BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as bundle:
+        member = tarfile.TarInfo("escape-link")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "/etc/passwd"
+        bundle.addfile(member)
+    monkeypatch.setattr(DockerCliRuntime, "_run_bytes", staticmethod(lambda command: archive.getvalue()))
+
+    with pytest.raises(RuntimeError, match="special file"):
+        DockerCliRuntime("drainage-python-sandbox@sha256:abc").collect_output(
+            "container-1", tmp_path / "output",
+        )

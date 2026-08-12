@@ -16,6 +16,8 @@ from agent.python_sandbox import SandboxLimits
 
 JobStatus = Literal["submitted", "running", "succeeded", "failed", "cancelled", "unknown"]
 JOB_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,63}$")
+MAX_OUTPUT_ARCHIVE_MEMBERS = 100
+MAX_OUTPUT_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -234,8 +236,18 @@ class DockerCliRuntime:
             "docker", "exec", container_name, "tar", "-C", "/job/output", "-cf", "-", ".",
         ])
         root = output_root.resolve()
+        member_count = 0
+        total_bytes = 0
         with tarfile.open(fileobj=BytesIO(archive), mode="r|") as bundle:
             for member in bundle:
+                member_count += 1
+                if member_count > MAX_OUTPUT_ARCHIVE_MEMBERS:
+                    raise RuntimeError("sandbox output archive contains too many members")
+                if member.size < 0:
+                    raise RuntimeError("sandbox output archive has an invalid member size")
+                total_bytes += member.size
+                if total_bytes > MAX_OUTPUT_ARCHIVE_BYTES:
+                    raise RuntimeError("sandbox output archive exceeds the size limit")
                 relative = Path(member.name)
                 if relative.is_absolute() or ".." in relative.parts:
                     raise RuntimeError("sandbox output archive escapes destination")
