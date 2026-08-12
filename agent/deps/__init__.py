@@ -147,4 +147,27 @@ def build_deps(root: Path | None = None) -> AgentDeps:
     load_dotenv(paths.root / ".env")
     ensure_directories(paths)
     logger = logging.getLogger("drainage_agent")
-    return AgentDeps(paths=paths, settings=AgentSettings.from_env(), logger=logger)
+    from agent.python_execution_requests import PythonExecutionRequestRepository
+
+    deps = AgentDeps(
+        paths=paths,
+        settings=AgentSettings.from_env(),
+        logger=logger,
+        python_execution_requests=PythonExecutionRequestRepository(
+            paths.root / "var" / "drainage.sqlite3"
+        ),
+    )
+    exchange = os.getenv("DRAINAGE_SANDBOX_CONTROLLER_EXCHANGE", "").strip()
+    image_digest = os.getenv("DRAINAGE_SANDBOX_IMAGE_DIGEST", "").strip()
+    if exchange and image_digest:
+        from agent.docker_python_sandbox import DockerPythonSandbox, FileControllerClient
+
+        deps.python_sandbox = DockerPythonSandbox(
+            FileControllerClient(Path(exchange)),
+            image_digest=image_digest,
+        )
+    elif exchange or image_digest:
+        logger.warning(
+            "Python sandbox remains disabled: controller exchange and image digest must both be configured"
+        )
+    return deps
