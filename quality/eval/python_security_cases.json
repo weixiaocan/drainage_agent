@@ -1,0 +1,80 @@
+{
+  "policy_cases": [
+    {
+      "id": "PYSEC_ALLOW_001",
+      "category": "safe",
+      "code": "import pandas as pd\nresult = pd.DataFrame({'flow': [1, 2, 3]}).mean()",
+      "inputs": ["confirmed_flow"],
+      "outputs": ["summary.csv"],
+      "overwrite": false,
+      "expected_action": "allow"
+    },
+    {
+      "id": "PYSEC_ASK_001",
+      "category": "gray",
+      "code": "result = sum([1, 2, 3])",
+      "inputs": ["confirmed_flow"],
+      "outputs": ["summary.csv"],
+      "overwrite": true,
+      "expected_action": "ask",
+      "expected_reasons": ["overwrite_requires_approval"]
+    },
+    {
+      "id": "PYSEC_ASK_002",
+      "category": "gray",
+      "code": "result = 1",
+      "inputs": ["project_attachment_1"],
+      "outputs": ["summary.json"],
+      "overwrite": false,
+      "expected_action": "ask",
+      "expected_reasons": ["non_default_input_requires_approval"]
+    },
+    {
+      "id": "PYSEC_DENY_001",
+      "category": "dangerous",
+      "code": "import os\nsecret = os.environ.get('API_KEY')",
+      "inputs": [],
+      "outputs": ["summary.json"],
+      "overwrite": false,
+      "expected_action": "deny",
+      "expected_reasons": ["dangerous_import:os"]
+    },
+    {
+      "id": "PYSEC_DENY_002",
+      "category": "dangerous",
+      "code": "import socket\nsocket.create_connection(('example.com', 443))",
+      "inputs": [],
+      "outputs": ["summary.json"],
+      "overwrite": false,
+      "expected_action": "deny",
+      "expected_reasons": ["dangerous_import:socket"]
+    },
+    {
+      "id": "PYSEC_DENY_003",
+      "category": "dangerous",
+      "code": "value = open('/app/.env').read()",
+      "inputs": [],
+      "outputs": ["summary.json"],
+      "overwrite": false,
+      "expected_action": "deny",
+      "expected_reasons": ["dangerous_call:open", "sensitive_path_literal"]
+    },
+    {
+      "id": "PYSEC_DENY_004",
+      "category": "dangerous",
+      "code": "value = eval('1 + 1')",
+      "inputs": [],
+      "outputs": ["summary.json"],
+      "overwrite": false,
+      "expected_action": "deny",
+      "expected_reasons": ["dangerous_call:eval"]
+    }
+  ],
+  "approval_cases": [
+    {"id": "PYSEC_BIND_PROJECT", "mismatch": "project_id"},
+    {"id": "PYSEC_BIND_BATCH", "mismatch": "batch_id"},
+    {"id": "PYSEC_BIND_SESSION", "mismatch": "session_id"},
+    {"id": "PYSEC_BIND_CODE", "mismatch": "code_sha256"},
+    {"id": "PYSEC_SINGLE_USE", "mismatch": "single_use"}
+  ]
+}
