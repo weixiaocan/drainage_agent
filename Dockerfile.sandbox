@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/opt/sandbox \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    HOME=/nonexistent
+
+RUN groupadd --system --gid 10001 sandbox \
+    && useradd --system --uid 10001 --gid sandbox --no-create-home --shell /usr/sbin/nologin sandbox \
+    && mkdir -p /opt/sandbox /tmp/matplotlib \
+    && chown -R sandbox:sandbox /tmp/matplotlib
+
+COPY requirements-sandbox.txt /tmp/requirements-sandbox.txt
+RUN pip install --no-cache-dir --requirement /tmp/requirements-sandbox.txt \
+    && rm /tmp/requirements-sandbox.txt
+
+COPY --chown=root:root sandbox_runtime/prelude.py /opt/sandbox/prelude.py
+COPY --chown=root:root sandbox_runtime/runner.py /opt/sandbox/runner.py
+
+USER 10001:10001
+WORKDIR /job
+
+ENTRYPOINT ["python", "-I", "/opt/sandbox/runner.py"]
