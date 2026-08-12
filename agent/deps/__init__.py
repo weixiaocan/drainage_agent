@@ -135,6 +135,7 @@ class AgentDeps:
     cancel_session_id: str = ""
     python_execution_requests: Any | None = None
     python_sandbox: Any | None = None
+    sandbox_jobs_root: Path | None = None
 
 
 def ensure_directories(paths: Paths) -> None:
@@ -156,18 +157,22 @@ def build_deps(root: Path | None = None) -> AgentDeps:
         python_execution_requests=PythonExecutionRequestRepository(
             paths.root / "var" / "drainage.sqlite3"
         ),
+        sandbox_jobs_root=Path(
+            os.getenv("DRAINAGE_SANDBOX_JOBS_ROOT", str(paths.root / "var" / "sandbox-jobs"))
+        ).resolve(),
     )
-    exchange = os.getenv("DRAINAGE_SANDBOX_CONTROLLER_EXCHANGE", "").strip()
+    controller_url = os.getenv("DRAINAGE_SANDBOX_CONTROLLER_URL", "").strip()
+    controller_token = os.getenv("DRAINAGE_SANDBOX_CONTROLLER_TOKEN", "").strip()
     image_digest = os.getenv("DRAINAGE_SANDBOX_IMAGE_DIGEST", "").strip()
-    if exchange and image_digest:
-        from agent.docker_python_sandbox import DockerPythonSandbox, FileControllerClient
+    if controller_url and controller_token and image_digest:
+        from agent.docker_python_sandbox import DockerPythonSandbox, HttpControllerClient
 
         deps.python_sandbox = DockerPythonSandbox(
-            FileControllerClient(Path(exchange)),
+            HttpControllerClient(controller_url, controller_token),
             image_digest=image_digest,
         )
-    elif exchange or image_digest:
+    elif controller_url or controller_token or image_digest:
         logger.warning(
-            "Python sandbox remains disabled: controller exchange and image digest must both be configured"
+            "Python sandbox remains disabled: controller URL, token, and image digest must all be configured"
         )
     return deps

@@ -53,7 +53,9 @@ def run_python_impl(
     if deps.python_sandbox is None:
         return _result("failed", "Python 沙箱未配置，已拒绝回退到主进程执行。", **common)
 
-    jobs_root = deps.paths.root.parent.parent.parent / "sandbox-jobs"
+    jobs_root = deps.sandbox_jobs_root
+    if jobs_root is None:
+        return _result("failed", "Python 沙箱任务目录未配置，已拒绝执行。", **common)
     snapshot = None
     try:
         snapshot = create_input_snapshot(

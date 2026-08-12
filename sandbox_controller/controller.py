@@ -122,12 +122,16 @@ class SandboxController:
 class DockerCliRuntime:
     """Docker access belongs only in the separately deployed controller process."""
 
-    def __init__(self, image: str) -> None:
+    def __init__(self, image: str, jobs_volume: str = "sandbox-jobs") -> None:
         if not image.startswith("drainage-python-sandbox@sha256:"):
             raise ValueError("sandbox image must be pinned by digest")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", jobs_volume):
+            raise ValueError("sandbox jobs volume name is invalid")
         self.image = image
+        self.jobs_volume = jobs_volume
 
     def submit(self, *, container_name: str, job_root: Path, limits: SandboxLimits) -> None:
+        job_id = job_root.name
         command = [
             "docker", "run", "--detach", "--name", container_name,
             "--network", "none", "--read-only", "--cap-drop", "ALL",
@@ -136,9 +140,9 @@ class DockerCliRuntime:
             "--memory-swap", f"{limits.memory_megabytes}m",
             "--pids-limit", str(limits.process_limit),
             "--tmpfs", f"/tmp:rw,noexec,nosuid,size={limits.tmp_megabytes}m",
-            "--mount", f"type=bind,src={job_root / 'code'},dst=/job/code,readonly",
-            "--mount", f"type=bind,src={job_root / 'input'},dst=/job/input,readonly",
-            "--mount", f"type=bind,src={job_root / 'output'},dst=/job/output",
+            "--mount", f"type=volume,src={self.jobs_volume},dst=/job/code,volume-subpath={job_id}/code,readonly",
+            "--mount", f"type=volume,src={self.jobs_volume},dst=/job/input,volume-subpath={job_id}/input,readonly",
+            "--mount", f"type=volume,src={self.jobs_volume},dst=/job/output,volume-subpath={job_id}/output",
             self.image,
         ]
         self._run(command)

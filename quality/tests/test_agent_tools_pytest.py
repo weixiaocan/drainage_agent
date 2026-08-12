@@ -62,6 +62,7 @@ def configure_python_security(deps: AgentDeps, tmp_path: Path, result=None) -> N
     deps.session.current_run_id = "run1"
     deps.python_execution_requests = PythonExecutionRequestRepository(tmp_path / "requests.sqlite3")
     deps.python_sandbox = FakePythonSandbox(result or SandboxResult(status="succeeded", exit_code=0))
+    deps.sandbox_jobs_root = (tmp_path / "sandbox-jobs").resolve()
 
 
 def write_sample_data(deps: AgentDeps) -> None:

@@ -7,24 +7,27 @@ from agent.run_records import RunRecorder
 
 
 def test_build_deps_always_configures_execution_request_repository(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("DRAINAGE_SANDBOX_CONTROLLER_EXCHANGE", raising=False)
+    monkeypatch.delenv("DRAINAGE_SANDBOX_CONTROLLER_URL", raising=False)
+    monkeypatch.delenv("DRAINAGE_SANDBOX_CONTROLLER_TOKEN", raising=False)
     monkeypatch.delenv("DRAINAGE_SANDBOX_IMAGE_DIGEST", raising=False)
     deps = build_deps(tmp_path)
     assert deps.python_execution_requests.database == tmp_path / "var" / "drainage.sqlite3"
     assert deps.python_sandbox is None
+    assert deps.sandbox_jobs_root == (tmp_path / "var" / "sandbox-jobs").resolve()
 
 
 def test_build_deps_requires_complete_sandbox_configuration(tmp_path, monkeypatch, caplog) -> None:
-    monkeypatch.setenv("DRAINAGE_SANDBOX_CONTROLLER_EXCHANGE", str(tmp_path / "exchange"))
+    monkeypatch.setenv("DRAINAGE_SANDBOX_CONTROLLER_URL", "http://sandbox-controller:8080")
     monkeypatch.delenv("DRAINAGE_SANDBOX_IMAGE_DIGEST", raising=False)
     with caplog.at_level(logging.WARNING):
         deps = build_deps(tmp_path)
     assert deps.python_sandbox is None
-    assert "both be configured" in caplog.text
+    assert "all be configured" in caplog.text
 
 
 def test_build_deps_wires_controller_adapter_without_docker_authority(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("DRAINAGE_SANDBOX_CONTROLLER_EXCHANGE", str(tmp_path / "exchange"))
+    monkeypatch.setenv("DRAINAGE_SANDBOX_CONTROLLER_URL", "http://sandbox-controller:8080")
+    monkeypatch.setenv("DRAINAGE_SANDBOX_CONTROLLER_TOKEN", "a" * 32)
     monkeypatch.setenv("DRAINAGE_SANDBOX_IMAGE_DIGEST", "sha256:abc")
     deps = build_deps(tmp_path)
     assert isinstance(deps.python_sandbox, DockerPythonSandbox)

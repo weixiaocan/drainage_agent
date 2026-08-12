@@ -83,8 +83,9 @@ def test_docker_runtime_requires_digest_pinned_fixed_image() -> None:
 def test_docker_command_has_mandatory_security_controls(monkeypatch, tmp_path) -> None:
     commands = []
     monkeypatch.setattr(DockerCliRuntime, "_run", staticmethod(lambda command: commands.append(command)))
+    job_root = tmp_path / "job-1"
     DockerCliRuntime("drainage-python-sandbox@sha256:abc").submit(
-        container_name="drainage-python-job-1", job_root=tmp_path,
+        container_name="drainage-python-job-1", job_root=job_root,
         limits=SandboxLimits(),
     )
     command = commands[0]
@@ -95,3 +96,6 @@ def test_docker_command_has_mandatory_security_controls(monkeypatch, tmp_path) -
         assert required in joined
     assert "--privileged" not in command
     assert "/var/run/docker.sock" not in joined
+    assert "type=bind" not in joined
+    assert "type=volume" in joined
+    assert "volume-subpath=job-1/code" in joined

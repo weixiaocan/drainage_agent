@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from typing import Callable, Protocol
 
 from agent.python_sandbox import PythonSandbox, SandboxArtifact, SandboxRequest, SandboxResult
@@ -82,11 +85,22 @@ class DockerPythonSandbox(PythonSandbox):
         return max(0, int((self.clock() - started) * 1000))
 
 
-class FileControllerClient:
-    """Narrow local transport for separately mounted controller inbox/outbox files."""
+class HttpControllerClient:
+    """Authenticated narrow client; sends only an operation and opaque job ID."""
 
-    def __init__(self, exchange_root: Path) -> None:
-        self.exchange_root = exchange_root.resolve()
+    def __init__(self, base_url: str, token: str, *, timeout_seconds: float = 5.0) -> None:
+        parsed = urlparse(base_url)
+        if parsed.scheme != "http" or not parsed.hostname or parsed.query or parsed.fragment:
+            raise ValueError("controller URL must be a plain internal HTTP origin")
+        if parsed.hostname not in {"localhost", "127.0.0.1", "sandbox-controller"}:
+            raise ValueError("controller URL host is not an approved internal host")
+        if len(token) < 32:
+            raise ValueError("controller token must contain at least 32 characters")
+        if timeout_seconds <= 0:
+            raise ValueError("controller timeout must be positive")
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.timeout_seconds = timeout_seconds
 
     def submit(self, job_id: str) -> dict[str, object]:
         return self._request("submit", job_id)
@@ -98,9 +112,27 @@ class FileControllerClient:
         return self._request("cancel", job_id)
 
     def _request(self, operation: str, job_id: str) -> dict[str, object]:
-        # Transport implementation is intentionally fail-closed until the
-        # controller service owns the exchange and authentication protocol.
-        raise RuntimeError(f"controller transport unavailable for {operation}:{job_id}")
+        method = "GET" if operation == "status" else "POST"
+        body = None if method == "GET" else json.dumps({"job_id": job_id}).encode("utf-8")
+        suffix = f"/v1/jobs/{job_id}" if operation == "status" else f"/v1/jobs/{operation}"
+        request = Request(
+            self.base_url + suffix,
+            data=body,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                decoded = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"sandbox controller request failed: {operation}") from exc
+        if not isinstance(decoded, dict):
+            raise RuntimeError("sandbox controller returned an invalid response")
+        return decoded
 
 
 def _optional_int(value: object) -> int | None:

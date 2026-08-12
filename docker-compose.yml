@@ -7,6 +7,40 @@ services:
       - .env
     volumes:
       - drainage-state:/app/var
+      - sandbox-jobs:/var/lib/sandbox-jobs
+    environment:
+      DRAINAGE_SANDBOX_CONTROLLER_URL: http://sandbox-controller:8080
+      DRAINAGE_SANDBOX_CONTROLLER_TOKEN: ${SANDBOX_CONTROLLER_TOKEN:?set SANDBOX_CONTROLLER_TOKEN}
+      DRAINAGE_SANDBOX_IMAGE_DIGEST: ${SANDBOX_IMAGE_DIGEST:?set SANDBOX_IMAGE_DIGEST}
+      DRAINAGE_SANDBOX_JOBS_ROOT: /var/lib/sandbox-jobs
+    depends_on:
+      - sandbox-controller
+
+  sandbox-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    environment:
+      SANDBOX_CONTROLLER_TOKEN: ${SANDBOX_CONTROLLER_TOKEN:?set SANDBOX_CONTROLLER_TOKEN}
+      SANDBOX_JOBS_ROOT: /var/lib/sandbox-jobs
+      SANDBOX_STATE_FILE: /var/lib/sandbox-controller/jobs.json
+      SANDBOX_IMAGE: drainage-python-sandbox@${SANDBOX_IMAGE_DIGEST:?set SANDBOX_IMAGE_DIGEST}
+      SANDBOX_JOBS_VOLUME: ${COMPOSE_PROJECT_NAME:-drainage_agent}_sandbox-jobs
+    volumes:
+      - sandbox-jobs:/var/lib/sandbox-jobs
+      - sandbox-controller-state:/var/lib/sandbox-controller
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - ${DOCKER_GID:?set DOCKER_GID to the host Docker socket group}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
 volumes:
   drainage-state:
+  sandbox-jobs:
+  sandbox-controller-state:
