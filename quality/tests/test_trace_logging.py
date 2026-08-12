@@ -109,3 +109,17 @@ def test_trace_redacts_sensitive_keys_recursively(tmp_path) -> None:
     assert "must-not-leak" not in content
     assert "Bearer secret" not in content
     assert content.count("<redacted>") == 2
+
+
+def test_trace_redacts_python_code_but_keeps_security_metadata(tmp_path) -> None:
+    trace = TraceLogger(tmp_path)
+    trace_event(trace, {
+        "event": "python_execution_start", "run_id": "run-1",
+        "code": "print('secret input')", "code_sha256": "abc",
+        "sandbox_image_digest": "sha256:image", "input_snapshot_id": "snap-1",
+    })
+    content = trace.path.read_text(encoding="utf-8")
+    assert "secret input" not in content
+    assert "<redacted>" in content
+    assert "sha256:image" in content
+    assert "snap-1" in content

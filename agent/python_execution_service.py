@@ -6,6 +6,7 @@ from agent.deps import AgentDeps
 from agent.python_artifacts import create_input_snapshot, validate_and_receive_artifacts
 from agent.python_execution_requests import PythonExecutionRequest
 from agent.python_sandbox import SandboxRequest
+from agent.core.logging_utils import trace_event
 
 
 def execute_persisted_request(deps: AgentDeps, request: PythonExecutionRequest) -> PythonExecutionRequest:
@@ -20,6 +21,12 @@ def execute_persisted_request(deps: AgentDeps, request: PythonExecutionRequest) 
         raise ValueError("overwrite capability was not approved")
     snapshot = None
     try:
+        trace_event(deps.trace, {
+            "event": "python_execution_start", "run_id": request.run_id,
+            "job_id": request.request_id, "code_sha256": request.code_sha256,
+            "policy_decision": request.policy_decision,
+            "capabilities": list(request.approved_capabilities),
+        })
         snapshot = create_input_snapshot(
             deps.paths.root, deps.sandbox_jobs_root,
             project_id=request.project_id, batch_id=request.batch_id,
@@ -45,11 +52,20 @@ def execute_persisted_request(deps: AgentDeps, request: PythonExecutionRequest) 
             artifacts = validate_and_receive_artifacts(
                 snapshot.job_root / "output", deps.paths.outputs, overwrite=request.overwrite,
             )
-        return repository.finish(
+        finished = repository.finish(
             request.request_id, status=terminal, stdout=result.stdout, stderr=result.stderr,
             exit_code=result.exit_code, error=result.error,
             artifacts=[item.__dict__ for item in artifacts],
         )
+        trace_event(deps.trace, {
+            "event": "python_execution_finish", "run_id": request.run_id,
+            "job_id": request.request_id, "status": finished.status,
+            "exit_code": finished.exit_code,
+            "sandbox_image_digest": finished.sandbox_image_digest,
+            "input_snapshot_id": finished.input_snapshot_id,
+            "artifacts": list(finished.artifacts),
+        })
+        return finished
     except Exception as exc:
         current = repository.required(request.request_id)
         if current.status == "running":

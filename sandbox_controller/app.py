@@ -51,4 +51,5 @@ def build_app_from_env() -> FastAPI:
     image = os.environ.get("SANDBOX_IMAGE", "")
     jobs_volume = os.environ.get("SANDBOX_JOBS_VOLUME", "sandbox-jobs")
     controller = SandboxController(jobs_root, state_file, DockerCliRuntime(image, jobs_volume))
+    controller.recover_orphans()
     return create_controller_app(controller, token)

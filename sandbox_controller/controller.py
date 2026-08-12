@@ -21,6 +21,10 @@ class ControllerJob:
     status: JobStatus
     container_name: str
     exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    artifacts: tuple[dict[str, object], ...] = ()
+    error: str | None = None
 
 
 class ContainerRuntime(Protocol):
@@ -28,6 +32,8 @@ class ContainerRuntime(Protocol):
     def inspect(self, container_name: str) -> tuple[str, int | None]: ...
     def cancel(self, container_name: str) -> None: ...
     def remove(self, container_name: str) -> None: ...
+    def logs(self, container_name: str) -> tuple[str, str]: ...
+    def managed_containers(self) -> list[str]: ...
 
 
 class SandboxController:
@@ -46,7 +52,7 @@ class SandboxController:
             jobs = self._load()
             existing = jobs.get(job_id)
             if existing:
-                return ControllerJob(**existing)
+                return self._decode_job(existing)
             job = ControllerJob(job_id, "submitted", f"drainage-python-{job_id}")
             jobs[job_id] = asdict(job)
             self._save(jobs)
@@ -64,13 +70,19 @@ class SandboxController:
         record = self._load().get(job_id)
         if not record:
             return ControllerJob(job_id, "unknown", f"drainage-python-{job_id}")
-        job = ControllerJob(**record)
+        job = self._decode_job(record)
         if job.status != "running":
             return job
         runtime_status, exit_code = self.runtime.inspect(job.container_name)
         mapped: JobStatus = {"running": "running", "exited": "succeeded" if exit_code == 0 else "failed"}.get(
             runtime_status, "failed")  # type: ignore[assignment]
         current = ControllerJob(job_id, mapped, job.container_name, exit_code)
+        if current.status != "running":
+            stdout, stderr = self.runtime.logs(job.container_name)
+            current = ControllerJob(
+                job_id, mapped, job.container_name, exit_code,
+                stdout[-8000:], stderr[-8000:], self._candidate_artifacts(self._job_root(job_id)),
+            )
         self._record(current)
         if current.status != "running":
             self.runtime.remove(job.container_name)
@@ -84,6 +96,23 @@ class SandboxController:
             job = ControllerJob(job_id, "cancelled", job.container_name)
             self._record(job)
         return job
+
+    def recover_orphans(self) -> list[str]:
+        """Remove only controller-owned containers left across a restart."""
+        removed = []
+        jobs = self._load()
+        known = {str(item.get("container_name")) for item in jobs.values()}
+        for name in self.runtime.managed_containers():
+            if not name.startswith("drainage-python-"):
+                continue
+            self.runtime.remove(name)
+            removed.append(name)
+        for job_id, item in jobs.items():
+            if item.get("status") in {"submitted", "running"} and item.get("container_name") in known:
+                item.update({"status": "failed", "error": "controller restarted during execution"})
+                jobs[job_id] = item
+        self._save(jobs)
+        return removed
 
     def _job_root(self, job_id: str) -> Path:
         if not isinstance(job_id, str) or not JOB_ID.fullmatch(job_id):
@@ -101,6 +130,17 @@ class SandboxController:
         if any(path.is_symlink() for path in required):
             raise ValueError("job contract paths cannot be links")
 
+    @staticmethod
+    def _candidate_artifacts(root: Path) -> tuple[dict[str, object], ...]:
+        output = root / "output"
+        if not output.is_dir():
+            return ()
+        result = []
+        for path in sorted(output.iterdir())[:100]:
+            if path.is_file() and not path.is_symlink():
+                result.append({"relative_path": path.name, "size_bytes": path.stat().st_size})
+        return tuple(result)
+
     def _record(self, job: ControllerJob) -> None:
         with self._lock:
             jobs = self._load()
@@ -112,6 +152,12 @@ class SandboxController:
             return {}
         decoded = json.loads(self.state_file.read_text(encoding="utf-8"))
         return decoded if isinstance(decoded, dict) else {}
+
+    @staticmethod
+    def _decode_job(value: dict[str, object]) -> ControllerJob:
+        decoded = dict(value)
+        decoded["artifacts"] = tuple(decoded.get("artifacts") or ())
+        return ControllerJob(**decoded)  # type: ignore[arg-type]
 
     def _save(self, jobs: dict[str, dict[str, object]]) -> None:
         temporary = self.state_file.with_suffix(".tmp")
@@ -158,6 +204,17 @@ class DockerCliRuntime:
 
     def remove(self, container_name: str) -> None:
         self._run(["docker", "rm", "--force", container_name])
+
+    def logs(self, container_name: str) -> tuple[str, str]:
+        completed = self._run(["docker", "logs", container_name])
+        return completed.stdout, completed.stderr
+
+    def managed_containers(self) -> list[str]:
+        completed = self._run([
+            "docker", "ps", "--all", "--filter", "name=^drainage-python-",
+            "--format", "{{.Names}}",
+        ])
+        return [line for line in completed.stdout.splitlines() if line.startswith("drainage-python-")]
 
     @staticmethod
     def _run(command: list[str]) -> subprocess.CompletedProcess[str]:

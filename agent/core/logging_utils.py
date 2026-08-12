@@ -18,6 +18,7 @@ SENSITIVE_TRACE_KEYS = {
     "password",
     "secret",
     "token",
+    "code",
 }
 
 

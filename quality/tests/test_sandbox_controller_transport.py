@@ -12,6 +12,8 @@ class Runtime:
     def inspect(self, name): return "running", 0
     def cancel(self, name): pass
     def remove(self, name): pass
+    def logs(self, name): return "", ""
+    def managed_containers(self): return []
 
 
 def client(tmp_path):

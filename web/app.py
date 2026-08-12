@@ -2099,6 +2099,12 @@ def create_app(
                 session_id=command.session_id, code_sha256=command.code_sha256,
                 approved_capabilities=command.approved_capabilities,
             )
+            app.state.run_records.write({
+                "event": "python_execution_approved", "run_id": request.run_id,
+                "job_id": request.request_id, "status": request.status,
+                "args": {"code_sha256": request.code_sha256,
+                         "approved_capabilities": list(request.approved_capabilities)},
+            })
             finished = execute_persisted_request(_python_execution_deps(request), request)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -2117,7 +2123,12 @@ def create_app(
         if current.session_id != command.session_id or current.code_sha256 != command.code_sha256:
             raise HTTPException(status_code=409, detail="审批上下文与请求不匹配")
         try:
-            return _approval_data(app.state.deps.python_execution_requests.reject(request_id))
+            rejected = app.state.deps.python_execution_requests.reject(request_id)
+            app.state.run_records.write({
+                "event": "python_execution_rejected", "run_id": rejected.run_id,
+                "job_id": rejected.request_id, "status": rejected.status,
+            })
+            return _approval_data(rejected)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

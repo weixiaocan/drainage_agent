@@ -11,6 +11,8 @@ class FakeRuntime:
         self.submissions = []
         self.cancelled = []
         self.removed = []
+        self.log_output = ("stdout", "stderr")
+        self.containers = []
         self.runtime_status = ("running", 0)
 
     def submit(self, **kwargs) -> None:
@@ -24,6 +26,12 @@ class FakeRuntime:
 
     def remove(self, container_name):
         self.removed.append(container_name)
+
+    def logs(self, container_name):
+        return self.log_output
+
+    def managed_containers(self):
+        return self.containers
 
 
 def controller(tmp_path):
@@ -71,7 +79,21 @@ def test_completed_runtime_status_is_recorded(tmp_path) -> None:
     result = service.status("job-1")
     assert result.status == "failed"
     assert result.exit_code == 7
+    assert result.stdout == "stdout"
+    assert result.stderr == "stderr"
     assert runtime.removed == ["drainage-python-job-1"]
+
+
+def test_restart_recovery_removes_only_managed_containers_and_fails_running_jobs(tmp_path) -> None:
+    service, runtime = controller(tmp_path)
+    service.submit("job-1")
+    runtime.containers = ["drainage-python-job-1", "unrelated-database"]
+    removed = service.recover_orphans()
+    assert removed == ["drainage-python-job-1"]
+    assert "unrelated-database" not in runtime.removed
+    recovered = service.status("job-1")
+    assert recovered.status == "failed"
+    assert "restarted" in recovered.error
 
 
 def test_docker_runtime_requires_digest_pinned_fixed_image() -> None:
