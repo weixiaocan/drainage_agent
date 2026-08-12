@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
+import tarfile
+from io import BytesIO
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Lock
@@ -33,6 +36,7 @@ class ContainerRuntime(Protocol):
     def cancel(self, container_name: str) -> None: ...
     def remove(self, container_name: str) -> None: ...
     def logs(self, container_name: str) -> tuple[str, str]: ...
+    def collect_output(self, container_name: str, output_root: Path) -> None: ...
     def managed_containers(self) -> list[str]: ...
 
 
@@ -79,10 +83,16 @@ class SandboxController:
         current = ControllerJob(job_id, mapped, job.container_name, exit_code)
         if current.status != "running":
             stdout, stderr = self.runtime.logs(job.container_name)
-            current = ControllerJob(
-                job_id, mapped, job.container_name, exit_code,
-                stdout[-8000:], stderr[-8000:], self._candidate_artifacts(self._job_root(job_id)),
-            )
+            try:
+                self.runtime.collect_output(job.container_name, self._job_root(job_id) / "output")
+                artifacts = self._candidate_artifacts(self._job_root(job_id))
+                error = None
+            except Exception as exc:
+                mapped = "failed"
+                artifacts = ()
+                error = f"sandbox output collection failed: {type(exc).__name__}"
+            current = ControllerJob(job_id, mapped, job.container_name, exit_code,
+                                    stdout[-8000:], stderr[-8000:], artifacts, error)
         self._record(current)
         if current.status != "running":
             self.runtime.remove(job.container_name)
@@ -186,9 +196,10 @@ class DockerCliRuntime:
             "--memory-swap", f"{limits.memory_megabytes}m",
             "--pids-limit", str(limits.process_limit),
             "--tmpfs", f"/tmp:rw,noexec,nosuid,size={limits.tmp_megabytes}m",
+            "--tmpfs", (f"/job/output:rw,noexec,nosuid,size={limits.output_megabytes}m,"
+                        "uid=10001,gid=10001,mode=0770"),
             "--mount", f"type=volume,src={self.jobs_volume},dst=/job/code,volume-subpath={job_id}/code,readonly",
             "--mount", f"type=volume,src={self.jobs_volume},dst=/job/input,volume-subpath={job_id}/input,readonly",
-            "--mount", f"type=volume,src={self.jobs_volume},dst=/job/output,volume-subpath={job_id}/output",
             self.image,
         ]
         self._run(command)
@@ -197,6 +208,12 @@ class DockerCliRuntime:
         completed = self._run(["docker", "inspect", "--format", "{{.State.Status}}|{{.State.ExitCode}}",
                                container_name])
         status, exit_code = completed.stdout.strip().split("|", 1)
+        if status == "running":
+            marker = self._run(
+                ["docker", "exec", container_name, "cat", "/tmp/sandbox-complete"], check=False,
+            )
+            if marker.returncode == 0 and marker.stdout.strip().lstrip("-").isdigit():
+                return "exited", int(marker.stdout.strip())
         return status, int(exit_code)
 
     def cancel(self, container_name: str) -> None:
@@ -209,6 +226,34 @@ class DockerCliRuntime:
         completed = self._run(["docker", "logs", container_name])
         return completed.stdout, completed.stderr
 
+    def collect_output(self, container_name: str, output_root: Path) -> None:
+        output_root.mkdir(parents=True, exist_ok=True)
+        if any(output_root.iterdir()):
+            raise RuntimeError("sandbox output destination is not empty")
+        archive = self._run_bytes([
+            "docker", "exec", container_name, "tar", "-C", "/job/output", "-cf", "-", ".",
+        ])
+        root = output_root.resolve()
+        with tarfile.open(fileobj=BytesIO(archive), mode="r|") as bundle:
+            for member in bundle:
+                relative = Path(member.name)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise RuntimeError("sandbox output archive escapes destination")
+                target = (root / relative).resolve()
+                if not target.is_relative_to(root):
+                    raise RuntimeError("sandbox output archive escapes destination")
+                if member.isdir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not member.isfile():
+                    raise RuntimeError("sandbox output archive contains a special file")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = bundle.extractfile(member)
+                if source is None:
+                    raise RuntimeError("sandbox output archive member is unreadable")
+                with target.open("xb") as destination:
+                    shutil.copyfileobj(source, destination)
+
     def managed_containers(self) -> list[str]:
         completed = self._run([
             "docker", "ps", "--all", "--filter", "name=^drainage-python-",
@@ -217,6 +262,10 @@ class DockerCliRuntime:
         return [line for line in completed.stdout.splitlines() if line.startswith("drainage-python-")]
 
     @staticmethod
-    def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8",
+    def _run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(command, check=check, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=15)
+
+    @staticmethod
+    def _run_bytes(command: list[str]) -> bytes:
+        return subprocess.run(command, check=True, capture_output=True, timeout=15).stdout

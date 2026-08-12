@@ -1,4 +1,7 @@
+from io import BytesIO
 from pathlib import Path
+import subprocess
+import tarfile
 
 import pytest
 
@@ -14,6 +17,7 @@ class FakeRuntime:
         self.log_output = ("stdout", "stderr")
         self.containers = []
         self.runtime_status = ("running", 0)
+        self.collected = []
 
     def submit(self, **kwargs) -> None:
         self.submissions.append(kwargs)
@@ -29,6 +33,9 @@ class FakeRuntime:
 
     def logs(self, container_name):
         return self.log_output
+
+    def collect_output(self, container_name, output_root):
+        self.collected.append((container_name, output_root))
 
     def managed_containers(self):
         return self.containers
@@ -81,6 +88,7 @@ def test_completed_runtime_status_is_recorded(tmp_path) -> None:
     assert result.exit_code == 7
     assert result.stdout == "stdout"
     assert result.stderr == "stderr"
+    assert runtime.collected == [("drainage-python-job-1", service.jobs_root / "job-1" / "output")]
     assert runtime.removed == ["drainage-python-job-1"]
 
 
@@ -114,10 +122,59 @@ def test_docker_command_has_mandatory_security_controls(monkeypatch, tmp_path) -
     joined = " ".join(command)
     for required in ("--network none", "--read-only", "--cap-drop ALL",
                      "no-new-privileges:true", "--user 10001:10001", "--pids-limit",
-                     "--memory-swap 512m"):
+                     "--memory-swap 512m", "/job/output:rw,noexec,nosuid,size=64m"):
         assert required in joined
     assert "--privileged" not in command
     assert "/var/run/docker.sock" not in joined
     assert "type=bind" not in joined
     assert "type=volume" in joined
     assert "volume-subpath=job-1/code" in joined
+    assert "volume-subpath=job-1/output" not in joined
+
+
+def test_docker_runtime_collects_output_before_container_removal(monkeypatch, tmp_path) -> None:
+    commands = []
+    archive = BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as bundle:
+        content = b"safe"
+        member = tarfile.TarInfo("result.json")
+        member.size = len(content)
+        bundle.addfile(member, BytesIO(content))
+    monkeypatch.setattr(
+        DockerCliRuntime, "_run_bytes",
+        staticmethod(lambda command: commands.append(command) or archive.getvalue()),
+    )
+    output = tmp_path / "output"
+
+    DockerCliRuntime("drainage-python-sandbox@sha256:abc").collect_output("container-1", output)
+
+    assert commands == [[
+        "docker", "exec", "container-1", "tar", "-C", "/job/output", "-cf", "-", ".",
+    ]]
+    assert (output / "result.json").read_bytes() == b"safe"
+
+
+def test_docker_runtime_detects_runner_completion_marker(monkeypatch) -> None:
+    responses = iter([
+        subprocess.CompletedProcess([], 0, "running|0\n", ""),
+        subprocess.CompletedProcess([], 0, "7\n", ""),
+    ])
+    monkeypatch.setattr(DockerCliRuntime, "_run", staticmethod(lambda command, **kwargs: next(responses)))
+
+    assert DockerCliRuntime("drainage-python-sandbox@sha256:abc").inspect("container-1") == ("exited", 7)
+
+
+def test_docker_runtime_rejects_output_archive_path_escape(monkeypatch, tmp_path) -> None:
+    archive = BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as bundle:
+        member = tarfile.TarInfo("../escape.txt")
+        member.size = 1
+        bundle.addfile(member, BytesIO(b"x"))
+    monkeypatch.setattr(DockerCliRuntime, "_run_bytes", staticmethod(lambda command: archive.getvalue()))
+
+    with pytest.raises(RuntimeError, match="escapes"):
+        DockerCliRuntime("drainage-python-sandbox@sha256:abc").collect_output(
+            "container-1", tmp_path / "output",
+        )
+
+    assert not (tmp_path / "escape.txt").exists()

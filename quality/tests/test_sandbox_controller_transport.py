@@ -13,6 +13,7 @@ class Runtime:
     def cancel(self, name): pass
     def remove(self, name): pass
     def logs(self, name): return "", ""
+    def collect_output(self, name, output_root): pass
     def managed_containers(self): return []
 
 

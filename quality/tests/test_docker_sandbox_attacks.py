@@ -164,6 +164,31 @@ def test_real_sandbox_enforces_tmpfs_limit(real_controller) -> None:
     assert "TMP_LIMITED" in result.stdout
 
 
+def test_real_sandbox_enforces_output_limit_and_collects_artifacts(real_controller) -> None:
+    controller, helper, jobs_root = real_controller
+    success = _execute(
+        controller, helper, jobs_root,
+        "from pathlib import Path\n"
+        "Path('/job/output/result.json').write_text('{\"ok\": true}')\n",
+        limits=SandboxLimits(timeout_seconds=10, memory_megabytes=64, process_limit=8,
+                             tmp_megabytes=16, output_megabytes=8),
+    )
+
+    assert success.status == "succeeded", success.stderr
+    assert success.artifacts == ({"relative_path": "result.json", "size_bytes": 12},)
+
+    exhausted = _execute(
+        controller, helper, jobs_root,
+        "with open('/job/output/fill.bin', 'wb') as target:\n"
+        " target.write(b'x' * (16 * 1024 * 1024))\n",
+        limits=SandboxLimits(timeout_seconds=10, memory_megabytes=64, process_limit=8,
+                             tmp_megabytes=16, output_megabytes=8),
+    )
+
+    assert exhausted.status == "failed"
+    assert exhausted.exit_code != 0
+
+
 def test_real_sandbox_cleanup_leaves_no_job_container(real_controller) -> None:
     controller, helper, jobs_root = real_controller
     result = _execute(controller, helper, jobs_root, "print('DONE')\n")
