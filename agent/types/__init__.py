@@ -27,6 +27,13 @@ class FilterConfirmationRequired(Exception):
         super().__init__(result.get("summary", "filter confirmation required"))
 
 
+class PythonApprovalRequired(Exception):
+    def __init__(self, result: ToolResult, args: dict[str, Any] | None = None):
+        self.result = result
+        self.args = args or {}
+        super().__init__(result.get("summary", "python approval required"))
+
+
 def ok(summary: str, artifacts: list[str] | None = None, **data: Any) -> ToolResult:
     result: ToolResult = {
         "status": "ok",

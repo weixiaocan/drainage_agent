@@ -25,7 +25,7 @@ from agent.tools.module_tools import (
     generate_report_impl,
 )
 from agent.tools.python_tool import run_python_impl
-from agent.types import FilterConfirmationRequired
+from agent.types import FilterConfirmationRequired, PythonApprovalRequired
 from analysis import io
 
 
@@ -342,6 +342,35 @@ class _ReportIntentAgent:
         return _PreflightResult(reply, saved_history)
 
 
+class _PythonApprovalAgent:
+    """Convert the approval control-flow exception into a terminal turn result."""
+
+    def __init__(self, inner: Any):
+        self._inner = inner
+
+    def run_sync(self, message: str, *, deps: AgentDeps,
+                 message_history: list[Any] | None = None) -> Any:
+        history = list(message_history or [])
+        try:
+            return self._inner.run_sync(message, deps=deps, message_history=history)
+        except PythonApprovalRequired as exc:
+            data = exc.result.get("data") or {}
+            request_id = str(data.get("request_id") or "")
+            code_hash = str(data.get("code_sha256") or "")
+            reply = (
+                "Python 执行已暂停，等待用户单次审批。\n\n"
+                f"请求编号：`{request_id}`\n\n"
+                f"代码哈希：`{code_hash}`\n\n"
+                "审批完成前，本轮不会继续调用任何工具。"
+            )
+            saved_history = [
+                *history,
+                ModelRequest(parts=[UserPromptPart(content=message)]),
+                ModelResponse(parts=[TextPart(content=reply)]),
+            ]
+            return _PreflightResult(reply, saved_history)
+
+
 def _known_point_ids(deps: AgentDeps) -> set[str]:
     sites = io.load_sites(root=deps.paths.root)
     known = (
@@ -550,6 +579,8 @@ def build_agent(deps: AgentDeps) -> Any:
             )
             if isinstance(result, dict) and result.get("status") == "needs_confirmation":
                 raise FilterConfirmationRequired(result, tool_name, args)
+            if isinstance(result, dict) and result.get("status") == "needs_approval":
+                raise PythonApprovalRequired(result, args)
             return result
 
         @agent.tool
@@ -711,6 +742,8 @@ def build_agent(deps: AgentDeps) -> Any:
         if os.getenv("DRAINAGE_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:
             agent._function_toolset.tools.pop("run_python", None)
 
-        return _InvalidPointAgent(_ReportIntentAgent(_FilterConfirmationAgent(agent)))
+        return _InvalidPointAgent(
+            _ReportIntentAgent(_PythonApprovalAgent(_FilterConfirmationAgent(agent)))
+        )
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc
