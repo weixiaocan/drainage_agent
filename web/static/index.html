@@ -199,6 +199,34 @@
     button.secondary:hover {
       background: var(--soft);
     }
+    .python-approval {
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--warn-border);
+      border-radius: 8px;
+      background: var(--warn-bg);
+      font-size: 13px;
+    }
+    .python-approval dl { display: grid; grid-template-columns: 92px 1fr; gap: 6px; }
+    .python-approval dt { color: var(--muted); }
+    .python-approval dd { margin: 0; overflow-wrap: anywhere; }
+    .python-approval pre { max-height: 260px; overflow: auto; background: #20242c; color: #f6f7f9; padding: 10px; }
+    .approval-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .approval-actions .reject { background: var(--danger); border-color: var(--danger); }
+    .python-approval {
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--warn-border);
+      border-radius: 8px;
+      background: var(--warn-bg);
+      font-size: 13px;
+    }
+    .python-approval dl { display: grid; grid-template-columns: 92px 1fr; gap: 6px; }
+    .python-approval dt { color: var(--muted); }
+    .python-approval dd { margin: 0; overflow-wrap: anywhere; }
+    .python-approval pre { max-height: 260px; overflow: auto; background: #20242c; color: #f6f7f9; padding: 10px; }
+    .approval-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .approval-actions .reject { background: var(--danger); border-color: var(--danger); }
     .upload-btn { width: 100%; margin-top: 14px; }
     .quick {
       display: grid;
@@ -1240,6 +1268,100 @@
       });
     }
 
+    function renderPythonApproval(approval) {
+      const card = document.createElement("section");
+      card.className = "python-approval";
+      const title = document.createElement("strong");
+      title.textContent = "Python 执行审批";
+      card.appendChild(title);
+      const facts = document.createElement("dl");
+      const rows = [
+        ["目的", approval.purpose], ["风险原因", (approval.reasons || []).join("；")],
+        ["请求能力", (approval.capabilities || []).join("；")],
+        ["影响文件", (approval.affected_paths || []).join("；") || "无"],
+        ["网络", "禁止"], ["代码哈希", approval.code_sha256], ["过期时间", approval.expires_at],
+      ];
+      rows.forEach(([label, value]) => {
+        const dt = document.createElement("dt"); dt.textContent = label;
+        const dd = document.createElement("dd"); dd.textContent = value || "—";
+        facts.append(dt, dd);
+      });
+      card.appendChild(facts);
+      const details = document.createElement("details");
+      const summary = document.createElement("summary"); summary.textContent = "查看完整代码";
+      const code = document.createElement("pre"); code.textContent = approval.code || "";
+      details.append(summary, code); card.appendChild(details);
+      const actions = document.createElement("div"); actions.className = "approval-actions";
+      const reject = document.createElement("button"); reject.className = "reject"; reject.textContent = "拒绝";
+      const approve = document.createElement("button"); approve.className = "secondary"; approve.textContent = "允许本次";
+      const decide = async (operation) => {
+        reject.disabled = approve.disabled = true;
+        const response = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/python-executions/${approval.request_id}/${operation}`,
+          {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({
+            session_id: sessionId, code_sha256: approval.code_sha256,
+            approved_capabilities: operation === "approve" ? (approval.capabilities || []) : [],
+          })},
+        );
+        const data = await response.json();
+        if (!response.ok) { reject.disabled = approve.disabled = false; throw new Error(data.detail || "审批失败"); }
+        card.replaceChildren(document.createTextNode(
+          operation === "approve" ? "已批准本次请求；等待安全执行恢复。" : "已拒绝本次请求。"
+        ));
+      };
+      reject.addEventListener("click", () => decide("reject").catch((err) => alert(err.message)));
+      approve.addEventListener("click", () => decide("approve").catch((err) => alert(err.message)));
+      actions.append(reject, approve); card.appendChild(actions);
+      chat.appendChild(card); chat.scrollTop = chat.scrollHeight;
+    }
+
+    function renderPythonApproval(approval) {
+      const card = document.createElement("section");
+      card.className = "python-approval";
+      const title = document.createElement("strong");
+      title.textContent = "Python 执行审批";
+      card.appendChild(title);
+      const facts = document.createElement("dl");
+      const rows = [
+        ["目的", approval.purpose], ["风险原因", (approval.reasons || []).join("；")],
+        ["请求能力", (approval.capabilities || []).join("；")],
+        ["影响文件", (approval.affected_paths || []).join("；") || "无"],
+        ["网络", "禁止"], ["代码哈希", approval.code_sha256], ["过期时间", approval.expires_at],
+      ];
+      rows.forEach(([label, value]) => {
+        const dt = document.createElement("dt"); dt.textContent = label;
+        const dd = document.createElement("dd"); dd.textContent = value || "—";
+        facts.append(dt, dd);
+      });
+      card.appendChild(facts);
+      const details = document.createElement("details");
+      const summary = document.createElement("summary"); summary.textContent = "查看完整代码";
+      const code = document.createElement("pre"); code.textContent = approval.code || "";
+      details.append(summary, code); card.appendChild(details);
+      const actions = document.createElement("div"); actions.className = "approval-actions";
+      const reject = document.createElement("button"); reject.className = "reject"; reject.textContent = "拒绝";
+      const approve = document.createElement("button"); approve.className = "secondary"; approve.textContent = "允许本次";
+      const decide = async (operation) => {
+        reject.disabled = approve.disabled = true;
+        const response = await fetch(
+          `/api/projects/${currentProjectId}/batches/${currentBatchId}/python-executions/${approval.request_id}/${operation}`,
+          {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({
+            session_id: sessionId, code_sha256: approval.code_sha256,
+            approved_capabilities: operation === "approve" ? (approval.capabilities || []) : [],
+          })},
+        );
+        const data = await response.json();
+        if (!response.ok) { reject.disabled = approve.disabled = false; throw new Error(data.detail || "审批失败"); }
+        card.replaceChildren(document.createTextNode(
+          operation === "approve" ? "已批准本次请求；等待安全执行恢复。" : "已拒绝本次请求。"
+        ));
+      };
+      reject.addEventListener("click", () => decide("reject").catch((err) => alert(err.message)));
+      approve.addEventListener("click", () => decide("approve").catch((err) => alert(err.message)));
+      actions.append(reject, approve); card.appendChild(actions);
+      chat.appendChild(card); chat.scrollTop = chat.scrollHeight;
+    }
+
     async function send(text) {
       const trimmed = text.trim();
       if (!trimmed) return;
@@ -1310,6 +1432,8 @@
         localStorage.setItem(projectSessionStorageKey(currentProjectId), sessionId);
         pendingMessage.remove();
         addMessage(data.reply, "agent", true, data.artifacts || []);
+        if (data.python_approval) renderPythonApproval(data.python_approval);
+        if (data.python_approval) renderPythonApproval(data.python_approval);
         chatAttachments.value = "";
         attachmentPreview.replaceChildren();
         loadAgentRuns();

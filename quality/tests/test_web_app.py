@@ -178,6 +178,16 @@ def test_index_persists_chat_transcript_across_refresh(client: TestClient) -> No
     assert 'const latestChatStorageKey = "drainage-agent-chat-latest"' not in response.text
 
 
+def test_index_contains_safe_python_approval_card(client: TestClient) -> None:
+    response = client.get("/")
+    assert "renderPythonApproval" in response.text
+    assert "查看完整代码" in response.text
+    assert "允许本次" in response.text
+    assert "网络\", \"禁止" in response.text
+    assert 'approve.className = "secondary"' in response.text
+    assert 'actions.append(reject, approve)' in response.text
+
+
 def test_chat_rejects_empty_message(client: TestClient) -> None:
     response = client.post("/api/chat", json={"message": "   "})
 

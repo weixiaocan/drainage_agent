@@ -123,10 +123,17 @@ class ChatResponse(BaseModel):
     run_id: str
     reply: str
     artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    python_approval: dict[str, Any] | None = None
 
 
 class CancelRequest(BaseModel):
     session_id: str
+
+
+class PythonApprovalCommand(BaseModel):
+    session_id: str
+    code_sha256: str
+    approved_capabilities: list[str] = Field(default_factory=list)
 
 
 def _deps_with_settings(deps: AgentDeps, settings: Any) -> AgentDeps:
@@ -513,6 +520,12 @@ def create_app(
                 app.state.demo_active_chats -= 1
     app.state.root = (root or Path.cwd()).resolve()
     app.state.deps = deps_factory(app.state.root)
+    if app.state.deps.python_execution_requests is None:
+        from agent.python_execution_requests import PythonExecutionRequestRepository
+
+        app.state.deps.python_execution_requests = PythonExecutionRequestRepository(
+            app.state.root / "var" / "drainage.sqlite3"
+        )
     model_settings = available_agent_settings()
     model_settings[app.state.deps.settings.provider_id] = app.state.deps.settings
     app.state.model_agents = {
@@ -2030,6 +2043,55 @@ def create_app(
         request_cancel(request.session_id)
         return {"status": "cancelled"}
 
+    def _approval_data(request: Any) -> dict[str, Any]:
+        return {
+            "request_id": request.request_id,
+            "purpose": request.purpose,
+            "code": request.code,
+            "code_sha256": request.code_sha256,
+            "reasons": list(request.policy_reasons),
+            "capabilities": list(request.requested_capabilities),
+            "affected_paths": list(request.affected_paths),
+            "status": request.status,
+            "expires_at": request.expires_at,
+            "network": "none",
+        }
+
+    @app.get("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}")
+    def get_python_execution(project_id: str, batch_id: str, request_id: str) -> dict[str, Any]:
+        request = app.state.deps.python_execution_requests.get(request_id)
+        if request is None or request.project_id != project_id or request.batch_id != batch_id:
+            raise HTTPException(status_code=404, detail="Python 执行请求不存在")
+        return _approval_data(request)
+
+    @app.post("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}/approve")
+    def approve_python_execution(project_id: str, batch_id: str, request_id: str,
+                                 command: PythonApprovalCommand) -> dict[str, Any]:
+        try:
+            request = app.state.deps.python_execution_requests.approve(
+                request_id, project_id=project_id, batch_id=batch_id,
+                session_id=command.session_id, code_sha256=command.code_sha256,
+                approved_capabilities=command.approved_capabilities,
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _approval_data(request)
+
+    @app.post("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}/reject")
+    def reject_python_execution(project_id: str, batch_id: str, request_id: str,
+                                command: PythonApprovalCommand) -> dict[str, Any]:
+        current = app.state.deps.python_execution_requests.get(request_id)
+        if current is None or current.project_id != project_id or current.batch_id != batch_id:
+            raise HTTPException(status_code=404, detail="Python 执行请求不存在")
+        if current.session_id != command.session_id or current.code_sha256 != command.code_sha256:
+            raise HTTPException(status_code=409, detail="审批上下文与请求不匹配")
+        try:
+            return _approval_data(app.state.deps.python_execution_requests.reject(request_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
         message = request.message.strip()
@@ -2082,6 +2144,13 @@ def create_app(
                 run_id=turn.run_id,
                 reply=turn.reply,
                 artifacts=artifacts,
+                python_approval=(
+                    _approval_data(pending)
+                    if (pending := app.state.deps.python_execution_requests.for_run(
+                        turn.run_id, project_id, batch_id
+                    )) is not None and pending.status == "awaiting_approval"
+                    else None
+                ),
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

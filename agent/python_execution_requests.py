@@ -169,6 +169,17 @@ class PythonExecutionRequestRepository:
                                      (request_id,)).fetchone()
         return self._decode(row) if row else None
 
+    def for_run(self, run_id: str, project_id: str, batch_id: str) -> PythonExecutionRequest | None:
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute(
+                """SELECT * FROM python_execution_requests
+                WHERE run_id=? AND project_id=? AND batch_id=?
+                ORDER BY created_at DESC LIMIT 1""",
+                (run_id, project_id, batch_id),
+            ).fetchone()
+        return self._decode(row) if row else None
+
     def required(self, request_id: str) -> PythonExecutionRequest:
         request = self.get(request_id)
         if request is None:
