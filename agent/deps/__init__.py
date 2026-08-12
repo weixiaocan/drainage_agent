@@ -133,6 +133,8 @@ class AgentDeps:
     current_project_id: str | None = None
     current_batch_id: str | None = None
     cancel_session_id: str = ""
+    python_execution_requests: Any | None = None
+    python_sandbox: Any | None = None
 
 
 def ensure_directories(paths: Paths) -> None:

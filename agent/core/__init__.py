@@ -699,9 +699,13 @@ def build_agent(deps: AgentDeps) -> Any:
             return traced_tool(ctx, "list_results", {}, lambda: list_results_impl(ctx.deps))
 
         @agent.tool
-        def run_python(ctx: RunContext[AgentDeps], code: str) -> dict:
-            """执行长尾现场 Python 分析，预置 analysis.io 数据访问函数。"""
-            args = {"code": code}
+        def run_python(
+            ctx: RunContext[AgentDeps], purpose: str, code: str,
+            inputs: list[str], outputs: list[str], overwrite: bool = False,
+        ) -> dict:
+            """在隔离沙箱中执行经策略判定的长尾 Python 分析。"""
+            args = {"purpose": purpose, "code": code, "inputs": inputs,
+                    "outputs": outputs, "overwrite": overwrite}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
 
         if os.getenv("DRAINAGE_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:

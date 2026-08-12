@@ -2,7 +2,6 @@
 
 import base64
 import logging
-import time
 import zipfile
 from pathlib import Path
 from typing import get_args
@@ -38,6 +37,8 @@ from analysis.reporting.pipeline_report_assembler.facts import ReportFacts
 from analysis.reporting.pipeline_report_assembler.template_scanner import scan_template
 from analysis.reporting.pipeline_report_assembler.validator import validate_report
 from agent.tools.python_tool import run_python_impl
+from agent.python_execution_requests import PythonExecutionRequestRepository
+from agent.python_sandbox import FakePythonSandbox, SandboxResult
 from agent.types import ToolStatus, ok
 
 
@@ -52,6 +53,15 @@ def make_deps(root: Path) -> AgentDeps:
         logger=logging.getLogger("test.agent_tools"),
         session=session,
     )
+
+
+def configure_python_security(deps: AgentDeps, tmp_path: Path, result=None) -> None:
+    deps.current_project_id = "project1"
+    deps.current_batch_id = "batch1"
+    deps.cancel_session_id = "session1"
+    deps.session.current_run_id = "run1"
+    deps.python_execution_requests = PythonExecutionRequestRepository(tmp_path / "requests.sqlite3")
+    deps.python_sandbox = FakePythonSandbox(result or SandboxResult(status="succeeded", exit_code=0))
 
 
 def write_sample_data(deps: AgentDeps) -> None:
@@ -135,7 +145,10 @@ def sample_two_point_pattern_flow() -> pd.DataFrame:
 
 
 def test_tool_status_values_are_v2_only() -> None:
-    assert set(get_args(ToolStatus)) == {"ok", "needs_input", "needs_confirmation", "error"}
+    assert set(get_args(ToolStatus)) == {
+        "ok", "needs_input", "needs_confirmation", "needs_approval",
+        "denied", "failed", "error",
+    }
 
 
 def test_check_data_success(tmp_path: Path) -> None:
@@ -1639,80 +1652,62 @@ def test_full_network_aliases_and_complete_list_use_short_full_network_filename(
     assert "W2" not in multi_files[0].name and "W3" not in multi_files[0].name
 
 
-def test_run_python_success_with_analysis_io(tmp_path: Path) -> None:
+def test_run_python_safe_code_executes_only_in_injected_sandbox(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
-    write_sample_data(deps)
-    result = run_python_impl(deps, "df = load_flow()\nprint(len(df))\n(WORKSPACE_DIR / 'out.txt').write_text(str(len(df)), encoding='utf-8')")
+    standard = deps.paths.root / "standard"
+    standard.mkdir()
+    (standard / "flow.csv").write_text("timestamp,flow\n2026-01-01,1\n", encoding="utf-8")
+    configure_python_security(deps, tmp_path, SandboxResult(status="succeeded", exit_code=0, stdout="1\n"))
+    result = run_python_impl(deps, "统计流量行数", "print(len(load_flow()))", ["confirmed_flow"], [])
     assert result["status"] == "ok"
-    assert (deps.paths.workspace / "out.txt").read_text(encoding="utf-8") == "60"
+    assert result["data"]["stdout"] == "1\n"
+    assert len(deps.python_sandbox.requests) == 1
+    request = deps.python_execution_requests.required(result["data"]["request_id"])
+    assert request.status == "succeeded"
+    assert request.input_snapshot_id == request.request_id
 
 
-def test_run_python_loads_scoped_standard_rainfall(tmp_path: Path) -> None:
+def test_run_python_unconfigured_fails_closed(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
-    scoped_root = tmp_path / "var" / "projects" / "project1" / "batches" / "workspace1"
-    standard = scoped_root / "standard"
-    standard.mkdir(parents=True)
-    (standard / "rainfall.csv").write_text(
-        "timestamp,rain_mm\n2026-03-15 03:00:00,1.2\n",
-        encoding="utf-8",
-    )
-    deps.paths = Paths(
-        root=scoped_root,
-        data=scoped_root / "inputs",
-        outputs=scoped_root / "results",
-        workspace=scoped_root / "sessions",
-        logs=deps.paths.logs,
-        templates=scoped_root / "inputs" / "templates",
-    )
-
-    result = run_python_impl(
-        deps,
-        "rain = load_rain()\nprint(len(rain), rain['rain_mm'].sum())",
-    )
-
-    assert result["status"] == "ok"
-    assert "1 1.2" in result["data"]["stdout"]
+    result = run_python_impl(deps, "统计", "print(1)", [], [])
+    assert result["status"] == "failed"
+    assert "主应用进程" in result["summary"]
 
 
 def test_run_python_rejects_markdown_report_fallback(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     result = run_python_impl(
-        deps,
-        "(OUTPUTS_DIR / '旱天分析报告.md').write_text('报告', encoding='utf-8')",
+        deps, "生成报告", "save_json({'报告': 1}, '旱天分析报告.md')", [], ["旱天分析报告.md"],
     )
 
-    assert result["status"] == "error"
+    assert result["status"] == "denied"
     assert "generate_report" in result["summary"]
     assert not (deps.paths.outputs / "旱天分析报告.md").exists()
 
 
-def test_run_python_returns_error_without_crashing(tmp_path: Path) -> None:
+def test_run_python_dangerous_code_is_denied_without_sandbox_call(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
-    result = run_python_impl(deps, "raise RuntimeError('kernel boom')")
-    assert result["status"] == "error"
-    assert "kernel boom" in result["data"]["stderr"]
+    configure_python_security(deps, tmp_path)
+    result = run_python_impl(deps, "读取环境", "import os\nprint(os.environ)", [], [])
+    assert result["status"] == "denied"
+    assert deps.python_sandbox.requests == []
 
 
-def test_run_python_forces_utf8_stdout(tmp_path: Path) -> None:
+def test_run_python_overwrite_requires_approval(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
+    configure_python_security(deps, tmp_path)
+    result = run_python_impl(deps, "覆盖统计", "print('ok')", [], ["out.csv"], overwrite=True)
+    assert result["status"] == "needs_approval"
+    assert deps.python_sandbox.requests == []
 
-    result = run_python_impl(deps, "print('RDII 单位：m³')")
 
-    assert result["status"] == "ok"
-    assert "RDII 单位：m³" in result["data"]["stdout"]
-
-
-def test_run_python_timeout_is_killed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_python_propagates_sandbox_timeout(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
-    monkeypatch.setattr("agent.tools.python_tool.TIMEOUT_SECONDS", 1)
-
-    started = time.monotonic()
-    result = run_python_impl(deps, "import time\ntime.sleep(30)")
-    elapsed = time.monotonic() - started
-
-    assert result["status"] == "error"
-    assert elapsed < 10
-    assert result["data"]["script"]
+    configure_python_security(deps, tmp_path, SandboxResult(status="timed_out", error="deadline"))
+    result = run_python_impl(deps, "计算", "print(1)", [], [])
+    assert result["status"] == "failed"
+    request = deps.python_execution_requests.required(result["data"]["request_id"])
+    assert request.status == "timed_out"
 def test_filter_excel_replaces_target_only_after_complete_write(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "筛选结果.xlsx"
     output.write_bytes(b"existing-complete-file")

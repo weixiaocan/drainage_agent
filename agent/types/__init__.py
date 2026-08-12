@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any, Literal, TypedDict
 
 
-ToolStatus = Literal["ok", "needs_input", "needs_confirmation", "error"]
+ToolStatus = Literal[
+    "ok", "needs_input", "needs_confirmation", "needs_approval",
+    "denied", "failed", "error",
+]
 
 
 class ToolResult(TypedDict, total=False):

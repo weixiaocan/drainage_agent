@@ -686,9 +686,9 @@ class AgentToolTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
             write_flow(deps)
-            result = run_python_impl(deps, "(WORKSPACE_DIR / 'out.txt').write_text(str(len(load_flow())), encoding='utf-8')")
-            self.assertEqual(result["status"], "ok", result)
-            self.assertEqual((deps.paths.workspace / "out.txt").read_text(encoding="utf-8"), "5")
+            result = run_python_impl(deps, "统计", "print(len(load_flow()))", ["confirmed_flow"], [])
+            self.assertEqual(result["status"], "failed", result)
+            self.assertIn("主应用进程", result["summary"])
 
     def test_build_report_uses_template_modules_and_workbook_tables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
