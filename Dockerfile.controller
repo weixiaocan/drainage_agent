@@ -16,5 +16,9 @@ RUN pip install --no-cache-dir --requirement requirements-controller.txt
 COPY --chown=root:root agent/python_sandbox.py agent/python_sandbox.py
 COPY --chown=root:root sandbox_controller sandbox_controller
 
+RUN mkdir -p /var/lib/sandbox-jobs /var/lib/sandbox-controller \
+    && chown -R 10002:10002 /var/lib/sandbox-jobs /var/lib/sandbox-controller \
+    && chmod 2770 /var/lib/sandbox-jobs
+
 USER 10002:10002
 ENTRYPOINT ["uvicorn", "sandbox_controller.main:app", "--host", "0.0.0.0", "--port", "8080"]

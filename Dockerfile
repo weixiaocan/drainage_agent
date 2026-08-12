@@ -7,6 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN groupadd --system --gid 10002 sandbox-jobs \
+    && useradd --system --uid 10001 --gid sandbox-jobs --no-create-home --shell /usr/sbin/nologin drainage
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         fontconfig \
@@ -23,10 +26,13 @@ RUN mkdir -p /tmp/matplotlib \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY --chown=root:root . .
 
-RUN mkdir -p var/outputs var/workspace var/logs
+RUN mkdir -p var/outputs var/workspace var/logs /var/lib/sandbox-jobs \
+    && chown -R 10001:10002 var /var/lib/sandbox-jobs \
+    && chmod 2770 /var/lib/sandbox-jobs
 
 EXPOSE 8000
 
+USER 10001:10002
 CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8000"]
