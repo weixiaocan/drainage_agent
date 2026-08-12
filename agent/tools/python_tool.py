@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import shutil
 import uuid
-from pathlib import Path
 
 from agent.deps import AgentDeps
-from agent.python_artifacts import create_input_snapshot, validate_and_receive_artifacts
 from agent.python_execution_policy import PythonExecutionPolicy
-from agent.python_sandbox import SandboxRequest
+from agent.python_execution_service import execute_persisted_request
 from agent.types import ToolResult
 
 
@@ -34,6 +31,7 @@ def run_python_impl(
     request = repository.create(
         project_id=project_id, batch_id=batch_id, session_id=session_id, run_id=run_id,
         purpose=purpose, code=code, policy_decision=decision.action,
+        inputs=inputs, outputs=outputs, overwrite=overwrite,
         policy_reasons=decision.reasons,
         requested_capabilities=decision.capabilities,
         affected_paths=decision.affected_paths,
@@ -53,55 +51,19 @@ def run_python_impl(
     if deps.python_sandbox is None:
         return _result("failed", "Python 沙箱未配置，已拒绝回退到主进程执行。", **common)
 
-    jobs_root = deps.sandbox_jobs_root
-    if jobs_root is None:
-        return _result("failed", "Python 沙箱任务目录未配置，已拒绝执行。", **common)
-    snapshot = None
     try:
-        snapshot = create_input_snapshot(
-            deps.paths.root, jobs_root, project_id=project_id, batch_id=batch_id,
-            resources=inputs, snapshot_id=request.request_id,
-        )
-        main = snapshot.job_root / "code" / "main.py"
-        main.write_text("from prelude import *\n" + code, encoding="utf-8")
-        repository.start(
-            request.request_id, project_id=project_id, batch_id=batch_id,
-            session_id=session_id, code_sha256=request.code_sha256,
-            input_snapshot_id=snapshot.snapshot_id,
-            sandbox_image_digest=deps.python_sandbox.image_digest,
-        )
-        sandbox_result = deps.python_sandbox.execute(
-            SandboxRequest(request.request_id, code, snapshot.snapshot_id)
-        )
-        terminal = "succeeded" if sandbox_result.ok else (
-            "timed_out" if sandbox_result.status == "timed_out" else "failed"
-        )
-        artifacts = ()
-        if sandbox_result.ok:
-            artifacts = validate_and_receive_artifacts(
-                snapshot.job_root / "output", deps.paths.outputs,
-                overwrite=overwrite,
-            )
-        repository.finish(
-            request.request_id, status=terminal, stdout=sandbox_result.stdout,
-            stderr=sandbox_result.stderr, exit_code=sandbox_result.exit_code,
-            error=sandbox_result.error,
-            artifacts=[item.__dict__ for item in artifacts],
-        )
-        if not sandbox_result.ok:
+        finished = execute_persisted_request(deps, request)
+        if finished.status != "succeeded":
             return _result("failed", "Python 沙箱执行失败。", **common,
-                           stdout=sandbox_result.stdout, stderr=sandbox_result.stderr)
-        relative = [f"exports/{item.name}" for item in artifacts]
+                           stdout=finished.stdout, stderr=finished.stderr)
+        relative = [f"exports/{item['name']}" for item in finished.artifacts]
         return _result("ok", "run_python 在隔离沙箱中执行成功。", artifacts=relative,
-                       **common, stdout=sandbox_result.stdout)
+                       **common, stdout=finished.stdout)
     except Exception as exc:
         current = repository.required(request.request_id)
         if current.status == "running":
             repository.finish(request.request_id, status="failed", error=f"{type(exc).__name__}: {exc}")
         return _result("failed", f"Python 安全执行失败: {type(exc).__name__}: {exc}", **common)
-    finally:
-        if snapshot is not None:
-            shutil.rmtree(snapshot.job_root, ignore_errors=True)
 
 
 def _result(status: str, summary: str, artifacts: list[str] | None = None, **data) -> ToolResult:

@@ -27,6 +27,9 @@ class PythonExecutionRequest:
     purpose: str
     code: str
     code_sha256: str
+    inputs: tuple[str, ...]
+    outputs: tuple[str, ...]
+    overwrite: bool
     policy_decision: str
     policy_reasons: tuple[str, ...]
     requested_capabilities: tuple[str, ...]
@@ -60,6 +63,8 @@ class PythonExecutionRequestRepository:
                     request_id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
                     batch_id TEXT NOT NULL, session_id TEXT NOT NULL, run_id TEXT NOT NULL,
                     purpose TEXT NOT NULL, code TEXT NOT NULL, code_sha256 TEXT NOT NULL,
+                    inputs_json TEXT NOT NULL DEFAULT '[]', outputs_json TEXT NOT NULL DEFAULT '[]',
+                    overwrite INTEGER NOT NULL DEFAULT 0,
                     policy_decision TEXT NOT NULL, policy_reasons_json TEXT NOT NULL,
                     requested_capabilities_json TEXT NOT NULL,
                     approved_capabilities_json TEXT NOT NULL, affected_paths_json TEXT NOT NULL,
@@ -70,11 +75,22 @@ class PythonExecutionRequestRepository:
                     input_snapshot_id TEXT, sandbox_image_digest TEXT
                 )
             """)
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(python_execution_requests)")}
+            for name, declaration in (
+                ("inputs_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("outputs_json", "TEXT NOT NULL DEFAULT '[]'"),
+                ("overwrite", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE python_execution_requests ADD COLUMN {name} {declaration}")
             connection.execute("""CREATE INDEX IF NOT EXISTS idx_python_execution_scope
                 ON python_execution_requests(project_id, batch_id, session_id)""")
 
     def create(self, *, project_id: str, batch_id: str, session_id: str, run_id: str,
                purpose: str, code: str, policy_decision: Decision,
+               inputs: tuple[str, ...] | list[str] = (),
+               outputs: tuple[str, ...] | list[str] = (),
+               overwrite: bool = False,
                policy_reasons: tuple[str, ...] | list[str] = (),
                requested_capabilities: tuple[str, ...] | list[str] = (),
                affected_paths: tuple[str, ...] | list[str] = (),
@@ -90,14 +106,16 @@ class PythonExecutionRequestRepository:
         values = (request_id, project_id, batch_id, session_id, run_id, purpose, code,
                   self.hash_code(code), policy_decision, self._json(policy_reasons),
                   self._json(requested_capabilities), self._json(approved),
-                  self._json(affected_paths), status, now.isoformat(),
+                  self._json(affected_paths), self._json(inputs), self._json(outputs),
+                  int(overwrite), status, now.isoformat(),
                   expires.isoformat() if expires else None)
         with self._connect() as connection:
             connection.execute("""INSERT INTO python_execution_requests (
                 request_id,project_id,batch_id,session_id,run_id,purpose,code,code_sha256,
                 policy_decision,policy_reasons_json,requested_capabilities_json,
-                approved_capabilities_json,affected_paths_json,status,created_at,expires_at
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", values)
+                approved_capabilities_json,affected_paths_json,inputs_json,outputs_json,overwrite,
+                status,created_at,expires_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", values)
         return self.required(request_id)
 
     def approve(self, request_id: str, *, project_id: str, batch_id: str, session_id: str,
@@ -224,8 +242,11 @@ class PythonExecutionRequestRepository:
                                ("requested_capabilities_json", "requested_capabilities"),
                                ("approved_capabilities_json", "approved_capabilities"),
                                ("affected_paths_json", "affected_paths"),
+                               ("inputs_json", "inputs"),
+                               ("outputs_json", "outputs"),
                                ("artifacts_json", "artifacts")):
             values[target] = tuple(json.loads(values.pop(source)))
+        values["overwrite"] = bool(values["overwrite"])
         return PythonExecutionRequest(**values)
 
     def _connect(self) -> sqlite3.Connection:

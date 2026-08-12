@@ -43,7 +43,8 @@ from analysis.runs import (
 )
 from agent.core import build_agent
 from agent.conversations import ConversationRepository, ConversationRunner
-from agent.deps import AgentDeps, available_agent_settings, build_deps
+from agent.deps import AgentDeps, Paths, available_agent_settings, build_deps
+from agent.python_execution_service import execute_persisted_request
 from agent.run_records import RunRecorder
 from web.projects import AnalysisBatch, Project, ProjectRepository
 from web.import_profiles import (
@@ -2055,7 +2056,27 @@ def create_app(
             "status": request.status,
             "expires_at": request.expires_at,
             "network": "none",
+            "inputs": list(request.inputs),
+            "outputs": list(request.outputs),
+            "overwrite": request.overwrite,
+            "artifacts": list(request.artifacts),
+            "stdout": request.stdout,
+            "stderr": request.stderr,
+            "error": request.error,
         }
+
+    def _python_execution_deps(request: Any) -> AgentDeps:
+        scoped = copy(app.state.deps)
+        batch_root = app.state.projects.batch_workspace(request.project_id, request.batch_id)
+        scoped.paths = Paths(
+            root=batch_root, data=batch_root / "inputs", outputs=batch_root / "exports",
+            workspace=batch_root / "sessions", logs=app.state.deps.paths.logs,
+            templates=batch_root / "inputs" / "templates",
+        )
+        scoped.current_project_id = request.project_id
+        scoped.current_batch_id = request.batch_id
+        scoped.cancel_session_id = request.session_id
+        return scoped
 
     @app.get("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}")
     def get_python_execution(project_id: str, batch_id: str, request_id: str) -> dict[str, Any]:
@@ -2067,17 +2088,25 @@ def create_app(
     @app.post("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}/approve")
     def approve_python_execution(project_id: str, batch_id: str, request_id: str,
                                  command: PythonApprovalCommand) -> dict[str, Any]:
+        pending = app.state.deps.python_execution_requests.get(request_id)
+        if pending is None or pending.project_id != project_id or pending.batch_id != batch_id:
+            raise HTTPException(status_code=404, detail="Python 执行请求不存在")
+        if app.state.deps.python_sandbox is None or app.state.deps.sandbox_jobs_root is None:
+            raise HTTPException(status_code=503, detail="Python 沙箱服务未配置，请求尚未批准")
         try:
             request = app.state.deps.python_execution_requests.approve(
                 request_id, project_id=project_id, batch_id=batch_id,
                 session_id=command.session_id, code_sha256=command.code_sha256,
                 approved_capabilities=command.approved_capabilities,
             )
+            finished = execute_persisted_request(_python_execution_deps(request), request)
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        return _approval_data(request)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return _approval_data(finished)
 
     @app.post("/api/projects/{project_id}/batches/{batch_id}/python-executions/{request_id}/reject")
     def reject_python_execution(project_id: str, batch_id: str, request_id: str,

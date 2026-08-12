@@ -1306,7 +1306,9 @@
         const data = await response.json();
         if (!response.ok) { reject.disabled = approve.disabled = false; throw new Error(data.detail || "审批失败"); }
         card.replaceChildren(document.createTextNode(
-          operation === "approve" ? "已批准本次请求；等待安全执行恢复。" : "已拒绝本次请求。"
+          operation === "approve"
+            ? (data.status === "succeeded" ? "本次请求已在隔离沙箱中执行完成。" : `本次请求执行结束：${data.status}`)
+            : "已拒绝本次请求。"
         ));
       };
       reject.addEventListener("click", () => decide("reject").catch((err) => alert(err.message)));
@@ -1353,7 +1355,9 @@
         const data = await response.json();
         if (!response.ok) { reject.disabled = approve.disabled = false; throw new Error(data.detail || "审批失败"); }
         card.replaceChildren(document.createTextNode(
-          operation === "approve" ? "已批准本次请求；等待安全执行恢复。" : "已拒绝本次请求。"
+          operation === "approve"
+            ? (data.status === "succeeded" ? "本次请求已在隔离沙箱中执行完成。" : `本次请求执行结束：${data.status}`)
+            : "已拒绝本次请求。"
         ));
       };
       reject.addEventListener("click", () => decide("reject").catch((err) => alert(err.message)));
