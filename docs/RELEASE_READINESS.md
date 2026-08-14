@@ -41,3 +41,18 @@
 4. 推送 `v1.0.0` 标签后，GitHub Actions 自动创建 Release 并发布 GHCR 镜像。
 
 以上门禁不要求继续扩充评测题库；若标签工作流失败，应修复后重新执行对应层级，而不是跳过发布门槛。
+
+## `run_python` 安全升级里程碑（2026-08-14）
+
+本节是 v1.0 历史验收后的增量证据，不改写上方 2026-08-10 的版本快照。
+
+| 层级 | 当前结果 | 证据 |
+|---|---:|---|
+| 全量 pytest | 368 passed，14 skipped | `quality/tests/` |
+| 确定性安全 Eval | 12/12 passed | `quality/eval/run_python_security_eval.py` |
+| 真实 Docker 攻击测试 | 显式启用后 13/13 passed | `quality/tests/test_docker_sandbox_attacks.py` |
+| 真实 Compose 链路 | 主应用 → Controller → 摘要固定沙箱 → 产物校验通过 | `docker-compose.yml` 与运行验收记录 |
+
+正式执行路径已经移除本地 `subprocess` 回退：主应用不持有 Docker socket；Controller 只接受认证请求、固定镜像、固定命令和受限挂载；沙箱无网络、非 root、只读根文件系统、丢弃 capabilities，并设置资源和输出配额。缺少 Controller 令牌、URL 或镜像摘要时能力 fail closed。
+
+本次安全里程碑没有重新调用付费真实模型，也没有重新执行完整人工 Web 审批冒烟；这些质量证据沿用上方既有验收。若发布内容包含安全升级，应在候选环境补做一次短链路人工审批冒烟，并在模型、提示词或工具路由发生变化时复测受影响的真实模型 Eval，无需无差别扩充已经覆盖的单轮和多轮题库。

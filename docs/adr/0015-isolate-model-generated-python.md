@@ -15,4 +15,4 @@ AST 检查和提示词不能构成安全边界，本地 `subprocess` 继承了�
 
 ## 后果
 
-需要单独镜像、Controller、清理恢复和 Docker 攻击测试。部分长尾操作会增加审批等待。现有本地 `subprocess` 实现在完整迁移前属于已知遗留风险，不得作为正式部署 Adapter。
+需要维护单独镜像、Controller、清理恢复和 Docker 攻击测试。部分长尾操作会增加审批等待。迁移已经完成：正式 Adapter 只通过 Controller 使用摘要固定的一次性沙箱，缺少安全配置时 fail closed；本地 Python 启动不再回退到 `subprocess` 执行模型代码。Controller 因持有 Docker socket 被视为高权限可信边界，必须保持内部不可达、固定命令和最小职责。

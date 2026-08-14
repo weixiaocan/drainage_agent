@@ -9,6 +9,9 @@
 - `RELEASE_READINESS.md`：v1.0 发布验收结论、证据和剩余门禁。
 - `NEXT_VERSION_ISSUES.md`：v1.0 之后待规划的产品与工程升级事项。
 - `RUN_PYTHON_SECURITY_UPGRADE_PLAN.md`：保留 Python 元能力并引入策略、审批和一次性沙盒的实施计划。
+- `RUN_PYTHON_SECURITY_SPEC.md`：当前 `run_python` 强制执行的安全不变量和部署要求。
+- `RUN_PYTHON_THREAT_MODEL.md`：模型代码执行的资产、攻击面、信任边界和残余风险。
+- `adr/0015-isolate-model-generated-python.md`：隔离模型生成 Python 的架构决策。
 - `STANDARD_DATA_CONTRACT.md`：批次标准流量数据的 v1 文件格式、manifest 和公开读取契约。
 
 ## 运行文档

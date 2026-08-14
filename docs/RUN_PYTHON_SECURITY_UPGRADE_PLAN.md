@@ -2,10 +2,10 @@
 
 ## 1. 文档状态
 
-- 状态：已确认，待实施
+- 状态：代码实施与自动化安全验收已完成；候选发布的真实模型定向 Eval 和 Web 人工审批冒烟待补
 - 范围：`run_python` 的策略判定、用户审批、沙盒执行、产物接收、审计与 Docker 部署加固
-- 实施方式：在新的开发对话中作为独立安全里程碑完成
-- 当前行为：模型生成的 Python 仍由主应用进程通过 `subprocess` 执行；本文描述的是目标架构，不代表已经实现
+- 实施方式：已按独立安全里程碑和分步提交完成
+- 当前行为：模型生成的 Python 只通过认证 Controller 在摘要固定的一次性 Docker 沙箱中执行；主应用不持有 Docker socket，安全配置缺失时 fail closed
 
 ## 2. 目标与安全承诺
 
@@ -421,8 +421,8 @@ failed
 - Docker 默认配置采用安全限制。
 - 原有正常 Python 分析能力通过测试和 Eval。
 
-## 20. 新对话接手说明
+## 20. 后续维护说明
 
-下一对话应先阅读本文、`agent/tools/python_tool.py`、`agent/core/__init__.py`、`agent/conversations.py`、`web/app.py`、`docker-compose.yml`、`Dockerfile` 和现有 `run_python` 测试。
+后续修改应先阅读本文、`RUN_PYTHON_SECURITY_SPEC.md`、`RUN_PYTHON_THREAT_MODEL.md`、`agent/tools/python_tool.py`、`agent/core/__init__.py`、`agent/conversations.py`、`web/app.py`、`docker-compose.yml`、三个 Dockerfile 和现有 `run_python` 测试。
 
-开始实现前先检查工作树和最近提交。第一批工作只完成安全规格、威胁模型、ADR、执行请求状态机及其测试；不要在同一个提交中同时引入 Controller、Docker 沙盒和 Web 审批，避免安全语义与基础设施问题混在一起。
+安全边界变更必须保持小提交，并分别验证策略语义与基础设施。当前自动化证据为全量 pytest `368 passed, 14 skipped`、确定性安全 Eval `12/12 passed`、显式真实 Docker 攻击测试 `13/13 passed` 和真实 Compose 执行链通过。候选发布前仍须补做一次真实模型定向 Eval 和 Web 人工审批短链路冒烟；这两项不是扩充题库，而是确认已有场景在候选环境中的组合行为。

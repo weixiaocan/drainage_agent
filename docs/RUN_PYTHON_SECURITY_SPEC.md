@@ -12,6 +12,10 @@
 
 审批必须核对请求状态、有效期、项目、批次、会话和代码哈希。代码或上下文变化要求创建新请求。终态为 `succeeded`、`failed` 或 `timed_out`，并保留最小必要审计字段。
 
-## 分阶段门禁
+## 部署门禁
 
-在 Docker 沙箱、Controller、策略和工具接线完成前，现有本地 `subprocess` Adapter 仅是待移除的遗留实现，不能被视为安全部署。发布验收必须以升级计划的全部完成标准为准。
+正式 Adapter 已接线为独立 Sandbox Controller 调度的一次性 Docker 沙箱；主应用不再以本地 `subprocess` 执行模型代码，并在缺少 Controller URL、至少 32 字符令牌或不可变沙箱镜像摘要时 fail closed。
+
+部署必须使用摘要固定的专用沙箱镜像、仅内部可达的 Controller、独立共享任务卷和宿主 Docker socket 组 ID。Controller 持有 Docker socket，属于高权限可信边界，不得公开端口、接受任意镜像或命令，也不得复用为通用调度器。
+
+修改策略、审批状态机、Controller、沙箱镜像或 prelude、挂载、资源限制、产物验证和清理恢复逻辑后，发布验收必须重新运行全量 pytest、确定性安全 Eval、显式真实 Docker 攻击测试和主应用到产物接收的 Compose 端到端链路。

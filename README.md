@@ -28,7 +28,7 @@ LLM 负责理解意图、选择工具和组织文字；数值计算、数据边�
 - 分析结果身份、新鲜度和复用判断。
 - 后台任务、运行状态、耗时、Token、工具步骤、错误和产物追踪。
 - DeepSeek 等 OpenAI Chat Completions 兼容模型；可选配置第二个 GLM 模型。
-- Docker 单容器自部署和受限公开演示模式。
+- Docker Compose 三层隔离部署（主应用、Sandbox Controller、一次性 Python 沙箱）和受限公开演示模式。
 
 网页没有报告模板上传入口，当前用户流程使用内置报告模板。代码保留项目级自定义模板 API，供后续集成或高级调用使用。
 
@@ -48,13 +48,20 @@ AGENT_BASE_URL=https://api.deepseek.com
 AGENT_MODEL=deepseek-chat
 ```
 
-启动：
+先构建专用 Python 沙箱镜像，再把不可变镜像摘要、随机 Controller 令牌和宿主 Docker socket 的组 ID 注入 Compose：
 
 ```powershell
+$sandboxImage = "drainage-python-sandbox:local"
+docker build -f Dockerfile.sandbox -t $sandboxImage .
+$env:SANDBOX_IMAGE_DIGEST = docker image inspect $sandboxImage --format "{{.Id}}"
+$env:SANDBOX_CONTROLLER_TOKEN = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+$env:DOCKER_GID = docker run --rm -v /var/run/docker.sock:/sock:ro alpine:3.20 stat -c %g /sock
 docker compose up -d --build
 ```
 
-打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。`docker-compose.yml` 将 `/app/var` 挂载到命名卷 `drainage-state`，重建容器不会清空项目；`docker compose down -v` 会删除该卷及其中的数据。
+打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。以上三个值应保存到本机密钥管理或部署环境，不得提交；`docker compose config` 会展开环境变量，不要把其完整输出粘贴到日志或工单。`docker-compose.yml` 将 `/app/var` 挂载到命名卷 `drainage-state`，重建容器不会清空项目；`docker compose down -v` 会删除该卷及其中的数据。
+
+本地 Python 启动可用于普通功能开发，但 `run_python` 会在未配置受信 Controller 时关闭；正式启用该元能力必须使用上述隔离部署。
 
 ### 本地 Python
 
@@ -114,7 +121,8 @@ GLM_MODEL=glm-5.2
 
 发布基线包括：
 
-- 279 项 pytest 单元与集成测试；
+- 368 项通过、14 项按环境跳过的 pytest 单元与集成测试（2026-08-14 安全升级验证）；
+- 12/12 确定性 `run_python` 安全 Eval，以及显式启用后 13 项真实 Docker 攻击测试；
 - 40 条单轮 Agent Eval，最终人工判定 40/40；
 - 15 组多轮 Agent Eval，最终人工判定 15/15；
 - 真实模型 CI 冒烟和人工 Web 端到端验收；
@@ -124,6 +132,7 @@ GLM_MODEL=glm-5.2
 
 ```powershell
 python -m pytest
+python -m quality.eval.run_python_security_eval
 python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml --validate-only
 python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multiturn_v2.yaml --validate-only
 docker build -t drainage-agent .
@@ -152,6 +161,12 @@ var/               本地运行状态，不作为源码发布内容
 - 原始监测文件按项目隔离；分析只读取经确认的标准数据。
 - 筛选确认、数据替换和删除等状态变更需要明确操作。
 - 下载路径限制在当前项目空间内。
+- 模型生成的 Python 必须经过确定性策略、上下文绑定的单次审批和一次性沙箱；主应用不持有 Docker socket，也不在自身进程中执行模型代码。
+- Sandbox Controller 是持有 Docker socket 的高权限边界，只允许主应用通过内部网络和随机令牌访问；不得公开其端口或复用为通用容器调度服务。
+- Python 沙箱默认无网络、非 root、只读根文件系统、丢弃全部 capabilities，并受 CPU、内存、进程、时间和输出配额约束；产物按不可信内容校验后才进入项目目录。
+- 发送给外部模型服务的提示词和上下文受对应供应商的数据处理条款约束；敏感数据必须先确认部署方的合规配置。
+- 修改 Controller、Dockerfile、策略、沙箱 prelude、挂载或产物接收逻辑后，必须重跑 pytest、安全 Eval、真实 Docker 攻击测试和 Compose 端到端链路。
+- Web 默认只绑定 `127.0.0.1`；直接公网暴露前仍需独立的 TLS、认证、访问控制和运维加固。
 - 公开 Demo 禁用数据上传和破坏性接口，并设置请求频率及并发上限。
 
 ## 文档
