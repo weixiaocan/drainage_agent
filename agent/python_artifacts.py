@@ -65,8 +65,12 @@ def create_input_snapshot(batch_root: Path, jobs_root: Path, *, project_id: str,
         raise ValueError("snapshot path escapes jobs root")
     input_root = job_root / "input"
     input_root.mkdir(parents=True, exist_ok=False)
-    (job_root / "code").mkdir()
-    (job_root / "output").mkdir()
+    code_root = job_root / "code"
+    output_root = job_root / "output"
+    code_root.mkdir()
+    output_root.mkdir()
+    job_root.chmod(0o2750)
+    output_root.chmod(0o2770)
     files: list[SnapshotFile] = []
     for resource in resources:
         relative = RESOURCE_FILES.get(resource)

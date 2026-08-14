@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 
 import pandas as pd
 import pytest
@@ -23,6 +24,9 @@ def test_snapshot_copies_only_requested_authorized_resources(tmp_path) -> None:
     manifest = json.loads((snapshot.job_root / "input" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["project_id"] == "p"
     assert len(manifest["files"][0]["sha256"]) == 64
+    if os.name != "nt":
+        assert stat.S_IMODE(snapshot.job_root.stat().st_mode) == 0o2750
+        assert stat.S_IMODE((snapshot.job_root / "output").stat().st_mode) == 0o2770
 
 
 def test_snapshot_rejects_unknown_resource_and_symlink(tmp_path) -> None:

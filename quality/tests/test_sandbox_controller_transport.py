@@ -70,7 +70,8 @@ def test_compose_keeps_docker_socket_away_from_main_application() -> None:
 def test_controller_image_contains_cli_but_no_application_or_model_dependencies() -> None:
     dockerfile = open("Dockerfile.controller", encoding="utf-8").read()
     requirements = open("requirements-controller.txt", encoding="utf-8").read().lower()
-    assert "docker.io" in dockerfile
+    assert "docker-cli" in dockerfile
+    assert "docker.io" not in dockerfile
     assert "USER 10002:10002" in dockerfile
     assert "COPY . ." not in dockerfile
     for forbidden in ("openai", "pydantic-ai", "pandas", "python-dotenv"):
