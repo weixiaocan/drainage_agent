@@ -125,7 +125,7 @@ Eval schema v2 在此基础上额外保存场景维度、隔离环境配置、�
 
 ### `run_python` 安全升级证据（2026-08-14）
 
-- 全量确定性回归：`368 passed, 14 skipped`；默认跳过项包括 13 项需显式启用的真实 Docker 攻击测试和 1 项 Windows 不支持的符号链接场景。
+- 全量确定性回归：`369 passed, 14 skipped`；默认跳过项包括 13 项需显式启用的真实 Docker 攻击测试和 1 项 Windows 不支持的符号链接场景。
 - 确定性安全 Eval：`python -m quality.eval.run_python_security_eval`，结果 `12/12 passed`，自动检查策略分类、审批绑定、失败关闭和危险能力拒绝。
 - 真实 Docker 攻击集：在 Docker 可用时显式启用，13 项全部通过，覆盖网络、环境变量、宿主路径、进程、资源和产物边界。
 - 真实 Compose 执行链：已验证主应用共享任务卷、令牌认证 Controller、摘要固定沙箱执行、配额内产物校验与回收的完整链路。
@@ -176,6 +176,12 @@ python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multi
 
 ```powershell
 python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml -o quality/eval/eval_stage2/results_single_v2.jsonl
+```
+
+在只读根文件系统的加固容器中运行 Eval 时，还需把人工判分产物指向显式可写目录：
+
+```powershell
+python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml -o /tmp/results.jsonl --artifacts-dir /tmp/eval-artifacts
 ```
 
 每个 Eval 回合记录独立的 `run_id`。评测结果使用该标识定位对应 trace 或项目内 Agent 运行记录，不要求默认保存完整提示词和模型回复。

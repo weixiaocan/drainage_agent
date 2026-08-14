@@ -34,8 +34,8 @@ def canonical_case_id(case_id: str) -> str:
     return match.group(1) if match else str(case_id)
 
 
-def cleanup_artifacts_for_case(case_id: str) -> Path:
-    artifacts_dir = STAGE_DIR / "artifacts"
+def cleanup_artifacts_for_case(case_id: str, *, artifacts_dir: Path | None = None) -> Path:
+    artifacts_dir = artifacts_dir or (STAGE_DIR / "artifacts")
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     canonical_id = canonical_case_id(case_id)
     for child in artifacts_dir.iterdir():
@@ -126,9 +126,9 @@ def apply_after_seed_mutation(root: Path, setup: dict) -> None:
         stream.write("\n")
 
 
-def preserve_artifacts(root: Path, case_id: str) -> Path:
+def preserve_artifacts(root: Path, case_id: str, *, artifacts_dir: Path | None = None) -> Path:
     """保存人工判分需要的产物，然后允许临时 root 被安全清理。"""
-    destination = cleanup_artifacts_for_case(case_id)
+    destination = cleanup_artifacts_for_case(case_id, artifacts_dir=artifacts_dir)
     destination.mkdir(parents=True)
     for name in ("outputs", "workspace", "logs"):
         source = root / "var" / name
@@ -307,7 +307,7 @@ def run_objective_check(results_path: Path) -> None:
         print(f"客观项自动判分失败: {exc!r}")
 
 
-def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
+def run_case(case: dict, *, auto_confirm: bool = True, artifacts_dir: Path | None = None) -> dict:
     """跑一条（已归一化的）用例：在同一个隔离 root、同一条 message_history 上逐轮推进。"""
     rec = {
         "id": case["id"],
@@ -381,7 +381,7 @@ def run_case(case: dict, *, auto_confirm: bool = True) -> dict:
 
         # 无论成功失败都尽量保全已产生的产物
         try:
-            artifact_root = preserve_artifacts(root, case["id"])
+            artifact_root = preserve_artifacts(root, case["id"], artifacts_dir=artifacts_dir)
             rec["root"] = str(artifact_root)
             if trace is not None:
                 rec["trace"] = str(artifact_root / "logs" / trace.path.name)
@@ -405,6 +405,8 @@ def main():
                     help="只验证用例结构和隔离 fixture，不调用模型")
     ap.add_argument("--case-id", action="append", dest="case_ids",
                     help="只运行指定 case id；可重复传入")
+    ap.add_argument("--artifacts-dir", default=None,
+                    help="产物证据目录；只读部署中应指向显式可写路径")
     args = ap.parse_args()
 
     load_dotenv(PROJECT / ".env")
@@ -426,6 +428,9 @@ def main():
     if not out_path.is_absolute():
         out_path = PROJECT / out_path
     pending_path = out_path.with_name(f"{out_path.name}.tmp")
+    artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
+    if artifacts_dir is not None and not artifacts_dir.is_absolute():
+        artifacts_dir = PROJECT / artifacts_dir
 
     # 可复现元数据：尽力从一个临时 deps 读出 model/参数
     meta = {
@@ -460,7 +465,7 @@ def main():
             if case["id"] in completed:
                 print(f"{case['id']}: 已完成，跳过")
                 continue
-            rec = run_case(case, auto_confirm=args.auto_confirm)
+            rec = run_case(case, auto_confirm=args.auto_confirm, artifacts_dir=artifacts_dir)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             n_tools = sum(len(t["tool_calls"]) for t in rec["turns"])

@@ -61,6 +61,12 @@ docker compose up -d --build
 
 打开 [http://127.0.0.1:8000](http://127.0.0.1:8000)。以上三个值应保存到本机密钥管理或部署环境，不得提交；`docker compose config` 会展开环境变量，不要把其完整输出粘贴到日志或工单。`docker-compose.yml` 将 `/app/var` 挂载到命名卷 `drainage-state`，重建容器不会清空项目；`docker compose down -v` 会删除该卷及其中的数据。
 
+如果从旧版 root 容器升级并复用已有状态卷，首次启动前需保留数据并迁移卷所有权；自定义过 `COMPOSE_PROJECT_NAME` 时相应替换卷名前缀：
+
+```powershell
+docker run --rm -v drainage_agent_drainage-state:/data alpine:3.20 chown -R 10001:10002 /data
+```
+
 本地 Python 启动可用于普通功能开发，但 `run_python` 会在未配置受信 Controller 时关闭；正式启用该元能力必须使用上述隔离部署。
 
 ### 本地 Python
@@ -121,7 +127,7 @@ GLM_MODEL=glm-5.2
 
 发布基线包括：
 
-- 368 项通过、14 项按环境跳过的 pytest 单元与集成测试（2026-08-14 安全升级验证）；
+- 369 项通过、14 项按环境跳过的 pytest 单元与集成测试（2026-08-14 安全升级验证）；
 - 12/12 确定性 `run_python` 安全 Eval，以及显式启用后 13 项真实 Docker 攻击测试；
 - 40 条单轮 Agent Eval，最终人工判定 40/40；
 - 15 组多轮 Agent Eval，最终人工判定 15/15；

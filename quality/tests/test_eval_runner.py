@@ -134,6 +134,19 @@ def test_preserve_artifacts_replaces_stale_case_directory(tmp_path, monkeypatch)
     assert (destination / "logs" / "trace.jsonl").read_text(encoding="utf-8") == "trace"
 
 
+def test_preserve_artifacts_accepts_writable_override_for_read_only_deployments(tmp_path) -> None:
+    root = tmp_path / "isolated"
+    artifacts_dir = tmp_path / "runtime-artifacts"
+    for name in ("outputs", "workspace", "logs"):
+        (root / "var" / name).mkdir(parents=True)
+    (root / "var" / "logs" / "trace.jsonl").write_text("trace", encoding="utf-8")
+
+    destination = preserve_artifacts(root, "E003", artifacts_dir=artifacts_dir)
+
+    assert destination == artifacts_dir / "E003"
+    assert (destination / "logs" / "trace.jsonl").read_text(encoding="utf-8") == "trace"
+
+
 def test_preserve_artifacts_keeps_generated_report_charts(tmp_path, monkeypatch) -> None:
     project = tmp_path / "project"
     root = tmp_path / "isolated"

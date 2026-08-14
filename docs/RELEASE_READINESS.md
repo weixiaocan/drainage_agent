@@ -48,7 +48,7 @@
 
 | 层级 | 当前结果 | 证据 |
 |---|---:|---|
-| 全量 pytest | 368 passed，14 skipped | `quality/tests/` |
+| 全量 pytest | 369 passed，14 skipped | `quality/tests/` |
 | 确定性安全 Eval | 12/12 passed | `quality/eval/run_python_security_eval.py` |
 | 真实 Docker 攻击测试 | 显式启用后 13/13 passed | `quality/tests/test_docker_sandbox_attacks.py` |
 | 真实 Compose 链路 | 主应用 → Controller → 摘要固定沙箱 → 产物校验通过 | `docker-compose.yml` 与运行验收记录 |

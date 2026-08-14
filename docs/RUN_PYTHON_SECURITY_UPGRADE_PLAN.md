@@ -425,4 +425,4 @@ failed
 
 后续修改应先阅读本文、`RUN_PYTHON_SECURITY_SPEC.md`、`RUN_PYTHON_THREAT_MODEL.md`、`agent/tools/python_tool.py`、`agent/core/__init__.py`、`agent/conversations.py`、`web/app.py`、`docker-compose.yml`、三个 Dockerfile 和现有 `run_python` 测试。
 
-安全边界变更必须保持小提交，并分别验证策略语义与基础设施。当前自动化证据为全量 pytest `368 passed, 14 skipped`、确定性安全 Eval `12/12 passed`、显式真实 Docker 攻击测试 `13/13 passed` 和真实 Compose 执行链通过。候选发布前仍须补做一次真实模型定向 Eval 和 Web 人工审批短链路冒烟；这两项不是扩充题库，而是确认已有场景在候选环境中的组合行为。
+安全边界变更必须保持小提交，并分别验证策略语义与基础设施。当前自动化证据为全量 pytest `369 passed, 14 skipped`、确定性安全 Eval `12/12 passed`、显式真实 Docker 攻击测试 `13/13 passed` 和真实 Compose 执行链通过。真实模型定向 Eval 已通过 E003 和 E004A；E004B 因 GLM 返回余额不足尚未完成。候选发布前仍须在模型资源恢复后补完 E004B 和 Web 人工审批短链路冒烟；这两项不是扩充题库，而是确认已有场景在候选环境中的组合行为。
