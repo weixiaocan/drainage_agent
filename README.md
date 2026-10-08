@@ -1,6 +1,6 @@
 # Drainage Agent
 
-面向排水监测分析人员的本地 AI 数据分析应用。它将监测数据导入、字段与单位确认、旱天筛选、降雨响应、RDII、排污规律、风险评估和报告初稿组织成一个可追溯的 Web 工作流。
+监测数据分析 Agent：把多源监测数据的导入、字段与单位确认、有效数据筛选、统计分析、风险评估和报告初稿生成，组织成可对话、可追溯的 Web 工作流。示例场景是城市排水管网的流量、液位与降雨监测。
 
 > 在线演示：[https://drainage.weixiaocan.com/](https://drainage.weixiaocan.com/)
 >
@@ -127,7 +127,7 @@ GLM_MODEL=glm-5.2
 
 发布基线包括：
 
-- 369 项通过、14 项按环境跳过的 pytest 单元与集成测试（2026-08-14 安全升级验证）；
+- 367 项通过、14 项按环境跳过的 pytest 单元与集成测试（2026-10-08 结构整理后验证）；
 - 12/12 确定性 `run_python` 安全 Eval，以及显式启用后 13 项真实 Docker 攻击测试；
 - 40 条单轮 Agent Eval，最终人工判定 40/40；
 - 15 组多轮 Agent Eval，最终人工判定 15/15；
@@ -148,10 +148,14 @@ docker build -t drainage-agent .
 
 ## 项目结构
 
+完整模块说明与一轮对话的执行路径见 [架构说明](docs/ARCHITECTURE.md)。
+
 ```text
 analysis/          确定性领域分析、标准数据、任务、结果和报告组装
-agent/             对话编排、工具适配、提示词、会话与运行记录
-web/               FastAPI 接口和原生 HTML/CSS/JavaScript 工作台
+agent/             对话编排、提示词、会话与运行记录、run_python 安全链路
+agent/tools/       工具实现：筛选、分析、报告和共用支撑
+web/               FastAPI 应用组装和原生 HTML/CSS/JavaScript 工作台
+web/routes/        按业务分组的 API 路由
 app/               Web 与 CLI 启动入口
 resources/         脱敏演示数据和内置报告模板
 quality/tests/     pytest 单元与集成测试
@@ -177,6 +181,7 @@ var/               本地运行状态，不作为源码发布内容
 
 ## 文档
 
+- [架构说明](docs/ARCHITECTURE.md)
 - [产品规格](docs/PRD.md)
 - [领域词汇](CONTEXT.md)
 - [标准数据契约](docs/STANDARD_DATA_CONTRACT.md)
