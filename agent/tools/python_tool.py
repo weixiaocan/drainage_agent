@@ -16,8 +16,6 @@ def run_python_impl(
     outputs: list[str],
     overwrite: bool = False,
 ) -> ToolResult:
-    if ".md" in code.lower() and "报告" in code:
-        return _result("denied", "报告必须通过 generate_report 生成 DOCX；run_python 禁止生成 Markdown 报告。")
     decision = PythonExecutionPolicy().evaluate(
         code=code, inputs=inputs, outputs=outputs, overwrite=overwrite,
     )

@@ -50,6 +50,62 @@ def reject_internal_monologue(output: str) -> str:
     return output
 
 
+_DECIMAL_PATTERN = re.compile(r"(?<![\w.])-?\d[\d,]*\.\d+")
+UNGROUNDED_MIN_COUNT = 3
+UNGROUNDED_MIN_RATIO = 0.5
+
+
+def _decimals(text: str) -> list[float]:
+    return [float(match.replace(",", "")) for match in _DECIMAL_PATTERN.findall(text)]
+
+
+def _is_grounded(value: float, known: set[float]) -> bool:
+    # Allow percent/ratio rescaling and rounding differences against values seen in context.
+    for candidate in (value, value / 100, value * 100):
+        for other in known:
+            if abs(candidate - other) <= max(0.005, abs(other) * 0.005):
+                return True
+    return False
+
+
+def ungrounded_decimals(output: str, context_text: str) -> list[float]:
+    """Decimals in the reply that appear nowhere in the conversation context or tool results."""
+    known = set(_decimals(context_text))
+    return [value for value in _decimals(output) if not _is_grounded(value, known)]
+
+
+def grounding_text(messages: list[Any]) -> str:
+    """All text the model could legitimately quote: prompts, replies, tool arguments and tool results."""
+    chunks: list[str] = []
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            content = getattr(part, "content", None)
+            if content is not None:
+                chunks.append(content if isinstance(content, str) else str(content))
+            args = getattr(part, "args", None)
+            if args is not None:
+                chunks.append(str(args))
+    return "\n".join(chunks)
+
+
+def reject_ungrounded_numbers(output: str, context_text: str) -> str:
+    """Retry when most reported decimals were never produced by a tool or stated in context.
+
+    Numbers quoted from earlier results pass without extra tool calls; a few derived values
+    (differences, multiples) are tolerated. A reply dominated by unseen numbers is treated as
+    recalled from memory, e.g. after history compaction dropped the original results.
+    """
+    values = _decimals(output)
+    unseen = ungrounded_decimals(output, context_text)
+    if len(unseen) >= UNGROUNDED_MIN_COUNT and len(unseen) >= len(values) * UNGROUNDED_MIN_RATIO:
+        sample = "、".join(f"{value:g}" for value in unseen[:5])
+        raise ModelRetry(
+            f"回复中的数值（如 {sample}）在当前上下文和工具结果中找不到。"
+            "请先调用对应工具获取结果（参数一致的已有结果会直接复用），不要凭记忆给出数值。"
+        )
+    return output
+
+
 def request_cancel(session_id: str) -> None:
     _cancel_flags[session_id] = True
 
@@ -469,12 +525,14 @@ def build_agent(deps: AgentDeps) -> Any:
             deps_type=AgentDeps,
             system_prompt=load_system_prompt(deps.paths.root),
             model_settings=ModelSettings(request_limit=100, timeout=90),
+            retries={"output": 2},
             capabilities=[ProcessHistory(compact_history)],
         )
 
         @agent.output_validator
-        def validate_user_facing_output(output: str) -> str:
-            return reject_internal_monologue(output)
+        def validate_user_facing_output(ctx: RunContext[AgentDeps], output: str) -> str:
+            output = reject_internal_monologue(output)
+            return reject_ungrounded_numbers(output, grounding_text(ctx.messages))
 
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
             call_id = uuid.uuid4().hex

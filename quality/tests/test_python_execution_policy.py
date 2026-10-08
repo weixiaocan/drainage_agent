@@ -51,6 +51,7 @@ def test_dangerous_code_is_denied(policy, code, reason) -> None:
     (["../other"], ["out.csv"]),
     (["confirmed_flow"], ["../out.csv"]),
     (["confirmed_flow"], ["script.py"]),
+    (["confirmed_flow"], ["dry_report.md"]),
 ])
 def test_path_like_or_executable_contract_names_are_denied(policy, inputs, outputs) -> None:
     assert decide(policy, "x = 1", inputs=inputs, outputs=outputs).action == "deny"

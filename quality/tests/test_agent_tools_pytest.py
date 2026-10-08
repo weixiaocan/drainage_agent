@@ -1687,13 +1687,15 @@ def test_run_python_unconfigured_fails_closed(tmp_path: Path) -> None:
 
 def test_run_python_rejects_markdown_report_fallback(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
+    configure_python_security(deps, tmp_path)
     result = run_python_impl(
-        deps, "生成报告", "save_json({'报告': 1}, '旱天分析报告.md')", [], ["旱天分析报告.md"],
+        deps, "生成报告", "save_json({'报告': 1}, 'dry_report.md')", [], ["dry_report.md"],
     )
 
     assert result["status"] == "denied"
-    assert "generate_report" in result["summary"]
-    assert not (deps.paths.outputs / "旱天分析报告.md").exists()
+    assert "output_extension_not_allowed" in result["data"]["policy_reasons"]
+    assert deps.python_sandbox.requests == []
+    assert not (deps.paths.outputs / "dry_report.md").exists()
 
 
 def test_run_python_dangerous_code_is_denied_without_sandbox_call(tmp_path: Path) -> None:

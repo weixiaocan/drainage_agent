@@ -235,3 +235,43 @@ def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None
     assert "`WORKSPACE_DIR`" in prompt
     assert "`timestamp`" in prompt
     assert "DataFrame 是否为空" in prompt
+
+
+def test_reply_with_numbers_absent_from_context_is_retried() -> None:
+    from pydantic_ai import ModelRetry
+
+    from agent.core import reject_ungrounded_numbers
+
+    # Real tool result for W18 was Kz 3.19 / peak-valley 52.06; the reply recalled different values.
+    context = "{'point_id': 'W18', 'kz': 3.1912, 'peak_valley_ratio': 52.0643, 'peak_count': 7}"
+    fabricated = "W18 第1类，Kz=1.36，峰谷比 2.11，峰值 623.29 L/s，谷值 295.66 L/s。"
+
+    with pytest.raises(ModelRetry):
+        reject_ungrounded_numbers(fabricated, context)
+
+
+def test_reply_quoting_context_or_deriving_a_few_values_passes() -> None:
+    from agent.core import reject_ungrounded_numbers
+
+    context = "{'W1': {'rdii_m3': 2691.5912}, 'W6': {'rdii_m3': 2930.3701}, 'collection_rate': 0.9993}"
+    quoted = "W1 RDII 2,691.59 m³，W6 2930.37 m³，收集率 99.93%。"
+    derived = "W1 2691.59 m³，W6 2930.37 m³，W6 多约 238.78 m³（高出约 8.9%）。"
+
+    assert reject_ungrounded_numbers(quoted, context) == quoted
+    assert reject_ungrounded_numbers(derived, context) == derived
+
+
+def test_grounding_text_includes_tool_results_and_arguments() -> None:
+    from types import SimpleNamespace
+
+    from agent.core import grounding_text
+
+    messages = [
+        SimpleNamespace(parts=[SimpleNamespace(content="分析 W1", args=None)]),
+        SimpleNamespace(parts=[SimpleNamespace(content=None, args={"start": "2026-03-08"})]),
+        SimpleNamespace(parts=[SimpleNamespace(content={"kz": 3.38}, args=None)]),
+    ]
+
+    text = grounding_text(messages)
+
+    assert "分析 W1" in text and "2026-03-08" in text and "3.38" in text

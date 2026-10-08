@@ -1102,30 +1102,30 @@
     - artifacts
 - id: E029
   category: 报告
-  scenario: 报告 × 单点 × 完整明确 × 不合规模板 × DOCX
+  scenario: 报告 × 多点 × 完整明确 × 部分时段 × DOCX
   dimensions:
     task: 报告
-    scope: 单点
+    scope: 多点+时间窗
     request_quality: 完整明确
-    data_state: 不合规模板
+    data_state: 完整覆盖
     output: DOCX
   setup:
     fixture: default
-    overlay_inputs:
-      report_template: quality/eval/fixtures/invalid_report_template.docx
-  prompt: 使用当前模板生成 W1 的旱天报告。
+  prompt: 生成 W1、W6 在 3 月 8 日到 12 日的旱天报告。
   seed_prompts: []
   rebuild_after_seed: false
   expected:
     tools:
-      contract: 模板校验或 generate_report 应返回错误
-    arguments: 模板校验或 generate_report 应返回错误
-    response: 说明模板不符合占位符契约和修正方向
-    artifacts: 不留下成功 DOCX 或虚假下载路径
+      must_call:
+      - generate_report
+    arguments: generate_report 的 points=[W1, W6]、start=2026-03-08、end=2026-03-12，sections 只含旱天章节
+    response: 说明报告范围（W1、W6，2026-03-08 至 03-12，旱天章节）并给出报告和综合表路径
+    artifacts: DOCX 只包含 W1、W6，时段与请求一致，不含降雨和雨天风险章节
     state: 工具、结果、回答和文件状态必须一致
     forbidden:
-    - 声称报告成功
-    - 提供不存在的文件
+    - 追问已明确的点位或时间
+    - 扩大到全网或全时段
+    - 混入降雨章节
     evidence:
     - tool_calls
     - trace_events
