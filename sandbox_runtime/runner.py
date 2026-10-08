@@ -14,6 +14,8 @@ COMPLETION = Path("/tmp/sandbox-complete")
 
 
 def main() -> None:
+    # `python -I` drops PYTHONPATH and the script directory; expose only the read-only prelude next to this file.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     if not CODE.is_file() or CODE.is_symlink():
         raise RuntimeError("sandbox code file is unavailable")
     if not INPUT.is_dir() or not OUTPUT.is_dir():

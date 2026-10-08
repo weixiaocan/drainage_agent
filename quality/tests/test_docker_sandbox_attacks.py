@@ -205,6 +205,19 @@ def test_real_sandbox_enforces_output_limit_and_collects_artifacts(real_controll
     assert exhausted.exit_code != 0
 
 
+def test_real_sandbox_runs_code_with_the_prelude_helpers(real_controller) -> None:
+    controller, helper, jobs_root = real_controller
+    # Same shape as execute_persisted_request writes: the prelude import is prepended to model code.
+    result = _execute(
+        controller, helper, jobs_root,
+        "from prelude import *\n"
+        "save_json({'ok': True}, 'result.json')\n",
+    )
+
+    assert result.status == "succeeded", result.stderr
+    assert [item["relative_path"] for item in result.artifacts] == ["result.json"]
+
+
 @pytest.mark.parametrize(
     "code",
     [

@@ -5,7 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/opt/sandbox \
     MPLCONFIGDIR=/tmp/matplotlib \
-    HOME=/nonexistent
+    HOME=/nonexistent \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1
 
 RUN groupadd --system --gid 10001 sandbox \
     && useradd --system --uid 10001 --gid sandbox --no-create-home --shell /usr/sbin/nologin sandbox \
