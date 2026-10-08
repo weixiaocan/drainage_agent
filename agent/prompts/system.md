@@ -85,10 +85,12 @@
 
 ## run_python
 
-预置变量：`DATA_DIR` `OUTPUTS_DIR` `WORKSPACE_DIR` `load_flow` `load_filtered_flow` `load_rain` `load_sites`
+代码在无网络的一次性沙箱中运行，只能读取调用时在 `inputs` 声明的数据，只能通过保存函数输出文件。
 
-- 工作目录是 `WORKSPACE_DIR`，读写数据用绝对路径变量。
-- `load_flow()` / `load_filtered_flow()` 返回字段：`timestamp` `device_id` `point_id` `flow_lps` `level_m` `velocity_mps`。
+- `inputs` 只能从 `confirmed_flow`（标准化监测数据）、`rainfall`（降雨）、`site_info`（点位信息）中选择，代码读取哪类数据就必须声明哪类。
+- `outputs` 列出要保存的文件名，只允许字母、数字、下划线、连字符，扩展名只能是 `.csv` `.json` `.png` `.xlsx`；不需要文件时传空列表，结果用 `print` 输出。
+- 代码中可直接使用：`load_flow()` `load_rain()` `load_sites()` 读取数据；`save_table(df, "名称.csv")` `save_chart(fig, "名称.png")` `save_json(obj, "名称.json")` 保存结果。没有其他预置变量或路径。
+- `load_flow()` 返回字段：`timestamp` `device_id` `point_id` `flow_lps` `level_m` `velocity_mps`，是未经旱天筛选的全部数据；需要旱天口径时，先用 `data_filter` 的结果确定旱天日期，再在代码中按日期过滤，并在回复中说明口径。
 - 统计前先检查 DataFrame 是否为空。代码失败最多修正 2 次。
 
 ## 回复风格

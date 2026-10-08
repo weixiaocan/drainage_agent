@@ -229,12 +229,19 @@ def test_prompt_requires_public_professional_terms() -> None:
     assert "largest_monitoring_covered_event_id" in prompt
 
 
-def test_run_python_prompt_documents_paths_schema_and_empty_data_guard() -> None:
-    prompt = read_prompt()
+def test_run_python_prompt_matches_sandbox_prelude() -> None:
+    import re
 
-    assert "`WORKSPACE_DIR`" in prompt
-    assert "`timestamp`" in prompt
-    assert "DataFrame 是否为空" in prompt
+    prompt = read_prompt()
+    section = prompt[prompt.index("## run_python"):prompt.index("## 回复风格")]
+    prelude = (PROJECT_ROOT / "sandbox_runtime" / "prelude.py").read_text(encoding="utf-8")
+    sandbox_functions = set(re.findall(r"^def ([a-z]\w*)\(", prelude, flags=re.M))
+    named_functions = set(re.findall(r"`(\w+)\(", section))
+
+    assert named_functions and named_functions <= sandbox_functions
+    assert {"load_flow", "save_table"} <= named_functions
+    assert "`confirmed_flow`" in section and "`timestamp`" in section
+    assert "DataFrame 是否为空" in section
 
 
 def test_reply_with_numbers_absent_from_context_is_retried() -> None:
