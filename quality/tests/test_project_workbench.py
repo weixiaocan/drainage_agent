@@ -14,7 +14,7 @@ TestClient = fastapi_testclient.TestClient
 from quality.tests.test_web_app import FakeAgent, make_deps
 from quality.tests.test_filter_baselines import write_standard_flow
 from analysis.runs import AnalysisRequest
-from agent.tools.module_tools import generate_report_impl
+from agent.tools.report_tool import generate_report_impl
 from web.app import create_app
 from web.chat_downloads import select_chat_artifacts
 from web.projects import ProjectRepository

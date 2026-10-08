@@ -21,7 +21,7 @@ from agent.tools.filter_baselines import (
     run_filter_analysis,
 )
 from agent.tools.inspect_tools import list_results_impl
-from agent.tools.module_tools import data_filter_impl
+from agent.tools.filter_tool import data_filter_impl
 from analysis.io.standard import STANDARD_FLOW_COLUMNS, STANDARD_FLOW_UNITS
 from web.projects import ProjectRepository
 
@@ -471,10 +471,7 @@ def test_agent_adapter_and_web_share_filter_baseline_service(tmp_path: Path) -> 
 def test_agent_data_filter_tool_uses_project_baseline_service(
     tmp_path: Path,
 ) -> None:
-    from agent.tools.module_tools import (
-        confirm_pending_filter_result,
-        data_filter_impl,
-    )
+    from agent.tools.filter_tool import confirm_pending_filter_result, data_filter_impl
     from quality.tests.test_web_app import make_deps
 
     database = tmp_path / "var" / "drainage.sqlite3"

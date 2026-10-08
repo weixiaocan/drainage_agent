@@ -15,19 +15,17 @@ from analysis.reporting import build_report
 from agent.deps import AgentDeps, AgentSettings, Paths, SessionState, ensure_directories
 from agent.tools.inspect_tools import list_results_impl
 from agent.tools.manifest import record_result
-from agent.tools.module_tools import (
+from agent.tools.analysis_tools import (
     analyze_event_response_impl,
     analyze_patterns_impl,
     analyze_rainfall_impl,
     analyze_rdii_impl,
     assess_risk_impl,
     check_data_impl,
-    data_filter_impl,
-    generate_report_impl,
-    is_full_network,
-    _report_actual_time_range,
-    _time_result_prefix,
 )
+from agent.tools.filter_tool import data_filter_impl
+from agent.tools.report_tool import generate_report_impl, _report_actual_time_range
+from agent.tools.tool_support import is_full_network, _time_result_prefix
 from analysis.modules.filtering import write_filter_excel
 from analysis.reporting.pipeline_report_assembler.assembler import (
     _apply_explicit_heading_numbers,
@@ -40,6 +38,18 @@ from agent.tools.python_tool import run_python_impl
 from agent.python_execution_requests import PythonExecutionRequestRepository
 from agent.python_sandbox import FakePythonSandbox, SandboxResult
 from agent.types import ToolStatus, ok
+
+
+def patch_tools(monkeypatch, name: str, value) -> None:
+    """Patch a name in every agent tool module that defines or imports it."""
+    from agent.tools import analysis_tools, filter_tool, report_tool, tool_support
+
+    patched = False
+    for module in (tool_support, filter_tool, analysis_tools, report_tool):
+        if hasattr(module, name):
+            monkeypatch.setattr(module, name, value)
+            patched = True
+    assert patched, name
 
 
 def make_deps(root: Path) -> AgentDeps:
@@ -287,7 +297,7 @@ def test_full_network_patterns_write_no_combined_and_full_network_pngs(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     result = analyze_patterns_impl(deps)
 
@@ -309,7 +319,7 @@ def test_partial_patterns_without_export_write_no_table_or_png(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
 
     result = analyze_patterns_impl(deps, points=["W1"], export=False)
 
@@ -327,7 +337,7 @@ def test_partial_patterns_with_export_writes_one_downloadable_zip(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
 
     result = analyze_patterns_impl(deps, points=["W1"], export=True)
 
@@ -360,7 +370,7 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
     analyze_patterns_impl(deps)
     pd.DataFrame([{"point_id": "W2", "category": 1}]).to_excel(
         deps.paths.combined_xlsx, sheet_name="排污规律分析", index=False
@@ -370,7 +380,7 @@ def test_partial_patterns_do_not_overwrite_full_network_sheet_or_fixed_png(
     fixed_png = assets / "全网_全时段" / "W1_流量特征曲线.png"
     png_before = fixed_png.read_bytes()
 
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
     analyze_patterns_impl(deps, points=["W1"], export=True)
     sheet_after = pd.read_excel(deps.paths.combined_xlsx, sheet_name="排污规律分析")
 
@@ -404,7 +414,7 @@ def test_full_network_pattern_window_pngs_use_separate_range_dir(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     full = analyze_patterns_impl(deps)
     window = analyze_patterns_impl(deps, start="2026-01-01 00:00:00", end="2026-01-01 00:59:00")
@@ -425,7 +435,7 @@ def test_partial_pattern_export_window_png_includes_point_and_time_range(
     deps = make_deps(tmp_path)
     write_two_point_data(deps)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow[flow["point_id"] == "W1"])
 
     result = analyze_patterns_impl(
         deps,
@@ -450,13 +460,13 @@ def test_patterns_time_window_slices_before_analysis(
     deps = make_deps(tmp_path)
     flow = sample_two_point_pattern_flow()
     captured: dict[str, pd.DataFrame] = {}
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
         captured["flow"] = window_flow.copy()
         return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+    patch_tools(monkeypatch,"analyze_patterns", capture_analysis)
 
     result = analyze_patterns_impl(
         deps,
@@ -478,13 +488,13 @@ def test_patterns_none_window_preserves_full_input(
     deps = make_deps(tmp_path)
     flow = sample_two_point_pattern_flow()
     captured: list[pd.DataFrame] = []
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     def capture_analysis(input_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
         captured.append(input_flow.copy())
         return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+    patch_tools(monkeypatch,"analyze_patterns", capture_analysis)
 
     before = analyze_patterns_impl(deps, points=["W1"])
     after = analyze_patterns_impl(deps, points=["W1"], start=None, end=None)
@@ -502,7 +512,7 @@ def test_patterns_time_window_rejects_no_coverage(
 ) -> None:
     deps = make_deps(tmp_path)
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     result = analyze_patterns_impl(
         deps,
@@ -524,13 +534,13 @@ def test_patterns_time_window_uses_partial_point_coverage_and_reports_range(
     flow = sample_two_point_pattern_flow()
     flow.loc[flow["point_id"] == "W2", "timestamp"] += pd.Timedelta(days=10)
     captured: dict[str, pd.DataFrame] = {}
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
         captured["flow"] = window_flow.copy()
         return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+    patch_tools(monkeypatch,"analyze_patterns", capture_analysis)
 
     result = analyze_patterns_impl(
         deps,
@@ -566,13 +576,13 @@ def test_patterns_cross_month_date_window_keeps_both_endpoints(
         }
     )
     captured: dict[str, pd.DataFrame] = {}
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     def capture_analysis(window_flow: pd.DataFrame, **_kwargs: object) -> dict[str, object]:
         captured["flow"] = window_flow.copy()
         return {"patterns": pd.DataFrame([{"point_id": "W1"}]), "curves": {}, "descriptions": {}}
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", capture_analysis)
+    patch_tools(monkeypatch,"analyze_patterns", capture_analysis)
 
     result = analyze_patterns_impl(deps, points=["W1"], start="2026-02-28", end="2026-03-01")
 
@@ -590,15 +600,15 @@ def test_dry_risk_time_window_uses_only_window_rows(
     deps = make_deps(tmp_path)
     flow = sample_two_point_pattern_flow()
     captured: dict[str, pd.DataFrame] = {}
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: flow)
 
     def capture_stats(window_flow: pd.DataFrame, _sites: pd.DataFrame) -> pd.DataFrame:
         captured["flow"] = window_flow.copy()
         return pd.DataFrame([{"point_id": "W1"}])
 
-    monkeypatch.setattr("agent.tools.module_tools.dry_statistics", capture_stats)
-    monkeypatch.setattr(
-        "agent.tools.module_tools.assess_risk",
+    patch_tools(monkeypatch,"dry_statistics", capture_stats)
+    patch_tools(monkeypatch,
+        "assess_risk",
         lambda *_args, **_kwargs: {"dry_risk": pd.DataFrame(), "rainy_risk": pd.DataFrame()},
     )
 
@@ -743,8 +753,8 @@ def test_rainfall_identifies_largest_event_with_monitoring_coverage(
             "velocity_mps": [0.3],
         }
     )
-    monkeypatch.setattr("agent.tools.module_tools.io.load_rain", lambda **kwargs: rain)
-    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda **kwargs: flow)
+    monkeypatch.setattr("analysis.io.load_rain", lambda **kwargs: rain)
+    monkeypatch.setattr("analysis.io.load_flow", lambda **kwargs: flow)
 
     result = analyze_rainfall_impl(deps, output="events")
 
@@ -757,7 +767,7 @@ def test_event_response_impl_marks_no_monitoring_coverage(tmp_path: Path, monkey
     deps = make_deps(tmp_path)
     write_sample_data(deps)
     analyze_rainfall_impl(deps)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response", lambda *_args, **_kwargs: pd.DataFrame())
+    patch_tools(monkeypatch,"analyze_event_response", lambda *_args, **_kwargs: pd.DataFrame())
 
     response = analyze_event_response_impl(deps, event_ids=[1], points=["W9"])
 
@@ -800,8 +810,8 @@ def test_event_tools_guard_before_analysis_when_no_point_has_coverage(
     deps = make_deps(tmp_path)
     write_sample_data(deps)
     analyze_rainfall_impl(deps)
-    monkeypatch.setattr(
-        "agent.tools.module_tools._event_data_coverage",
+    patch_tools(monkeypatch,
+        "_event_data_coverage",
         lambda *_args, **_kwargs: (
             pd.DataFrame(),
             pd.DataFrame(),
@@ -841,18 +851,18 @@ def test_event_tools_exclude_uncovered_points_and_continue(
         }
     )
     excluded = [{"point_id": "W2", "reason": "该时段/该点位无数据，无法分析"}]
-    monkeypatch.setattr(
-        "agent.tools.module_tools._event_data_coverage",
+    patch_tools(monkeypatch,
+        "_event_data_coverage",
         lambda *_args, **_kwargs: (covered_flow, events, ["W1"], excluded),
     )
 
     if tool_name == "event_response":
         result = analyze_event_response_impl(deps, event_ids=[1], points=["W1", "W2"])
     elif tool_name == "rdii":
-        monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_args, **_kwargs: covered_flow)
-        monkeypatch.setattr("agent.tools.module_tools.build_dry_curves", lambda *_args, **_kwargs: {})
-        monkeypatch.setattr(
-            "agent.tools.module_tools.analyze_rdii",
+        patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_args, **_kwargs: covered_flow)
+        patch_tools(monkeypatch,"build_dry_curves", lambda *_args, **_kwargs: {})
+        patch_tools(monkeypatch,
+            "analyze_rdii",
             lambda *_args, **_kwargs: {
                 "rdii_total": pd.DataFrame([{"event_id": 1, "point_id": "W1", "rdii_total_m3": 1.0}]),
                 "rdii_curve_data": {},
@@ -860,8 +870,8 @@ def test_event_tools_exclude_uncovered_points_and_continue(
         )
         result = analyze_rdii_impl(deps, event_ids=[1], points=["W1", "W2"])
     else:
-        monkeypatch.setattr(
-            "agent.tools.module_tools._dry_inputs",
+        patch_tools(monkeypatch,
+            "_dry_inputs",
             lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), {}),
         )
         result = assess_risk_impl(deps, scope="rainy", event_ids=[1])
@@ -999,13 +1009,13 @@ def _install_report_stubs(monkeypatch: pytest.MonkeyPatch, captured: dict, count
             "stats": {},
         }
 
-    monkeypatch.setattr("agent.tools.module_tools.check_data_impl", fake_check)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns_impl", fake_patterns)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response_impl", fake_event_response)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_rdii_impl", fake_rdii)
-    monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
-    monkeypatch.setattr("agent.tools.module_tools.build_report", fake_build)
+    patch_tools(monkeypatch,"check_data_impl", fake_check)
+    patch_tools(monkeypatch,"analyze_rainfall_impl", fake_rain)
+    patch_tools(monkeypatch,"analyze_patterns_impl", fake_patterns)
+    patch_tools(monkeypatch,"analyze_event_response_impl", fake_event_response)
+    patch_tools(monkeypatch,"analyze_rdii_impl", fake_rdii)
+    patch_tools(monkeypatch,"assess_risk_impl", fake_risk)
+    patch_tools(monkeypatch,"build_report", fake_build)
 
 
 def test_requested_event_response_and_rdii_are_written_to_combined_workbook(
@@ -1015,8 +1025,8 @@ def test_requested_event_response_and_rdii_are_written_to_combined_workbook(
     captured: dict = {}
     counts: dict = {}
     _install_report_stubs(monkeypatch, captured, counts)
-    monkeypatch.setattr(
-        "agent.tools.module_tools._event_data_coverage",
+    patch_tools(monkeypatch,
+        "_event_data_coverage",
         lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), ["W1", "W2"], []),
     )
 
@@ -1103,12 +1113,12 @@ def test_time_window_report_passes_one_scope_to_all_analyses(
     captured: dict = {}
     counts: dict = {}
     _install_report_stubs(monkeypatch, captured, counts)
-    monkeypatch.setattr(
-        "agent.tools.module_tools._resolved_report_time_range",
+    patch_tools(monkeypatch,
+        "_resolved_report_time_range",
         lambda *_args: ["2026-03-07", "2026-03-10"],
     )
-    monkeypatch.setattr(
-        "agent.tools.module_tools._report_actual_time_range",
+    patch_tools(monkeypatch,
+        "_report_actual_time_range",
         lambda *_args, **_kwargs: ("2026-03-08 00:00:00", "2026-03-09 23:59:00"),
     )
 
@@ -1154,9 +1164,9 @@ def test_report_actual_time_range_uses_raw_flow_even_for_dry_reports(
             "velocity_mps": [0.3, 0.4],
         }
     )
-    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda *_args, **_kwargs: raw_flow)
-    monkeypatch.setattr(
-        "agent.tools.module_tools._load_filtered_dry_flow",
+    monkeypatch.setattr("analysis.io.load_flow", lambda *_args, **_kwargs: raw_flow)
+    patch_tools(monkeypatch,
+        "_load_filtered_dry_flow",
         lambda *_args, **_kwargs: filtered_dry_flow,
     )
 
@@ -1183,7 +1193,7 @@ def test_generate_report_uses_raw_flow_period_and_matching_combined_name(
             "velocity_mps": [0.3, 0.4],
         }
     )
-    monkeypatch.setattr("agent.tools.module_tools.io.load_flow", lambda *_args, **_kwargs: raw_flow)
+    monkeypatch.setattr("analysis.io.load_flow", lambda *_args, **_kwargs: raw_flow)
 
     result = generate_report_impl(deps, sections=["数据概况", "排污规律", "旱天风险"])
 
@@ -1302,7 +1312,7 @@ def test_repeated_same_scope_report_reuses_analysis(
         deps.paths.site_info_file, index=False
     )
     flow = sample_two_point_pattern_flow()
-    monkeypatch.setattr("agent.tools.module_tools._load_filtered_dry_flow", lambda *_a, **_k: flow)
+    patch_tools(monkeypatch,"_load_filtered_dry_flow", lambda *_a, **_k: flow)
     calls = {"analysis": 0, "build": 0}
 
     def fake_analysis(_flow, **_kwargs):
@@ -1314,8 +1324,8 @@ def test_repeated_same_scope_report_reuses_analysis(
         output_file.write_bytes(b"report")
         return {"output_file": str(output_file), "templated_sections": kwargs["sections"], "generated_sections": [], "stats": {}}
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_patterns", fake_analysis)
-    monkeypatch.setattr("agent.tools.module_tools.build_report", fake_build)
+    patch_tools(monkeypatch,"analyze_patterns", fake_analysis)
+    patch_tools(monkeypatch,"build_report", fake_build)
 
     first = generate_report_impl(deps, points=["W1"], sections=["排污规律"])
     second = generate_report_impl(deps, points=["W1"], sections=["排污规律"])
@@ -1547,8 +1557,8 @@ def test_window_local_event_id_is_translated_for_downstream_analysis(
         captured["analysis"] = event_ids
         return pd.DataFrame([{"event_id": 6, "point_id": "W1", "peak_flow_lps": 1.0}])
 
-    monkeypatch.setattr("agent.tools.module_tools._event_data_coverage", fake_coverage)
-    monkeypatch.setattr("agent.tools.module_tools.analyze_event_response", fake_response)
+    patch_tools(monkeypatch,"_event_data_coverage", fake_coverage)
+    patch_tools(monkeypatch,"analyze_event_response", fake_response)
 
     result = analyze_event_response_impl(deps, event_ids=[1], points=["W1"])
 
@@ -1588,10 +1598,10 @@ def test_window_report_keeps_source_event_internal_and_renders_local_id(
             rainy_risk=[{"event_id": 6, "point_id": "W1", "overflow_value": 0.3}],
         )
 
-    monkeypatch.setattr("agent.tools.module_tools.analyze_rainfall_impl", fake_rain)
-    monkeypatch.setattr("agent.tools.module_tools.assess_risk_impl", fake_risk)
-    monkeypatch.setattr(
-        "agent.tools.module_tools._event_data_coverage",
+    patch_tools(monkeypatch,"analyze_rainfall_impl", fake_rain)
+    patch_tools(monkeypatch,"assess_risk_impl", fake_risk)
+    patch_tools(monkeypatch,
+        "_event_data_coverage",
         lambda *_args, **_kwargs: (
             pd.DataFrame(),
             pd.DataFrame(),
@@ -1599,8 +1609,8 @@ def test_window_report_keeps_source_event_internal_and_renders_local_id(
             [],
         ),
     )
-    monkeypatch.setattr(
-        "agent.tools.module_tools._resolved_report_time_range",
+    patch_tools(monkeypatch,
+        "_resolved_report_time_range",
         lambda *_args: ["2026-03-10", "2026-03-12"],
     )
 
