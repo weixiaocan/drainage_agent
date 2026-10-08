@@ -8,7 +8,6 @@
 - `EVALUATION.md`：项目级评测策略、测试分层和发布门槛。
 - `RELEASE_READINESS.md`：v1.0 发布验收结论、证据和剩余门禁。
 - `NEXT_VERSION_ISSUES.md`：v1.0 之后待规划的产品与工程升级事项。
-- `RUN_PYTHON_SECURITY_UPGRADE_PLAN.md`：保留 Python 元能力并引入策略、审批和一次性沙盒的实施计划。
 - `RUN_PYTHON_SECURITY_SPEC.md`：当前 `run_python` 强制执行的安全不变量和部署要求。
 - `RUN_PYTHON_THREAT_MODEL.md`：模型代码执行的资产、攻击面、信任边界和残余风险。
 - `adr/0015-isolate-model-generated-python.md`：隔离模型生成 Python 的架构决策。
@@ -21,6 +20,5 @@
 ## 历史材料
 
 - `history/EVAL_V2_RETROSPECTIVE.md`：主体功能开发阶段的评测过程与经验总结，不代表当前发布基线。
-- `history/AGENT_EVALUATION_ARTICLE_DRAFT.md`：基于评测复盘整理的文章草稿。
 
 发生冲突时，领域词汇和已接受的 ADR 优先于 PRD；PRD 优先于历史材料。README 应描述当前已实现行为，不能把 PRD 中尚未实现的目标写成现有能力。
