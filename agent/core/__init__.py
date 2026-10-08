@@ -23,9 +23,10 @@ from agent.tools.module_tools import (
     confirm_pending_filter_result,
     data_filter_impl,
     generate_report_impl,
+    is_full_network,
 )
 from agent.tools.python_tool import run_python_impl
-from agent.types import FilterConfirmationRequired, PythonApprovalRequired
+from agent.types import FilterConfirmationRequired, PythonApprovalRequired, ToolResult, needs_input
 from analysis import io
 
 
@@ -278,68 +279,6 @@ class _FakeToolMessage:
 
 
 FILTER_CONFIRMATION_CLARIFICATION = "是确认用当前筛选结果继续吗？如果是，请回复“确认继续”；如果要重新筛选或改需求，请直接说明。"
-DRY_REPORT_SECTIONS = ["监测概况", "旱天排污规律统计分析", "旱天风险"]
-REPORT_SCOPE_CONFLICT_REPLY = (
-    "检测到报告口径冲突：旱天报告应排除降雨相关内容，但 RDII 属于雨天分析。"
-    "请确认要生成纯旱天报告，还是生成包含雨天/RDII 内容的综合报告。"
-)
-
-
-def _is_dry_report_request(message: str) -> bool:
-    user_request = message.split("[本轮补充资料]", 1)[0]
-    compact = re.sub(r"\s+", "", user_request)
-    return (
-        "报告" in compact
-        and any(marker in compact for marker in ("旱天", "干天"))
-        and not any(marker in compact for marker in ("雨天", "降雨", "RDII"))
-        and not re.search(r"(?<![A-Za-z0-9])W\d+|20\d{2}[-/.年]", user_request, re.IGNORECASE)
-    )
-
-
-def _has_report_scope_conflict(message: str) -> bool:
-    user_request = message.split("[本轮补充资料]", 1)[0]
-    compact = re.sub(r"\s+", "", user_request)
-    return (
-        "报告" in compact
-        and any(marker in compact for marker in ("旱天", "干天"))
-        and any(marker in compact for marker in ("雨天", "降雨", "RDII"))
-    )
-
-
-def _direct_report_reply(result: dict[str, Any]) -> str:
-    summary = str(result.get("summary") or "旱天分析报告处理完成。")
-    if result.get("status") != "ok":
-        return f"## 旱天分析报告生成失败\n\n{summary}"
-    return (
-        "## 旱天分析报告已生成\n\n"
-        f"{summary}\n\n"
-        "报告仅包含监测概况、旱天排污规律和旱天风险，不依赖降雨数据。"
-    )
-
-
-class _ReportIntentAgent:
-    def __init__(self, inner: Any):
-        self._inner = inner
-
-    def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
-        history = list(message_history or [])
-        if _has_report_scope_conflict(message):
-            saved_history = [
-                *history,
-                ModelRequest(parts=[UserPromptPart(content=message)]),
-                ModelResponse(parts=[TextPart(content=REPORT_SCOPE_CONFLICT_REPLY)]),
-            ]
-            return _PreflightResult(REPORT_SCOPE_CONFLICT_REPLY, saved_history)
-        if not _is_dry_report_request(message):
-            return self._inner.run_sync(message, deps=deps, message_history=history)
-        result = generate_report_impl(deps, sections=DRY_REPORT_SECTIONS)
-        reply = _direct_report_reply(result)
-        saved_history = [
-            *history,
-            ModelRequest(parts=[UserPromptPart(content=message)]),
-            ModelResponse(parts=[TextPart(content=reply)]),
-        ]
-        return _PreflightResult(reply, saved_history)
 
 
 class _PythonApprovalAgent:
@@ -392,25 +331,30 @@ def _known_point_ids(deps: AgentDeps) -> set[str]:
     return known
 
 
-class _InvalidPointAgent:
-    def __init__(self, inner: Any):
-        self._inner = inner
+def invalid_point_result(deps: AgentDeps, points: list[str] | None) -> ToolResult | None:
+    """Reject tool calls whose `points` are all absent from the project data.
 
-    def run_sync(self, message: str, *, deps: AgentDeps, message_history: list[Any] | None = None) -> Any:
-        history = list(message_history or [])
-        mentioned = {match.upper() for match in re.findall(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", message, re.IGNORECASE)}
-        known = _known_point_ids(deps)
-        if mentioned and known and mentioned.isdisjoint(known):
-            invalid = "、".join(sorted(mentioned))
-            examples = "、".join(sorted(known, key=lambda value: int(value[1:]) if value[1:].isdigit() else value)[:10])
-            reply = f"{invalid} 不是有效点位编号，当前数据中不存在该点位。当前有效点位包括：{examples}。请重新指定点位。"
-            saved_history = [
-                *history,
-                ModelRequest(parts=[UserPromptPart(content=message)]),
-                ModelResponse(parts=[TextPart(content=reply)]),
-            ]
-            return _PreflightResult(reply, saved_history)
-        return self._inner.run_sync(message, deps=deps, message_history=history)
+    Partially invalid lists pass through: analysis tools already exclude uncovered points and report them.
+    """
+    if not points:
+        return None
+    known = _known_point_ids(deps)
+    if not known:
+        return None
+    invalid = [
+        str(point).strip()
+        for point in points
+        if str(point).strip().upper() not in known and not is_full_network([str(point)], deps)
+    ]
+    if len(invalid) < len(points):
+        return None
+    valid = sorted(known, key=lambda value: int(value[1:]) if value[1:].isdigit() else value)
+    return needs_input(
+        "points",
+        "请用户从有效点位中重新指定，不要自行替换为其他点位。",
+        summary=f"{'、'.join(invalid)} 不是有效点位编号，当前数据中不存在。有效点位：{'、'.join(valid)}。",
+        options=[{"point_id": value} for value in valid],
+    )
 
 
 def _has_pending_filter_confirmation(deps: AgentDeps) -> bool:
@@ -476,7 +420,6 @@ class _FilterConfirmationAgent:
         try:
             if _has_pending_filter_confirmation(deps):
                 if _is_clear_filter_confirmation(message):
-                    original_request = deps.session.pending_filter_result_request or ""
                     confirmed_path = confirm_pending_filter_result(deps)
                     continuation = _resume_after_filter_confirmation_message(deps, confirmed_path)
                     deps.session.current_user_prompt = continuation
@@ -551,7 +494,7 @@ def build_agent(deps: AgentDeps) -> Any:
             try:
                 if _check_cancel(ctx.deps.cancel_session_id):
                     return {"status": "cancelled", "summary": "工具已被用户取消"}
-                result = func()
+                result = invalid_point_result(ctx.deps, args.get("points")) or func()
             except Exception as exc:
                 duration_ms = round((monotonic() - started) * 1000)
                 trace_event(
@@ -714,7 +657,9 @@ def build_agent(deps: AgentDeps) -> Any:
             sections: list[str] | None = None,
             event_ids: list[int] | None = None,
         ) -> dict:
-            """生成排水监测分析报告。"""
+            """按内置模板生成 DOCX 报告；所需的筛选、降雨、规律和风险结果由工具内部按章节补齐。
+            sections 可选：监测概况、降雨分析、旱天排污规律统计分析、旱天风险、雨天风险、污水系统运行风险分析；
+            null 表示全部章节。"旱天报告"取 ["监测概况", "旱天排污规律统计分析", "旱天风险"]。"""
             args = {
                 "points": points,
                 "start": start,
@@ -742,8 +687,6 @@ def build_agent(deps: AgentDeps) -> Any:
         if os.getenv("DRAINAGE_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:
             agent._function_toolset.tools.pop("run_python", None)
 
-        return _InvalidPointAgent(
-            _ReportIntentAgent(_PythonApprovalAgent(_FilterConfirmationAgent(agent)))
-        )
+        return _PythonApprovalAgent(_FilterConfirmationAgent(agent))
     except ImportError as exc:
         raise RuntimeError("pydantic-ai is not installed. Run `pip install -r requirements.txt`.") from exc

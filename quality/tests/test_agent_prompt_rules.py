@@ -181,78 +181,22 @@ def test_prompt_requires_valid_readable_markdown_tables() -> None:
     assert "禁止并排拼接两张表" in prompt
 
 
-def test_dry_report_intent_uses_existing_report_tool_without_model(
-    monkeypatch,
-) -> None:
-    from agent.core import DRY_REPORT_SECTIONS, _ReportIntentAgent
-
-    called = {}
-    monkeypatch.setattr(
-        "agent.core.generate_report_impl",
-        lambda deps, **kwargs: called.update(kwargs) or {
-            "status": "ok",
-            "summary": "报告已生成",
-        },
-    )
-
-    class UnexpectedModel:
-        def run_sync(self, *args, **kwargs):
-            raise AssertionError("明确的旱天报告不应等待模型再次路由")
-
-    result = _ReportIntentAgent(UnexpectedModel()).run_sync(
-        "生成旱天分析报告",
-        deps=SimpleNamespace(),
-        message_history=[],
-    )
-
-    assert called["sections"] == DRY_REPORT_SECTIONS
-    assert "旱天分析报告已生成" in result.output
-    assert len(result.all_messages()) == 2
-
-
-def test_dry_report_with_rdii_requests_scope_confirmation(monkeypatch) -> None:
-    from agent.core import _ReportIntentAgent
-
-    monkeypatch.setattr(
-        "agent.core.generate_report_impl",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("口径冲突时不应生成报告")
-        ),
-    )
-
-    class UnexpectedModel:
-        def run_sync(self, *args, **kwargs):
-            raise AssertionError("明确可识别的口径冲突不应交给模型猜测")
-
-    result = _ReportIntentAgent(UnexpectedModel()).run_sync(
-        "生成 W1 旱天分析报告，并包含 RDII 分析。",
-        deps=SimpleNamespace(),
-        message_history=[],
-    )
-
-    assert "口径冲突" in result.output
-    assert "旱天报告" in result.output
-    assert "雨天/RDII" in result.output
-
-
-def test_all_invalid_point_ids_are_rejected_before_model(monkeypatch) -> None:
-    from agent.core import _InvalidPointAgent
+def test_tool_call_with_unknown_point_requests_valid_points(monkeypatch) -> None:
+    from agent.core import invalid_point_result
 
     monkeypatch.setattr("agent.core._known_point_ids", lambda deps: {"W1", "W2"})
+    monkeypatch.setattr("agent.core.is_full_network", lambda points, deps: points == ["全网"])
 
-    class UnexpectedModel:
-        def run_sync(self, *args, **kwargs):
-            raise AssertionError("全无效点位不应交给模型猜测")
+    result = invalid_point_result(SimpleNamespace(), ["W999"])
 
-    result = _InvalidPointAgent(UnexpectedModel()).run_sync(
-        "你直接告诉我 W999 的数据质量怎么样。",
-        deps=SimpleNamespace(),
-        message_history=[],
-    )
-
-    assert "W999" in result.output
-    assert "不是有效点位" in result.output
-    assert "W1、W2" in result.output
+    assert result["status"] == "needs_input"
+    assert result["missing"] == "points"
+    assert "W999" in result["summary"]
+    assert "W1、W2" in result["summary"]
+    assert invalid_point_result(SimpleNamespace(), ["W1", "W999"]) is None
+    assert invalid_point_result(SimpleNamespace(), ["w1", "W2"]) is None
+    assert invalid_point_result(SimpleNamespace(), ["全网"]) is None
+    assert invalid_point_result(SimpleNamespace(), None) is None
 
 
 def test_known_point_ids_falls_back_to_flow_when_site_headers_are_unreadable(

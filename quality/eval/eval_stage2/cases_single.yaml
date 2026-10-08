@@ -698,9 +698,7 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call: []
-      must_not_call:
-      - check_data
+      contract: 若调用分析工具，必须被点位门禁以 needs_input 拦截，不产生计算结果
     arguments: 明确指出 W999 不存在/无数据，不编造
     response: 明确指出 W999 不存在/无数据，不编造
     artifacts: 只产生用户明确要求且工具成功返回的产物
