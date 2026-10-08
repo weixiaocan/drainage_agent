@@ -64,12 +64,12 @@ def test_web_uploads_demo_flow_as_immutable_batch_input_and_inspects_it(
     ).json()
     raw = (
         "数据时间,1分钟内记录总数,设备编号,流量(L/s)(均值),流速(m/s)(均值),液位(m)(均值)\n"
-        "2026-03-07 00:00:00,1,17620135,37.759,0.032,2.664\n"
+        "2026-03-07 00:00:00,1,90000001,37.759,0.032,2.664\n"
     ).encode("utf-8")
 
     response = client.post(
         f"/api/projects/{project['id']}/batches/{batch['id']}/imports",
-        files={"file": ("35891_W1.csv", raw, "text/csv")},
+        files={"file": ("1001_W1.csv", raw, "text/csv")},
     )
 
     assert response.status_code == 201
@@ -615,11 +615,11 @@ def test_existing_demo_filename_deterministically_supplies_point_id(
         f"/api/projects/{project['id']}/batches/{batch['id']}/imports",
         files={
             "file": (
-                "35891_W1.csv",
+                "1001_W1.csv",
                 (
                     "数据时间,1分钟内记录总数,设备编号,流量(L/s)(均值),"
                     "流速(m/s)(均值),液位(m)(均值)\n"
-                    "2026-03-07 00:00:00,1,17620135,37.759,0.032,2.664\n"
+                    "2026-03-07 00:00:00,1,90000001,37.759,0.032,2.664\n"
                 ).encode(),
                 "text/csv",
             )
@@ -650,7 +650,7 @@ def test_existing_demo_filename_deterministically_supplies_point_id(
         f"/api/projects/{project['id']}/batches/{batch['id']}/standard/flow"
     ).json()
     assert preview["rows"][0]["point_id"] == "W1"
-    assert preview["rows"][0]["device_id"] == "17620135"
+    assert preview["rows"][0]["device_id"] == "90000001"
 
 
 def test_conflicting_header_unit_waits_for_engineer_confirmation(
