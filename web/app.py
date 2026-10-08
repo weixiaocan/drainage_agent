@@ -27,7 +27,7 @@ from web.import_profiles import (
     NoMappingSuggester,
 )
 from web.standard_data import BatchDataImporter
-from web.routes import analysis, chat, files, imports, legacy, projects, reports
+from web.routes import analysis, chat, files, imports, projects, reports
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -39,8 +39,6 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 def _demo_request_is_blocked(method: str, path: str) -> bool:
     """Keep public demos useful while denying data replacement and destructive APIs."""
-    if path in {"/api/upload", "/api/results"} or path.startswith("/files/"):
-        return True
     if path.endswith("/raw") or path.endswith("/downloads/all"):
         return True
     if method == "DELETE":
@@ -257,7 +255,7 @@ def create_app(
 
     for register in (
         projects.register, imports.register, analysis.register, files.register,
-        reports.register, chat.register, legacy.register,
+        reports.register, chat.register,
     ):
         register(app)
 

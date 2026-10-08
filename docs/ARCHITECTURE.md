@@ -23,7 +23,7 @@ var/        SQLite 元数据 + 文件系统产物（按 项目/工作空间 隔�
 | 路径 | 职责 |
 |---|---|
 | `web/app.py` | 创建 FastAPI 应用、组装服务、公开演示限流、注册路由组 |
-| `web/routes/` | 按业务分组的路由：`projects` `imports` `analysis` `files` `reports` `chat` `legacy` |
+| `web/routes/` | 按业务分组的路由：`projects` `imports` `analysis` `files` `reports` `chat` |
 | `web/schemas.py` `web/uploads.py` `web/workspace.py` `web/chat_downloads.py` | 请求模型、上传校验、工作空间重置、对话产物下载 |
 | `web/projects.py` `web/standard_data.py` `web/import_profiles.py` | 项目仓储、数据导入与字段识别、导入配置 |
 | `agent/core/__init__.py` | 构建 Agent：注册工具、`traced_tool` 包装、输出校验、历史压缩、确认/审批流程控制 |
@@ -98,5 +98,4 @@ var/        SQLite 元数据 + 文件系统产物（按 项目/工作空间 隔�
 
 ## 8. 已知遗留
 
-- `web/routes/legacy.py` 中的 `/api/upload`、`/api/results`、`/files/` 属于项目化之前的单工作空间接口，前端已不再调用，仅测试覆盖。
 - `_FilterConfirmationAgent` 用固定词表识别"确认继续"等明确确认语；网页另有确认按钮。
