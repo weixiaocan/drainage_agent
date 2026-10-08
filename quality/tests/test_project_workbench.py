@@ -15,7 +15,8 @@ from quality.tests.test_web_app import FakeAgent, make_deps
 from quality.tests.test_filter_baselines import write_standard_flow
 from analysis.runs import AnalysisRequest
 from agent.tools.module_tools import generate_report_impl
-from web.app import _select_chat_artifacts, create_app
+from web.app import create_app
+from web.chat_downloads import select_chat_artifacts
 from web.projects import ProjectRepository
 
 
@@ -561,7 +562,7 @@ def test_report_chat_only_surfaces_report_and_comprehensive_workbook() -> None:
         },
     ]
 
-    selected = _select_chat_artifacts(current, set())
+    selected = select_chat_artifacts(current, set())
 
     assert [item["name"] for item in selected] == [
         "当前报告初稿",
@@ -575,7 +576,7 @@ def test_non_report_chat_surfaces_no_downloads() -> None:
         {"path": "results/rdii/run/result.json", "name": "RDII 分析结果", "size": 1},
     ]
 
-    assert _select_chat_artifacts(current, set()) == []
+    assert select_chat_artifacts(current, set()) == []
 
 
 def _chat_project(client: TestClient, app, name: str) -> tuple[dict, str]:

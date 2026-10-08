@@ -361,7 +361,7 @@ def test_upload_rejects_empty_and_oversized_files(
         "/api/upload",
         files=[("flow_files", ("empty.csv", b"", "text/csv"))],
     )
-    monkeypatch.setattr("web.app.MAX_UPLOAD_BYTES", 4)
+    monkeypatch.setattr("web.uploads.MAX_UPLOAD_BYTES", 4)
     oversized = client.post(
         "/api/upload",
         files=[("flow_files", ("large.csv", b"12345", "text/csv"))],
