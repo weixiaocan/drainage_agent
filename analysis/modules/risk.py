@@ -18,7 +18,18 @@ class RiskConfig:
     rain_effect_delay_hours: float = 12.0
 
 
-def _running_risk(max_fullness: float, cfg: RiskConfig) -> str:
+MISSING_DIAMETER = "缺少管径，无法评估"
+MISSING_DEPTH = "缺少井深，无法评估"
+
+
+def _ratio(level: float, base: float, digits: int) -> float | None:
+    """Level-to-geometry ratio; None when the site geometry is missing instead of a falsely safe 0."""
+    return round(level / base, digits) if base > 0 else None
+
+
+def _running_risk(max_fullness: float | None, cfg: RiskConfig) -> str:
+    if max_fullness is None:
+        return MISSING_DIAMETER
     if max_fullness < cfg.running_risk_low:
         return "运行良好"
     if max_fullness < cfg.running_risk_medium:
@@ -28,7 +39,9 @@ def _running_risk(max_fullness: float, cfg: RiskConfig) -> str:
     return "高风险"
 
 
-def _overflow_risk(overflow_value: float, cfg: RiskConfig) -> str:
+def _overflow_risk(overflow_value: float | None, cfg: RiskConfig) -> str:
+    if overflow_value is None:
+        return MISSING_DEPTH
     if overflow_value < cfg.overflow_risk_low:
         return "低溢流风险"
     if overflow_value < cfg.overflow_risk_medium:
@@ -105,8 +118,8 @@ def _dry_risk(dry_stats: pd.DataFrame, sites: pd.DataFrame | None, cfg: RiskConf
         max_level = float(pd.to_numeric(row.get("max_level_m", 0.0), errors="coerce") or 0.0)
         avg_velocity = float(pd.to_numeric(row.get("avg_velocity_mps", 0.0), errors="coerce") or 0.0)
         daily_flow = float(pd.to_numeric(row.get("daily_flow_m3d", 0.0), errors="coerce") or 0.0)
-        max_fullness = max_level / diameter if diameter > 0 else 0.0
-        overflow_value = max_level / depth if depth > 0 else 0.0
+        max_fullness = _ratio(max_level, diameter, 2)
+        overflow_value = _ratio(max_level, depth, 2)
         rows.append(
             {
                 "serial_no": idx,
@@ -116,8 +129,8 @@ def _dry_risk(dry_stats: pd.DataFrame, sites: pd.DataFrame | None, cfg: RiskConf
                 "daily_flow_m3d": round(daily_flow, 2),
                 "dry_velocity_mps": round(avg_velocity, 4),
                 "max_level_m": round(max_level, 3),
-                "max_fullness": round(max_fullness, 2),
-                "overflow_value": round(overflow_value, 2),
+                "max_fullness": max_fullness,
+                "overflow_value": overflow_value,
                 "silting_risk": _silting_risk(avg_velocity, pipe_type, cfg),
                 "running_risk": _running_risk(max_fullness, cfg),
                 "overflow_risk": _overflow_risk(overflow_value, cfg),
@@ -155,7 +168,7 @@ def _rainy_risk(
             info = _match_site(str(point_id), site_info)
             depth = float(info.get("depth") or 0.0)
             max_level = float(point_df["level_m"].max())
-            overflow_value = max_level / depth if depth > 0 else 0.0
+            overflow_value = _ratio(max_level, depth, 3)
             rows.append(
                 {
                     "event_id": event_id,
@@ -163,7 +176,7 @@ def _rainy_risk(
                     "point_id": point_id,
                     "max_level_m": round(max_level, 3),
                     "well_depth_m": round(depth, 2),
-                    "overflow_value": round(overflow_value, 3),
+                    "overflow_value": overflow_value,
                     "overflow_risk": _overflow_risk(overflow_value, cfg),
                 }
             )

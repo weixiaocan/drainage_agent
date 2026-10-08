@@ -85,8 +85,8 @@ def dry_statistics(flow: pd.DataFrame, sites: pd.DataFrame | None = None) -> pd.
                 "max_flow_lps": round(float(daily["daily_flow_lps"].max()), 2),
                 "min_flow_lps": round(float(daily["daily_flow_lps"].min()), 2),
                 "max_level_m": round(max_level, 2),
-                "max_fullness": round(max_level / diameter * 1000, 2) if diameter > 0 else 0,
-                "overflow_risk": round(max_level / depth, 2) if depth > 0 else 0,
+                "max_fullness": round(max_level / diameter * 1000, 2) if diameter > 0 else None,
+                "overflow_risk": round(max_level / depth, 2) if depth > 0 else None,
                 "avg_velocity_mps": round(float(daily["daily_velocity_mps"].mean()), 6),
                 "avg_level_m": round(float(point_df["level_m"].mean()), 2),
             }

@@ -1741,3 +1741,25 @@ def test_filter_excel_replaces_target_only_after_complete_write(tmp_path: Path, 
         )
 
     assert output.read_bytes() == b"existing-complete-file"
+
+
+def test_risk_without_site_geometry_is_not_reported_as_safe() -> None:
+    from analysis.modules.risk import MISSING_DEPTH, MISSING_DIAMETER, assess_risk
+
+    dry_stats = pd.DataFrame([{"point_id": "W1", "max_level_m": 2.9, "avg_velocity_mps": 0.03, "daily_flow_m3d": 3342.0}])
+    sites = pd.DataFrame([{"点位": "W1", "管径(m)": None, "井深(m)": None}])
+    flow = pd.DataFrame({
+        "timestamp": pd.to_datetime(["2026-03-15 04:00", "2026-03-15 05:00"]),
+        "point_id": ["W1", "W1"],
+        "level_m": [3.0, 3.1],
+    })
+    events = pd.DataFrame([{"event_id": 6, "start_time": "2026-03-15 03:00", "end_time": "2026-03-15 23:00", "rain_level": "小雨"}])
+
+    result = assess_risk(dry_stats, scope="all", sites=sites, flow=flow, events=events, event_ids=[6])
+    dry = result["dry_risk"].iloc[0]
+    rainy = result["rainy_risk"].iloc[0]
+
+    assert pd.isna(dry["max_fullness"]) and pd.isna(dry["overflow_value"])
+    assert dry["running_risk"] == MISSING_DIAMETER
+    assert dry["overflow_risk"] == MISSING_DEPTH
+    assert pd.isna(rainy["overflow_value"]) and rainy["overflow_risk"] == MISSING_DEPTH
