@@ -231,3 +231,25 @@ def test_unparseable_dates_are_detected_before_tools_run() -> None:
     assert invalid_date_argument({"start": "3月8日", "end": "2026-03-12"}) == ("start", "3月8日")
     assert invalid_date_argument({"time_range": ["2026-03-10", "下旬"]}) == ("time_range", "下旬")
     assert invalid_date_argument({"start": "2026-03-08", "end": None, "time_range": ["2026-03-10", None]}) is None
+
+
+def test_values_derived_from_grounded_reply_numbers_are_not_flagged() -> None:
+    from agent.core import ungrounded_decimals
+
+    context = "{'W1': {'rdii_m3': 2691.59, 'daily_flow_m3d': 3342.65}}"
+    reply = "W1 RDII 2691.59 m³，旱天日均流量 3342.65 m³/d，RDII 约占 80.5%，两者相差 651.06 m³。"
+
+    assert ungrounded_decimals(reply, context) == []
+    assert ungrounded_decimals("W1 RDII 约占 77.7%", context) == [77.7]
+
+
+def test_leaked_planning_text_is_rejected() -> None:
+    from pydantic_ai import ModelRetry
+
+    from agent.core import reject_internal_monologue
+
+    with pytest.raises(ModelRetry):
+        reject_internal_monologue("用户要生成 W1 的分析报告。但 1 月无数据，我应该追问，还是直接生成？")
+    with pytest.raises(ModelRetry):
+        reject_internal_monologue("我此前给出的 80.5、8.6 属未经验证的自算值，已全部撤回。")
+    assert reject_internal_monologue("按照规则，数值只能来自工具结果，我不能直接估计。")

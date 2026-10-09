@@ -555,10 +555,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - generate_report
+        must_not_call: []
       arguments: ''
-      response: 报告范围不完整时询问时间、章节或是否沿用当前范围
+      response: 已记录点位范围时沿用 W1、W4 生成并写明范围；未记录范围时询问沿用这些点位还是全网
       inherited:
       - points
       - dry_scope
@@ -577,10 +576,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - generate_report
+        must_not_call: []
       arguments: ''
-      response: 记录旱天章节和新时间窗，继续确认最终点位范围
+      response: 按旱天章节和 3 月 10 日之后生成（点位沿用 W1、W4 并写明），或确认点位后再生成
       inherited:
       - points
       replaced:
@@ -599,11 +597,10 @@
     key: true
     expected:
       tools:
-        must_call:
-        - generate_report
+        must_call: []
         must_not_call: []
       arguments: points=[W1,W4]，start=2026-03-10，只含旱天章节
-      response: 按最终确认范围生成报告
+      response: 最终报告为 W1、W4、3 月 10 日之后、旱天章节；已按此生成时说明无需重复生成
       inherited:
       - time
       - sections

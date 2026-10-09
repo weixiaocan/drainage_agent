@@ -42,6 +42,9 @@ _INTERNAL_MONOLOGUE_PATTERNS = (
     r"我认为应该",
     r"我注意到.*(?:问题|需要)",
     r"需要向您说明.*确认下一步",
+    r"^用户(?:要|想|说|直接|可能|的意图|没有|尚未)",
+    r"我(?:应该|应当)(?:追问|先|直接)",
+    r"我此前给出的",
 )
 
 
@@ -91,10 +94,27 @@ def _is_grounded(value: float, known: set[float]) -> bool:
     return False
 
 
+def _derived_from(value: float, sources: list[float]) -> bool:
+    """Whether value is a ratio, product, sum or difference (or percentage) of two grounded reply values."""
+    for i, a in enumerate(sources):
+        for b in sources[i + 1:]:
+            candidates = [a + b, abs(a - b), a * b]
+            candidates += [a / b, b / a] if a and b else []
+            candidates += [abs(a - b) / b, abs(a - b) / a] if a and b else []
+            if _is_grounded(value, set(candidates)):
+                return True
+    return False
+
+
 def ungrounded_decimals(output: str, context_text: str) -> list[float]:
-    """Decimals in the reply that appear nowhere in the conversation context or tool results."""
+    """Decimals in the reply that appear nowhere in the context and cannot be derived from grounded reply values."""
     known = set(_decimals(context_text))
-    return [value for value in _decimals(output) if not _is_grounded(value, known)]
+    values = _decimals(output)
+    grounded = [value for value in values if _is_grounded(value, known)]
+    return [
+        value for value in values
+        if not _is_grounded(value, known) and not _derived_from(value, grounded)
+    ]
 
 
 def _last_user_prompt_index(messages: list[Any]) -> int:
@@ -144,7 +164,8 @@ def reject_ungrounded_numbers(output: str, context_text: str, *, used_tools: boo
         sample = "、".join(f"{value:g}" for value in unseen[:5])
         raise ModelRetry(
             f"回复中的数值（如 {sample}）在当前上下文和工具结果中找不到。"
-            "请先调用对应工具获取结果（参数一致的已有结果会直接复用），不要凭记忆给出数值。"
+            "请先调用对应工具获取结果（参数一致的已有结果会直接复用），不要凭记忆给出数值；"
+            "然后直接输出修正后的完整回复，不要提及之前的回复或本提示。"
         )
     return output
 
