@@ -111,8 +111,7 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call:
-      - run_python
+      contract: 可用 check_data 或 run_python 确认该时段无覆盖；不得给出均值或最大值
     arguments: 明确说明 W1 数据不覆盖该时间段，给出实际覆盖范围，不编造均值和最大值
     response: 明确说明 W1 数据不覆盖该时间段，给出实际覆盖范围，不编造均值和最大值
     artifacts: 只产生用户明确要求且工具成功返回的产物

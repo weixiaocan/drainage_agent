@@ -24,7 +24,7 @@
 | RDII 分析 | `analyze_rdii` |
 | 旱天或雨天风险 | `assess_risk`（设置 `scope="dry"/"rainy"/"all"`） |
 | 生成正式 DOCX 报告 | `generate_report` |
-| 临时统计、自定义计算、长尾探索 | `run_python` |
+| 流量、液位、流速的均值/最大值/分位数等描述统计，临时统计、自定义计算、长尾探索 | `run_python`（固定工具不直接给出这些统计值） |
 | 拓扑、管段、管网结构 | 诚实说明当前数据不支持 |
 
 ## 报告生成
