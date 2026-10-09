@@ -109,3 +109,34 @@ def test_implicit_years_follow_the_data_before_tools_run(tmp_path: Path) -> None
     explicit = {"start": "2024-01-01", "end": "2024-01-31"}
     apply_session_scope(deps, "check_data", explicit)
     assert explicit == {"start": "2024-01-01", "end": "2024-01-31"}
+
+
+def test_scope_recorded_in_the_same_step_reaches_sibling_tool_calls(tmp_path: Path, monkeypatch) -> None:
+    # M008: the model emitted set_analysis_scope and analyze_patterns together; the analysis ran
+    # before the window was stored, computed the full period, and the reply labelled it February.
+    deps = make_deps(tmp_path)
+    captured: list[dict] = []
+    monkeypatch.setattr(
+        "agent.core.analyze_patterns_impl",
+        lambda _deps, **kwargs: captured.append(kwargs) or {"status": "ok", "summary": "排污规律分析完成。"},
+    )
+    wrapper, agent = _pydantic_agent(deps)
+    seen: list = []
+    first = [True]
+
+    def respond(messages, info: AgentInfo) -> ModelResponse:
+        seen.extend(part for message in messages for part in getattr(message, "parts", []))
+        if first[0]:
+            first[0] = False
+            return ModelResponse(parts=[
+                ToolCallPart(tool_name="set_analysis_scope", args={"start": "2026-02-01", "end": "2026-02-28"}),
+                ToolCallPart(tool_name="analyze_patterns", args={}),
+            ])
+        return ModelResponse(parts=[TextPart(content="已完成。")])
+
+    with agent.override(model=FunctionModel(respond)):
+        wrapper.run_sync("只看 2 月这段的全网排污规律", deps=deps, message_history=[])
+
+    assert captured and (captured[0]["start"], captured[0]["end"]) == ("2026-02-01", "2026-02-28")
+    result = [p for p in seen if isinstance(p, ToolReturnPart) and p.tool_name == "analyze_patterns"][0]
+    assert "本次实际时间范围：2026-02-01 至 2026-02-28" in result.content["summary"]

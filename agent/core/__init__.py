@@ -24,7 +24,7 @@ from agent.tools.analysis_tools import (
 )
 from agent.tools.filter_tool import confirm_pending_filter_result, data_filter_impl
 from agent.tools.report_tool import generate_report_impl
-from agent.tools.scope_tool import apply_session_scope, describe_scope, set_analysis_scope_impl
+from agent.tools.scope_tool import apply_session_scope, describe_scope, set_analysis_scope_impl, used_range_note
 from agent.tools.tool_support import is_full_network
 from agent.tools.python_tool import run_python_impl
 from agent.types import FilterConfirmationRequired, PythonApprovalRequired, ToolResult, error, needs_input
@@ -542,6 +542,7 @@ def build_agent(deps: AgentDeps) -> Any:
                     return {"status": "cancelled", "summary": "工具已被用户取消"}
                 scope_notes, scope_result = apply_session_scope(ctx.deps, tool_name, args)
                 result = scope_result or invalid_point_result(ctx.deps, args.get("points")) or func()
+                scope_notes += used_range_note(tool_name, args)
                 if scope_notes and isinstance(result, dict):
                     result = {**result, "summary": f"{result.get('summary', '')}（{'；'.join(scope_notes)}）"}
             except (FilterConfirmationRequired, PythonApprovalRequired):
@@ -721,7 +722,8 @@ def build_agent(deps: AgentDeps) -> Any:
             }
             return traced_tool(ctx, "generate_report", args, lambda: generate_report_impl(ctx.deps, **args))
 
-        @agent.tool
+        # sequential: a scope recorded in the same step must be in place before sibling tool calls read it.
+        @agent.tool(sequential=True)
         def set_analysis_scope(
             ctx: RunContext[AgentDeps],
             weather: str | None = None,
@@ -732,7 +734,8 @@ def build_agent(deps: AgentDeps) -> Any:
         ) -> dict:
             """记录或修改本会话的分析范围，之后未指定的工具参数按此补全。
             用户限定口径（weather="dry" 只看旱天，"all" 不限）、点位或时间窗时调用；
-            用户改用全网、全时段或解除旱天口径时，用 clear 清除对应项（"weather"/"points"/"time"）。"""
+            用户改用全网、全时段或解除旱天口径时，用 clear 清除对应项（"weather"/"points"/"time"）。
+            只按用户的明确要求修改或清除；范围内没有数据时不要清除或改动范围，告诉用户实际覆盖时段并请用户决定。"""
             args = {"weather": weather, "points": points, "start": start, "end": end, "clear": clear}
             return traced_tool(ctx, "set_analysis_scope", args, lambda: set_analysis_scope_impl(ctx.deps, **args))
 

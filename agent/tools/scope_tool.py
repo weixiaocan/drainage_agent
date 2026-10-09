@@ -101,3 +101,13 @@ def apply_session_scope(deps: AgentDeps, tool_name: str, args: dict[str, Any]) -
     if notes:
         notes.append("如用户要求其他范围，先调用 set_analysis_scope 修改")
     return notes, None
+
+
+def used_range_note(tool_name: str, args: dict[str, Any]) -> list[str]:
+    """State the time range a tool actually used, so replies cannot relabel full-period results."""
+    if tool_name not in TIME_TOOLS:
+        return []
+    start, end = args.get("start"), args.get("end")
+    if start is None and end is None:
+        return ["本次实际时间范围：全部覆盖时段"]
+    return [f"本次实际时间范围：{start or '数据起点'} 至 {end or '数据终点'}"]

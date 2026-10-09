@@ -20,6 +20,19 @@ def read_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
 
 
+def _registered_tools() -> set[str]:
+    tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
+
+    def is_tool(decorator: ast.expr) -> bool:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        return isinstance(target, ast.Attribute) and target.attr == "tool"
+
+    return {
+        node.name for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(map(is_tool, node.decorator_list))
+    }
+
+
 def test_final_response_validator_rejects_internal_monologue() -> None:
     with pytest.raises(ModelRetry):
         reject_internal_monologue("现在我有完整数据了。让我整理一下结果，再告诉用户。")
@@ -42,12 +55,7 @@ def test_prompt_has_the_structured_sections_and_stays_short() -> None:
 
 
 def test_prompt_mentions_every_registered_tool() -> None:
-    tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
-    tools = {
-        node.name for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-        and any(isinstance(d, ast.Attribute) and d.attr == "tool" for d in node.decorator_list)
-    }
+    tools = _registered_tools()
     prompt = read_prompt()
 
     assert [tool for tool in sorted(tools) if f"`{tool}`" not in prompt] == []
@@ -71,16 +79,7 @@ def test_dry_report_sections_match_between_prompt_and_tool_description() -> None
 
 
 def test_core_registers_exactly_the_documented_tools() -> None:
-    tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
-    registered = {
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and any(
-            isinstance(decorator, ast.Attribute) and decorator.attr == "tool"
-            for decorator in node.decorator_list
-        )
-    }
+    registered = _registered_tools()
     assert registered == {
         "data_filter",
         "check_data",
