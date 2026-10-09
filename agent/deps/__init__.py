@@ -136,6 +136,8 @@ class AgentDeps:
     python_execution_requests: Any | None = None
     python_sandbox: Any | None = None
     sandbox_jobs_root: Path | None = None
+    # Directory whose standard/*.csv feed run_python snapshots; defaults to paths.root (the project batch).
+    sandbox_inputs_root: Path | None = None
 
 
 def ensure_directories(paths: Paths) -> None:

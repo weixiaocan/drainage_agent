@@ -28,7 +28,7 @@ def execute_persisted_request(deps: AgentDeps, request: PythonExecutionRequest) 
             "capabilities": list(request.approved_capabilities),
         })
         snapshot = create_input_snapshot(
-            deps.paths.root, deps.sandbox_jobs_root,
+            deps.sandbox_inputs_root or deps.paths.root, deps.sandbox_jobs_root,
             project_id=request.project_id, batch_id=request.batch_id,
             resources=request.inputs, snapshot_id=request.request_id,
         )

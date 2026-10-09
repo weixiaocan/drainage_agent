@@ -611,3 +611,45 @@ def test_rain_only_report_does_not_require_dry_weather_curve_images(tmp_path: Pa
 
     assert checked[0].status == "skip"
     assert "dry-weather" in checked[0].reason
+
+
+def test_python_execution_inputs_stay_outside_the_analysis_root(tmp_path) -> None:
+    import pandas as pd
+
+    from agent.deps import build_deps
+    from quality.eval.eval_stage2.run_eval import enable_python_execution
+
+    root = fresh_root(tmp_path / "case")
+    deps = build_deps(root)
+    enable_python_execution(deps, root, "E004B")
+    assert deps.sandbox_inputs_root is None  # no sandbox configured: run_python keeps failing closed
+
+    deps.python_sandbox = object()
+    enable_python_execution(deps, root, "E004B")
+
+    standard = root / "sandbox_inputs" / "standard"
+    assert deps.sandbox_inputs_root == root / "sandbox_inputs"
+    assert (deps.current_project_id, deps.current_batch_id) == ("eval", "E004B")
+    assert not (root / "standard").exists()
+    flow = pd.read_csv(standard / "flow.csv")
+    assert list(flow.columns) == ["timestamp", "device_id", "point_id", "flow_lps", "level_m", "velocity_mps"]
+    assert {"point_id", "diameter_m", "well_depth_m"} <= set(pd.read_csv(standard / "sites.csv").columns)
+    assert list(pd.read_csv(standard / "rainfall.csv").columns) == ["timestamp", "rain_mm"]
+
+
+def test_repeat_summary_reports_per_round_objective_pass(tmp_path) -> None:
+    from quality.eval.eval_stage2.run_eval import repeat_summary
+
+    rounds = []
+    for index, m002_status in enumerate(("pass", "fail", "pass"), start=1):
+        path = tmp_path / f"multi.r{index}.jsonl"
+        path.write_text("", encoding="utf-8")
+        checks = [
+            {"case_id": "M001", "check": "expected_tool_contract", "status": "pass"},
+            {"case_id": "M001", "check": "hitl_filter_confirmation", "status": "skip"},
+            {"case_id": "M002", "check": "expected_tool_contract", "status": m002_status},
+        ]
+        path.with_name(f"{path.stem}_checks.json").write_text(json.dumps({"checks": checks}), encoding="utf-8")
+        rounds.append(path)
+
+    assert repeat_summary(rounds) == {"M001": [True, True, True], "M002": [True, False, True]}

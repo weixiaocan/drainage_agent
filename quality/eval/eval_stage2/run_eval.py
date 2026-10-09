@@ -21,6 +21,8 @@ if str(PROJECT) not in sys.path:
     sys.path.insert(0, str(PROJECT))
 
 from agent.deps import build_deps
+from analysis import io
+from analysis.io.standard import STANDARD_FLOW_COLUMNS
 from agent.core import build_agent
 from agent.core.logging_utils import TraceLogger, trace_event
 from quality.eval.check import build_context, load_cases, print_summary_report, run_checks
@@ -77,6 +79,47 @@ def fresh_root(root: Path, setup: dict | None = None) -> Path:
     for d in ("outputs", "workspace", "logs"):
         (root / "var" / d).mkdir(parents=True)
     return root
+
+
+SITE_STANDARD_COLUMNS = {
+    "安装监测点位": "point_id",
+    "类型": "device_type",
+    "形状": "shape",
+    "管径(m)": "diameter_m",
+    "井深(m)": "well_depth_m",
+    "设备安装时间": "install_time",
+}
+
+
+def enable_python_execution(deps, root: Path, case_id: str) -> None:
+    """When a sandbox is configured, give run_python the standard inputs a confirmed project batch has.
+
+    The files live outside the analysis root so analysis tools keep reading the raw fixture.
+    """
+    if deps.python_sandbox is None:
+        return
+    inputs_root = root / "sandbox_inputs"
+    standard = inputs_root / "standard"
+    standard.mkdir(parents=True, exist_ok=True)
+    flow = io.load_flow(root=root)
+    flow[STANDARD_FLOW_COLUMNS].to_csv(
+        standard / "flow.csv", index=False, encoding="utf-8", date_format="%Y-%m-%dT%H:%M:%S"
+    )
+    rain = io.load_rain(root=root)
+    if not rain.empty:
+        rain[["timestamp", "rain_mm"]].to_csv(
+            standard / "rainfall.csv", index=False, encoding="utf-8", date_format="%Y-%m-%dT%H:%M:%S"
+        )
+    sites = io.load_sites(root=root)
+    if not sites.empty:
+        sites = sites.rename(columns=SITE_STANDARD_COLUMNS)
+        sites[[c for c in SITE_STANDARD_COLUMNS.values() if c in sites.columns]].to_csv(
+            standard / "sites.csv", index=False, encoding="utf-8"
+        )
+    deps.sandbox_inputs_root = inputs_root
+    deps.current_project_id = "eval"
+    deps.current_batch_id = canonical_case_id(case_id)
+    deps.cancel_session_id = f"eval-{canonical_case_id(case_id)}"
 
 
 def tree_snapshot(root: Path) -> list[dict]:
@@ -332,6 +375,7 @@ def run_case(case: dict, *, auto_confirm: bool = True, artifacts_dir: Path | Non
             rec["state"]["before"] = tree_snapshot(root)
             deps = build_deps(root)
             deps.session.auto_confirm_filter_result = auto_confirm
+            enable_python_execution(deps, root, case["id"])
             trace = TraceLogger(deps.paths.logs)
             deps.trace = trace
             agent = build_agent(deps)
@@ -345,6 +389,7 @@ def run_case(case: dict, *, auto_confirm: bool = True, artifacts_dir: Path | Non
             if case["rebuild_after_seed"]:
                 deps = build_deps(root)
                 deps.session.auto_confirm_filter_result = auto_confirm
+                enable_python_execution(deps, root, case["id"])
                 deps.trace = trace
                 agent = build_agent(deps)
                 message_history = []
@@ -407,7 +452,13 @@ def main():
                     help="只运行指定 case id；可重复传入")
     ap.add_argument("--artifacts-dir", default=None,
                     help="产物证据目录；只读部署中应指向显式可写路径")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="同一组用例连续运行的轮次；大于 1 时每轮单独输出并汇总各用例通过轮次")
     args = ap.parse_args()
+    if args.repeat < 1:
+        ap.error("--repeat 必须大于等于 1")
+    if args.repeat > 1 and args.resume:
+        ap.error("--repeat 与 --resume 不能同时使用")
 
     load_dotenv(PROJECT / ".env")
 
@@ -427,7 +478,6 @@ def main():
     out_path = Path(args.out) if args.out else (STAGE_DIR / "results.jsonl")
     if not out_path.is_absolute():
         out_path = PROJECT / out_path
-    pending_path = out_path.with_name(f"{out_path.name}.tmp")
     artifacts_dir = Path(args.artifacts_dir) if args.artifacts_dir else None
     if artifacts_dir is not None and not artifacts_dir.is_absolute():
         artifacts_dir = PROJECT / artifacts_dir
@@ -454,8 +504,26 @@ def main():
     except Exception:
         pass
 
-    completed = completed_case_ids(pending_path) if args.resume else set()
-    mode = "a" if args.resume and pending_path.exists() else "w"
+    if args.repeat == 1:
+        run_once(cases, out_path, meta, auto_confirm=args.auto_confirm,
+                 artifacts_dir=artifacts_dir, resume=args.resume)
+        return
+    round_paths = []
+    for index in range(1, args.repeat + 1):
+        print(f"\n===== 第 {index}/{args.repeat} 轮 =====")
+        round_path = out_path.with_name(f"{out_path.stem}.r{index}{out_path.suffix}")
+        round_artifacts = artifacts_dir / f"r{index}" if artifacts_dir is not None else None
+        run_once(cases, round_path, {**meta, "round": index}, auto_confirm=args.auto_confirm,
+                 artifacts_dir=round_artifacts, resume=False)
+        round_paths.append(round_path)
+    print_repeat_summary(round_paths)
+
+
+def run_once(cases: list[dict], out_path: Path, meta: dict, *, auto_confirm: bool,
+             artifacts_dir: Path | None, resume: bool) -> None:
+    pending_path = out_path.with_name(f"{out_path.name}.tmp")
+    completed = completed_case_ids(pending_path) if resume else set()
+    mode = "a" if resume and pending_path.exists() else "w"
     with pending_path.open(mode, encoding="utf-8") as out:
         if mode == "w":
             # 第一行写元数据，便于日后复现与对比
@@ -465,7 +533,7 @@ def main():
             if case["id"] in completed:
                 print(f"{case['id']}: 已完成，跳过")
                 continue
-            rec = run_case(case, auto_confirm=args.auto_confirm, artifacts_dir=artifacts_dir)
+            rec = run_case(case, auto_confirm=auto_confirm, artifacts_dir=artifacts_dir)
             out.write(json.dumps(rec, ensure_ascii=False) + "\n")
             out.flush()
             n_tools = sum(len(t["tool_calls"]) for t in rec["turns"])
@@ -475,6 +543,35 @@ def main():
     pending_path.replace(out_path)
     print(f"\n→ {out_path}  (model={meta['model']})")
     run_objective_check(out_path)
+
+
+def repeat_summary(round_paths: list[Path]) -> dict[str, list[bool]]:
+    """Per case: whether every objective check (non-skip) passed in each round."""
+    passed: dict[str, list[bool]] = {}
+    for round_path in round_paths:
+        checks_path = round_path.with_name(f"{round_path.stem}_checks.json")
+        if not checks_path.exists():
+            continue
+        failed_cases: set[str] = set()
+        seen_cases: set[str] = set()
+        for item in json.loads(checks_path.read_text(encoding="utf-8"))["checks"]:
+            case_id = canonical_case_id(str(item["case_id"]))
+            seen_cases.add(case_id)
+            if item["status"] == "fail":
+                failed_cases.add(case_id)
+        for case_id in sorted(seen_cases):
+            passed.setdefault(case_id, []).append(case_id not in failed_cases)
+    return passed
+
+
+def print_repeat_summary(round_paths: list[Path]) -> None:
+    summary = repeat_summary(round_paths)
+    stable = sum(all(values) for values in summary.values())
+    print(f"\n多轮次客观项汇总（{len(round_paths)} 轮，客观项全部通过的轮次 / 总轮次）:")
+    for case_id, values in summary.items():
+        marker = "" if all(values) else ("  <-- 不稳定" if any(values) else "  <-- 每轮都失败")
+        print(f"  {case_id}: {sum(values)}/{len(values)}{marker}")
+    print(f"每轮都通过的用例: {stable}/{len(summary)}；客观项只覆盖可自动判定的部分，仍需人工复核回答质量。")
 
 
 if __name__ == "__main__":

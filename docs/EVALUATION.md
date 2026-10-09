@@ -184,6 +184,14 @@ python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_singl
 python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml -o /tmp/results.jsonl --artifacts-dir /tmp/eval-artifacts
 ```
 
+需要验证 `run_python` 的用例（如 E003、E004A、E004B）只能在 Docker Compose 部署内运行：评测脚本检测到已配置的沙箱后，会把标准化输入写到隔离 root 的 `sandbox_inputs/standard/`，分析工具仍读取原始夹具。容器根文件系统只读、`/tmp` 容量有限，临时目录和产物需放在状态卷中：
+
+```powershell
+docker compose exec -T drainage-agent sh -c "mkdir -p /app/var/tmp /app/var/eval && TMPDIR=/app/var/tmp python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_single.yaml -o /app/var/eval/single.jsonl --artifacts-dir /app/var/eval/single_artifacts"
+```
+
+同一模型同一用例的单轮次结果会波动。需要稳定结论时用 `--repeat N` 连续运行 N 轮：每轮单独输出 `*.rK.jsonl` 和检查文件，最后汇总每个用例客观项全部通过的轮次。客观项只覆盖可自动判定的部分，回答质量仍需人工复核。
+
 每个 Eval 回合记录独立的 `run_id`。评测结果使用该标识定位对应 trace 或项目内 Agent 运行记录，不要求默认保存完整提示词和模型回复。
 
 ## 持续评测
