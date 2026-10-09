@@ -311,3 +311,11 @@ def test_chinese_replies_with_identifiers_and_code_pass() -> None:
     )
 
     assert reject_english_prose(reply) == reply
+
+
+def test_unparseable_dates_are_detected_before_tools_run() -> None:
+    from agent.core import invalid_date_argument
+
+    assert invalid_date_argument({"start": "3月8日", "end": "2026-03-12"}) == ("start", "3月8日")
+    assert invalid_date_argument({"time_range": ["2026-03-10", "下旬"]}) == ("time_range", "下旬")
+    assert invalid_date_argument({"start": "2026-03-08", "end": None, "time_range": ["2026-03-10", None]}) is None

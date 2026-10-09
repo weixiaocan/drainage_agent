@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 from typing import Any
 
+import pandas as pd
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
@@ -25,7 +26,7 @@ from agent.tools.filter_tool import confirm_pending_filter_result, data_filter_i
 from agent.tools.report_tool import generate_report_impl
 from agent.tools.tool_support import is_full_network
 from agent.tools.python_tool import run_python_impl
-from agent.types import FilterConfirmationRequired, PythonApprovalRequired, ToolResult, needs_input
+from agent.types import FilterConfirmationRequired, PythonApprovalRequired, ToolResult, error, needs_input
 from analysis import io
 
 
@@ -407,6 +408,20 @@ def _known_point_ids(deps: AgentDeps) -> set[str]:
     return known
 
 
+def invalid_date_argument(args: dict[str, Any]) -> tuple[str, Any] | None:
+    """First start/end/time_range value that cannot be parsed as a date."""
+    candidates = [(key, args.get(key)) for key in ("start", "end")]
+    candidates += [("time_range", value) for value in (args.get("time_range") or [])]
+    for key, value in candidates:
+        if value in (None, ""):
+            continue
+        try:
+            pd.Timestamp(value)
+        except (TypeError, ValueError):
+            return key, value
+    return None
+
+
 def invalid_point_result(deps: AgentDeps, points: list[str] | None) -> ToolResult | None:
     """Reject tool calls whose `points` are all absent from the project data.
 
@@ -546,7 +561,7 @@ def build_agent(deps: AgentDeps) -> Any:
             deps_type=AgentDeps,
             system_prompt=load_system_prompt(deps.paths.root),
             model_settings=ModelSettings(request_limit=100, timeout=90),
-            retries={"output": 3},
+            retries={"output": 3, "tools": 2},
             capabilities=[ProcessHistory(compact_history)],
         )
 
@@ -570,10 +585,18 @@ def build_agent(deps: AgentDeps) -> Any:
                     "args": args,
                 },
             )
+            invalid_date = invalid_date_argument(args)
+            if invalid_date:
+                raise ModelRetry(
+                    f"参数 {invalid_date[0]}={invalid_date[1]!r} 不是可识别的日期。"
+                    "请改用 YYYY-MM-DD 格式（年份按数据时间范围推断）后重新调用。"
+                )
             try:
                 if _check_cancel(ctx.deps.cancel_session_id):
                     return {"status": "cancelled", "summary": "工具已被用户取消"}
                 result = invalid_point_result(ctx.deps, args.get("points")) or func()
+            except (FilterConfirmationRequired, PythonApprovalRequired):
+                raise
             except Exception as exc:
                 duration_ms = round((monotonic() - started) * 1000)
                 trace_event(
@@ -587,7 +610,8 @@ def build_agent(deps: AgentDeps) -> Any:
                         "duration_ms": duration_ms,
                     },
                 )
-                raise
+                # A crashing tool must not end the conversation; report it as a failed tool result.
+                return error(f"{tool_name} 执行出错：{type(exc).__name__}: {exc}")
             trace_event(
                 ctx.deps.trace,
                 {
