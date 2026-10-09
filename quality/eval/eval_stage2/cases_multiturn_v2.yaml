@@ -830,11 +830,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - assess_risk
-        - analyze_rdii
+        must_not_call: []
       arguments: ''
-      response: 继续继承一月和 W1，无覆盖时拒绝
+      response: 说明原范围没有数据；可改用实际有数据的时段计算，但必须写明实际时段，不得把结果说成原范围的结果
       inherited:
       - points
       - time
@@ -853,10 +851,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - generate_report
+        must_not_call: []
       arguments: ''
-      response: 一月范围仍有效，因此拒绝生成无依据报告或要求确认新范围
+      response: 报告必须如实写明实际覆盖时段；也可先请用户确认范围
       inherited:
       - points
       - time
