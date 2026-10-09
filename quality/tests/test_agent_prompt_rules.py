@@ -282,3 +282,32 @@ def test_grounding_text_includes_tool_results_and_arguments() -> None:
     text = grounding_text(messages)
 
     assert "分析 W1" in text and "2026-03-08" in text and "3.38" in text
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Before generating, I need to confirm the scope, since 现在的范围有两种口径。",
+        "Event 6 is 2026-03-15 (小",
+        "User wants only dry-weather sections. 好的，我来生成。",
+    ],
+)
+def test_english_replies_are_retried(reply: str) -> None:
+    from pydantic_ai import ModelRetry
+
+    from agent.core import reject_english_prose
+
+    with pytest.raises(ModelRetry):
+        reject_english_prose(reply)
+
+
+def test_chinese_replies_with_identifiers_and_code_pass() -> None:
+    from agent.core import reject_english_prose
+
+    reply = (
+        "## 第 6 场降雨 RDII 风险排序（全部 19 个点位）\n\n"
+        "W6 的 RDII 总量为 2930.37 m³，结果为 fresh，可复用；调用了 `analyze_rdii(event_ids=[6], points=None)`。\n"
+        "```python\ndf = load_flow()\nprint(df.groupby('point_id')['flow_lps'].mean())\n```"
+    )
+
+    assert reject_english_prose(reply) == reply

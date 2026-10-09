@@ -50,6 +50,27 @@ def reject_internal_monologue(output: str) -> str:
     return output
 
 
+_CODE_SPAN_PATTERN = re.compile(r"```.*?```|`[^`\n]*`", re.DOTALL)
+_ENGLISH_PROSE_PATTERN = re.compile(r"[A-Za-z]+(?:[ ,;:'’-]+[A-Za-z]+){3,}")
+MIN_CHINESE_RATIO = 0.5
+
+
+def reject_english_prose(output: str) -> str:
+    """Require Chinese replies; code spans, tool names and short identifiers like W1 or RDII are fine.
+
+    Thresholds come from past eval replies: normal answers have a Chinese share of at least 0.67,
+    English ones at most 0.59, and no Chinese answer contained four consecutive English words.
+    """
+    prose = _CODE_SPAN_PATTERN.sub(" ", output)
+    chinese = len(re.findall(r"[一-鿿]", prose))
+    latin = len(re.findall(r"[A-Za-z]", prose))
+    match = _ENGLISH_PROSE_PATTERN.search(prose)
+    if match or (chinese + latin and chinese / (chinese + latin) < MIN_CHINESE_RATIO):
+        sample = match.group(0)[:60] if match else prose.strip()[:60]
+        raise ModelRetry(f"回复必须使用中文，检测到英文内容：“{sample}”。请用中文重写完整回复。")
+    return output
+
+
 _DECIMAL_PATTERN = re.compile(r"(?<![\w.])-?\d[\d,]*\.\d+")
 UNGROUNDED_MIN_COUNT = 3
 UNGROUNDED_MIN_RATIO = 0.5
@@ -525,13 +546,14 @@ def build_agent(deps: AgentDeps) -> Any:
             deps_type=AgentDeps,
             system_prompt=load_system_prompt(deps.paths.root),
             model_settings=ModelSettings(request_limit=100, timeout=90),
-            retries={"output": 2},
+            retries={"output": 3},
             capabilities=[ProcessHistory(compact_history)],
         )
 
         @agent.output_validator
         def validate_user_facing_output(ctx: RunContext[AgentDeps], output: str) -> str:
             output = reject_internal_monologue(output)
+            output = reject_english_prose(output)
             return reject_ungrounded_numbers(output, grounding_text(ctx.messages))
 
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
