@@ -142,6 +142,7 @@ def test_core_registers_exactly_the_documented_tools() -> None:
         "generate_report",
         "list_results",
         "run_python",
+        "set_analysis_scope",
     }
 
 

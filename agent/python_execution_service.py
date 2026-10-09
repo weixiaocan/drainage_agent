@@ -6,7 +6,7 @@ from agent.deps import AgentDeps
 from agent.python_artifacts import create_input_snapshot, validate_and_receive_artifacts
 from agent.python_execution_requests import PythonExecutionRequest
 from agent.python_sandbox import SandboxRequest
-from agent.core.logging_utils import trace_event
+from agent.logging_utils import trace_event
 
 
 def execute_persisted_request(deps: AgentDeps, request: PythonExecutionRequest) -> PythonExecutionRequest:

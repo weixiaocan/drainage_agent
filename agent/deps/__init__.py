@@ -99,6 +99,10 @@ def available_agent_settings() -> dict[str, AgentSettings]:
 @dataclass
 class SessionState:
     selected_event_ids: list[int] = field(default_factory=list)
+    # Analysis scope the user set for this conversation (set_analysis_scope); filled into tool calls by code.
+    weather_scope: str | None = None
+    focus_points: list[str] = field(default_factory=list)
+    time_window: list[str | None] = field(default_factory=list)
     unavailable_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
     auto_confirm_filter_result: bool = False

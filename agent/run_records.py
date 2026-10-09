@@ -9,7 +9,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-from agent.core.logging_utils import _trace_safe
+from agent.logging_utils import _trace_safe
 
 
 @dataclass(frozen=True)

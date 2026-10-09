@@ -24,7 +24,7 @@ from agent.deps import build_deps
 from analysis import io
 from analysis.io.standard import STANDARD_FLOW_COLUMNS
 from agent.core import build_agent
-from agent.core.logging_utils import TraceLogger, trace_event
+from agent.logging_utils import TraceLogger, trace_event
 from quality.eval.check import build_context, load_cases, print_summary_report, run_checks
 
 

@@ -4,7 +4,7 @@ import uuid
 
 from agent.core import build_agent
 from agent.deps import AgentDeps
-from .logging_utils import TraceLogger, trace_event
+from agent.logging_utils import TraceLogger, trace_event
 
 
 EXIT_COMMANDS = {"exit", "quit", "q", "退出"}

@@ -12,7 +12,7 @@ from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from agent.deps import AgentDeps
-from .logging_utils import summarize_tool_result, trace_event
+from agent.logging_utils import summarize_tool_result, trace_event
 from agent.tools.inspect_tools import list_results_impl
 from agent.tools.analysis_tools import (
     analyze_event_response_impl,
@@ -24,6 +24,7 @@ from agent.tools.analysis_tools import (
 )
 from agent.tools.filter_tool import confirm_pending_filter_result, data_filter_impl
 from agent.tools.report_tool import generate_report_impl
+from agent.tools.scope_tool import apply_session_scope, describe_scope, set_analysis_scope_impl
 from agent.tools.tool_support import is_full_network
 from agent.tools.python_tool import run_python_impl
 from agent.types import FilterConfirmationRequired, PythonApprovalRequired, ToolResult, error, needs_input
@@ -189,32 +190,6 @@ def _message_text(message: Any) -> str:
     return "\n".join(text for part in getattr(message, "parts", []) if (text := _part_text(part)).strip())
 
 
-def _part_user_text(part: Any) -> str:
-    if not isinstance(part, UserPromptPart):
-        return ""
-    content = getattr(part, "content", None)
-    if isinstance(content, str):
-        if COMPACT_SUMMARY_MARKER in content:
-            return ""
-        return content
-    if isinstance(content, list):
-        text = " ".join(str(item) for item in content)
-        return "" if COMPACT_SUMMARY_MARKER in text else text
-    return ""
-
-
-def _message_user_text(message: Any) -> str:
-    return "\n".join(text for part in getattr(message, "parts", []) if (text := _part_user_text(part)).strip())
-
-
-def _empty_constraints() -> dict[str, list[str]]:
-    return {
-        "口径": [],
-        "点位集合": [],
-        "时间窗": [],
-    }
-
-
 def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 1800) -> str:
     lines: list[str] = []
     for text in texts:
@@ -228,111 +203,13 @@ def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 
     return summary[:max_chars]
 
 
-def _extract_established_constraints(texts: list[str]) -> dict[str, list[str]]:
-    constraints = _empty_constraints()
-
-    scope_markers = ("只看", "只要", "全程", "不要", "排除", "限定", "限于", "仅看", "仅关注")
-    point_markers = ("只关注", "只看", "限定", "限于", "仅看", "仅关注", "点位集合")
-    time_markers = ("时间窗", "时间范围", "数据范围", "限定", "限于", "只看", "仅看", "范围选择")
-    point_re = re.compile(r"(?<![A-Za-z0-9])W\d+(?![A-Za-z0-9])", flags=re.IGNORECASE)
-    date_patterns = [
-        re.compile(
-            r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?\s*(?:至|到|~|-|—)\s*20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?"
-        ),
-        re.compile(r"20\d{2}[-/.年]\d{1,2}[-/.月]\d{1,2}日?(?:之后|以前|之前|以后)?"),
-        re.compile(r"\d{1,2}\s*月\s*\d{1,2}\s*(?:日|号)?(?:之后|以前|之前|以后)?"),
-    ]
-
-    for text in texts:
-        clauses = [clause.strip() for clause in re.split(r"[。！？!?；;\n，,]", text) if clause.strip()]
-        for clause in clauses:
-            has_scope_marker = any(marker in clause for marker in scope_markers)
-            if has_scope_marker and any(marker in clause for marker in ("旱天", "干天")):
-                constraints["口径"] = ["只看旱天/干天，排除雨天或降雨相关内容"]
-            elif has_scope_marker and any(marker in clause for marker in ("雨天", "降雨期间", "降雨事件")):
-                constraints["口径"] = ["雨天/降雨事件相关分析"]
-
-            points = sorted({match.upper() for match in point_re.findall(clause)}, key=lambda value: int(value[1:]))
-            if points and any(marker in clause for marker in point_markers):
-                constraints["点位集合"] = [", ".join(points)]
-            elif any(marker in clause for marker in point_markers) and any(
-                keyword in clause for keyword in ("全网", "全部点位", "所有点位", "19个点", "19 个点")
-            ):
-                constraints["点位集合"] = ["全网/全部点位"]
-
-            if any(marker in clause for marker in time_markers):
-                dates: list[str] = []
-                for pattern in date_patterns:
-                    dates.extend(pattern.findall(clause))
-                normalized_dates = []
-                for item in dates:
-                    normalized = " ".join(str(item).split())
-                    if normalized and normalized not in normalized_dates:
-                        normalized_dates.append(normalized)
-                if normalized_dates:
-                    constraints["时间窗"] = normalized_dates
-
-    return constraints
-
-
-def _extract_constraints_from_prior_summaries(texts: list[str]) -> dict[str, list[str]]:
-    constraints = _empty_constraints()
-    for text in texts:
-        if COMPACT_SUMMARY_MARKER not in text:
-            continue
-        in_constraints = False
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped == "## 已确立的约束/偏好":
-                in_constraints = True
-                continue
-            if in_constraints and stripped.startswith("## "):
-                break
-            if not in_constraints or not stripped.startswith("- "):
-                continue
-            for key in ("口径", "点位集合", "时间窗"):
-                prefix = f"- {key}:"
-                if stripped.startswith(prefix):
-                    value = stripped[len(prefix) :].strip()
-                    if value and value != "未明确":
-                        constraints[key] = [value]
-    return constraints
-
-
-def _merge_constraints(
-    prior: dict[str, list[str]],
-    current: dict[str, list[str]],
-) -> dict[str, list[str]]:
-    merged = _empty_constraints()
-    for key in ("口径", "点位集合", "时间窗"):
-        merged[key] = current.get(key) or prior.get(key) or []
-    return merged
-
-
-def _format_constraints(constraints: dict[str, list[str]]) -> str:
-    lines = []
-    for key in ("口径", "点位集合", "时间窗"):
-        values = constraints.get(key) or []
-        lines.append(f"- {key}: {'; '.join(values) if values else '未明确'}")
-    return "\n".join(lines)
-
-
 def _build_compact_summary_message(older_messages: list[ModelMessage]) -> ModelRequest:
-    older_texts = [_message_text(message) for message in older_messages]
-    user_texts = [_message_user_text(message) for message in older_messages]
-    prior_summaries = [text for text in older_texts if COMPACT_SUMMARY_MARKER in text]
-    raw_texts = [text for text in older_texts if COMPACT_SUMMARY_MARKER not in text]
-    constraints = _merge_constraints(
-        _extract_constraints_from_prior_summaries(prior_summaries),
-        _extract_established_constraints(user_texts),
-    )
+    """Summarize compacted turns. Scope constraints live in SessionState and reach the model via instructions."""
+    texts = [_message_text(message) for message in older_messages]
     content = (
         f"{COMPACT_SUMMARY_MARKER}\n"
-        "以下是被压缩的早期对话摘要。后续回答必须继续遵守“已确立的约束/偏好”。\n\n"
-        "## 已确立的约束/偏好\n"
-        f"{_format_constraints(constraints)}\n\n"
-        "## 早期对话摘要\n"
-        f"{_summarize_texts([*prior_summaries, *raw_texts])}"
+        "以下是被压缩的早期对话摘要，其中的数值不完整；需要引用数值时请重新调用工具（参数一致的结果会直接复用）。\n\n"
+        f"{_summarize_texts(texts)}"
     )
     return ModelRequest(parts=[UserPromptPart(content=content)])
 
@@ -597,6 +474,13 @@ def build_agent(deps: AgentDeps) -> Any:
             capabilities=[ProcessHistory(compact_history)],
         )
 
+        @agent.instructions
+        def current_analysis_scope(ctx: RunContext[AgentDeps]) -> str:
+            return (
+                f"当前会话分析范围（系统记录）：{describe_scope(ctx.deps.session)}。"
+                "工具参数未指定的点位、时间窗会按此范围自动补全，口径为只看旱天时风险评估只算旱天。"
+            )
+
         @agent.output_validator
         def validate_user_facing_output(ctx: RunContext[AgentDeps], output: str) -> str:
             try:
@@ -635,7 +519,10 @@ def build_agent(deps: AgentDeps) -> Any:
             try:
                 if _check_cancel(ctx.deps.cancel_session_id):
                     return {"status": "cancelled", "summary": "工具已被用户取消"}
-                result = invalid_point_result(ctx.deps, args.get("points")) or func()
+                scope_notes, scope_result = apply_session_scope(ctx.deps, tool_name, args)
+                result = scope_result or invalid_point_result(ctx.deps, args.get("points")) or func()
+                if scope_notes and isinstance(result, dict):
+                    result = {**result, "summary": f"{result.get('summary', '')}（{'；'.join(scope_notes)}）"}
             except (FilterConfirmationRequired, PythonApprovalRequired):
                 raise
             except Exception as exc:
@@ -812,6 +699,21 @@ def build_agent(deps: AgentDeps) -> Any:
                 "event_ids": event_ids,
             }
             return traced_tool(ctx, "generate_report", args, lambda: generate_report_impl(ctx.deps, **args))
+
+        @agent.tool
+        def set_analysis_scope(
+            ctx: RunContext[AgentDeps],
+            weather: str | None = None,
+            points: list[str] | None = None,
+            start: str | None = None,
+            end: str | None = None,
+            clear: list[str] | None = None,
+        ) -> dict:
+            """记录或修改本会话的分析范围，之后未指定的工具参数按此补全。
+            用户限定口径（weather="dry" 只看旱天，"all" 不限）、点位或时间窗时调用；
+            用户改用全网、全时段或解除旱天口径时，用 clear 清除对应项（"weather"/"points"/"time"）。"""
+            args = {"weather": weather, "points": points, "start": start, "end": end, "clear": clear}
+            return traced_tool(ctx, "set_analysis_scope", args, lambda: set_analysis_scope_impl(ctx.deps, **args))
 
         @agent.tool
         def list_results(ctx: RunContext[AgentDeps]) -> dict:
