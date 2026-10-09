@@ -716,53 +716,6 @@ def check_combined_table_name_matches_report(case: CaseRecord, ctx: CheckContext
     return [result(case, name, "artifact", "pass", "combined table name matches report name")]
 
 
-def _rainfall_event_ids(path: Path) -> list[int]:
-    try:
-        workbook = load_workbook(path, read_only=True, data_only=True)
-    except Exception:
-        return []
-    ids: list[int] = []
-    for sheet in workbook.worksheets:
-        if "降雨" not in sheet.title and "雨" not in sheet.title:
-            continue
-        header = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
-        if not header:
-            continue
-        indexes = [idx for idx, value in enumerate(header) if str(value or "").strip() in {"场次编号", "降雨场次编号", "event_id"}]
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            for idx in indexes:
-                if idx < len(row) and row[idx] not in (None, ""):
-                    try:
-                        ids.append(int(row[idx]))
-                    except (TypeError, ValueError):
-                        pass
-    return sorted(set(ids))
-
-
-def check_rainfall_event_ids_contiguous_in_window(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
-    name = "rainfall_event_ids_contiguous_in_window"
-    if case.error:
-        return [result(case, name, "artifact", "skip", f"case has error: {case.error}")]
-    tables = _combined_tables(case)
-    if not tables:
-        return [result(case, name, "artifact", "skip", "no combined table artifact found")]
-    checked = False
-    failures: list[str] = []
-    for table in tables:
-        ids = _rainfall_event_ids(table)
-        if not ids:
-            continue
-        checked = True
-        expected = list(range(1, max(ids) + 1))
-        if ids != expected:
-            failures.append(f"{table.name}: event ids {ids} are not contiguous from 1 ({expected})")
-    if failures:
-        return [result(case, name, "artifact", "fail", " | ".join(failures))]
-    if not checked:
-        return [result(case, name, "artifact", "skip", "no rainfall event id table found")]
-    return [result(case, name, "artifact", "pass", "rainfall event ids are contiguous from 1")]
-
-
 def check_hitl_filter_confirmation(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
     name = "hitl_filter_confirmation"
     marked_turns = [turn for turn in case.turns if "hitl_" in turn.expect]
@@ -851,7 +804,6 @@ CHECKS: list[CheckFn] = [
     check_report_excludes_unselected_sections,
     check_report_period_matches_real_data_bounds,
     check_combined_table_name_matches_report,
-    check_rainfall_event_ids_contiguous_in_window,
 ]
 
 

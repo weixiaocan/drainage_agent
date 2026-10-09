@@ -312,7 +312,7 @@ class AgentToolTests(unittest.TestCase):
         self.assertTrue(pd.isna(row["max_24h_rain_mm"]))
         self.assertAlmostEqual(row["avg_intensity_mmh"], 1.5)
 
-    def test_rainfall_window_keeps_overlapping_full_event_and_uses_local_id(self) -> None:
+    def test_rainfall_window_keeps_overlapping_full_event_with_global_id(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             deps = make_deps(Path(tmp))
             pd.DataFrame(
@@ -342,8 +342,8 @@ class AgentToolTests(unittest.TestCase):
             events = result["data"]["events"]
             self.assertTrue(result["data"]["has_rainfall_coverage"])
             self.assertEqual(len(events), 1)
-            self.assertEqual(events[0]["source_event_id"], 4)
-            self.assertEqual(events[0]["event_id"], 1)
+            self.assertEqual(events[0]["event_id"], 4)
+            self.assertNotIn("source_event_id", events[0])
             self.assertEqual(events[0]["start_time"], "2026-02-25 19:00")
             self.assertEqual(events[0]["end_time"], "2026-02-26 08:00")
             self.assertAlmostEqual(events[0]["total_rain_mm"], 10.6)

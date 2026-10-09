@@ -1523,7 +1523,7 @@ def test_report_rejects_markdown_output(tmp_path: Path) -> None:
         build_report(tmp_path / "分析报告.md", "排水监测数据分析报告")
 
 
-def test_window_rainfall_events_are_locally_renumbered(tmp_path: Path) -> None:
+def test_window_rainfall_events_keep_global_ids(tmp_path: Path) -> None:
     deps = make_deps(tmp_path)
     pd.DataFrame({
         "timestamp": pd.to_datetime([
@@ -1538,37 +1538,11 @@ def test_window_rainfall_events_are_locally_renumbered(tmp_path: Path) -> None:
     )
 
     events = result["data"]["events"]
-    assert [event["source_event_id"] for event in events] == [3, 4]
-    assert [event["event_id"] for event in events] == [1, 2]
+    assert [event["event_id"] for event in events] == [3, 4]
+    assert all("source_event_id" not in event for event in events)
 
 
-def test_window_local_event_id_is_translated_for_downstream_analysis(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    deps = make_deps(tmp_path)
-    deps.session.window_event_id_map = {1: 6}
-    captured: dict[str, list[int]] = {}
-
-    def fake_coverage(_deps, event_ids, points):
-        captured["coverage"] = event_ids
-        return pd.DataFrame(), pd.DataFrame(), ["W1"], []
-
-    def fake_response(_flow, _events, event_ids):
-        captured["analysis"] = event_ids
-        return pd.DataFrame([{"event_id": 6, "point_id": "W1", "peak_flow_lps": 1.0}])
-
-    patch_tools(monkeypatch,"_event_data_coverage", fake_coverage)
-    patch_tools(monkeypatch,"analyze_event_response", fake_response)
-
-    result = analyze_event_response_impl(deps, event_ids=[1], points=["W1"])
-
-    assert result["status"] == "ok"
-    assert captured == {"coverage": [6], "analysis": [6]}
-    assert result["data"]["table"][0]["event_id"] == 1
-    assert "场次 [1]" in result["summary"]
-
-
-def test_window_report_keeps_source_event_internal_and_renders_local_id(
+def test_window_report_uses_global_event_ids(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     deps = make_deps(tmp_path)
@@ -1581,8 +1555,7 @@ def test_window_report_keeps_source_event_internal_and_renders_local_id(
             "rain",
             daily=[{"date": "2026-03-10", "daily_rain_mm": 5.0, "is_rainy": True}],
             events=[{
-                "event_id": 1,
-                "source_event_id": 6,
+                "event_id": 6,
                 "start_time": "2026-03-10 01:00",
                 "end_time": "2026-03-10 03:00",
                 "total_rain_mm": 5.0,
@@ -1625,9 +1598,8 @@ def test_window_report_keeps_source_event_internal_and_renders_local_id(
     assert result["status"] == "ok"
     assert captured["risk_event_ids"] == [6]
     rainy_table = captured["build"]["analysis_tables"]["rainy_overflow_risk"]
-    assert rainy_table["event_id"].tolist() == [1]
-    assert "窗口内降雨场次编号 [1]" in result["summary"]
-    assert "窗口内降雨场次编号 [6]" not in result["summary"]
+    assert rainy_table["event_id"].tolist() == [6]
+    assert "降雨场次编号 [6]" in result["summary"]
 
 
 def test_open_time_ranges_use_natural_language_and_filename_tokens() -> None:

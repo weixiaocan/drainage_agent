@@ -99,7 +99,6 @@ def available_agent_settings() -> dict[str, AgentSettings]:
 @dataclass
 class SessionState:
     selected_event_ids: list[int] = field(default_factory=list)
-    window_event_id_map: dict[int, int] = field(default_factory=dict)
     unavailable_event_ids: list[int] = field(default_factory=list)
     skip_confirmations: bool = False
     auto_confirm_filter_result: bool = False

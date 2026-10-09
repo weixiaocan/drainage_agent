@@ -71,23 +71,6 @@ def _require_event_ids(deps: AgentDeps, event_ids: list[int] | None) -> ToolResu
     )
 
 
-def _source_event_ids(deps: AgentDeps, event_ids: list[int]) -> list[int]:
-    """Translate window-local public IDs to stable source IDs for calculations."""
-    mapping = deps.session.window_event_id_map
-    return [mapping.get(int(event_id), int(event_id)) for event_id in event_ids]
-
-
-def _public_event_frame(deps: AgentDeps, frame: pd.DataFrame) -> pd.DataFrame:
-    result = frame.copy()
-    if result.empty or "event_id" not in result.columns or not deps.session.window_event_id_map:
-        return result
-    source_to_local = {source: local for local, source in deps.session.window_event_id_map.items()}
-    result["event_id"] = result["event_id"].map(
-        lambda value: source_to_local.get(int(value), int(value)) if pd.notna(value) else value
-    )
-    return result
-
-
 def _event_data_coverage(
     deps: AgentDeps,
     event_ids: list[int],
@@ -329,8 +312,6 @@ def _filter_rainfall_result_to_window(
         event_starts = pd.to_datetime(events["start_time"], errors="coerce")
         event_ends = pd.to_datetime(events["end_time"], errors="coerce")
         events = events[(event_ends >= start) & (event_starts <= end)].copy()
-        events.insert(0, "source_event_id", events["event_id"].astype(int))
-        events["event_id"] = range(1, len(events) + 1)
     return {"daily": window_daily, "events": events.reset_index(drop=True)}
 
 
@@ -407,15 +388,14 @@ def _monitoring_covered_rainfall_events(
         ]
         if not window.empty:
             covered_rows.append(event)
-    id_column = "source_event_id" if "source_event_id" in events.columns else "event_id"
-    covered_ids = [int(row[id_column]) for row in covered_rows]
+    covered_ids = [int(row["event_id"]) for row in covered_rows]
     if not covered_rows:
         return covered_ids, None
     largest = max(
         covered_rows,
         key=lambda row: float(row.get("total_rain_mm") or 0.0),
     )
-    return covered_ids, int(largest[id_column])
+    return covered_ids, int(largest["event_id"])
 
 
 def analyze_rainfall_impl(
@@ -438,12 +418,6 @@ def analyze_rainfall_impl(
         result = analyze_rainfall(rain, gap_hours=rainfall_gap_hours)
         if resolved_time_range:
             result = _filter_rainfall_result_to_window(rain, result, resolved_time_range)
-            deps.session.window_event_id_map = {
-                int(local): int(source)
-                for local, source in zip(result["events"]["event_id"], result["events"]["source_event_id"])
-            }
-        else:
-            deps.session.window_event_id_map = {}
         range_start = resolved_time_range[0] if resolved_time_range else None
         range_end = resolved_time_range[1] if resolved_time_range else None
         chart_paths: dict[str, str] = {}
@@ -600,17 +574,17 @@ def analyze_event_response_impl(
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    source_event_ids = _source_event_ids(deps, event_ids or [])
-    params = {"event_ids": source_event_ids, "points": points or [], "export": export}
+    requested_event_ids = [int(event_id) for event_id in event_ids or []]
+    params = {"event_ids": requested_event_ids, "points": points or [], "export": export}
 
-    flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
-    coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
+    flow, events, covered, excluded = _event_data_coverage(deps, requested_event_ids, points)
+    coverage_failure = _coverage_guard_result(deps, requested_event_ids, covered, excluded)
     if coverage_failure:
         return coverage_failure
 
     def work() -> tuple[str, dict[str, Any]]:
-        response = analyze_event_response(flow, events, source_event_ids)
-        public_response = _public_event_frame(deps, response)
+        response = analyze_event_response(flow, events, requested_event_ids)
+        public_response = response
         destination = _route_table_result(deps, public_response, "雨天事件统计", points, export)
         if response.empty:
             deps.session.unavailable_event_ids = sorted(
@@ -652,11 +626,11 @@ def analyze_rdii_impl(
     if precheck:
         return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    source_event_ids = _source_event_ids(deps, event_ids or [])
-    params = {"event_ids": source_event_ids, "points": points or [], "output": output, "export": export}
+    requested_event_ids = [int(event_id) for event_id in event_ids or []]
+    params = {"event_ids": requested_event_ids, "points": points or [], "output": output, "export": export}
 
-    flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
-    coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
+    flow, events, covered, excluded = _event_data_coverage(deps, requested_event_ids, points)
+    coverage_failure = _coverage_guard_result(deps, requested_event_ids, covered, excluded)
     if coverage_failure:
         return coverage_failure
 
@@ -664,9 +638,9 @@ def analyze_rdii_impl(
         dry_flow = _load_filtered_dry_flow(deps, points=covered)
         dry_curves = build_dry_curves(dry_flow)
         _save_curves(deps, dry_curves)
-        result = analyze_rdii(flow, dry_curves, events, source_event_ids)
+        result = analyze_rdii(flow, dry_curves, events, requested_event_ids)
         table = result["rdii_total"]
-        public_table = _public_event_frame(deps, table)
+        public_table = table
         _save_rdii_curves(deps, result["rdii_curve_data"])
         if table.empty:
             deps.session.unavailable_event_ids = sorted(
@@ -693,11 +667,11 @@ def analyze_rdii_impl(
                 rain,
                 events,
                 _analysis_assets_dir(deps),
-                selected_events=source_event_ids,
+                selected_events=requested_event_ids,
             )
         elif export:
             chart_paths = _save_partial_rdii_curve_png(
-                result["rdii_curve_data"], points, _analysis_assets_dir(deps), source_event_ids
+                result["rdii_curve_data"], points, _analysis_assets_dir(deps), requested_event_ids
             )
         else:
             chart_paths = {}
@@ -735,10 +709,10 @@ def assess_risk_impl(
         if precheck:
             return precheck
     event_ids = event_ids or deps.session.selected_event_ids
-    source_event_ids = _source_event_ids(deps, event_ids or [])
+    requested_event_ids = [int(event_id) for event_id in event_ids or []]
     params = {
         "scope": scope,
-        "event_ids": source_event_ids,
+        "event_ids": requested_event_ids,
         "points": points or [],
         "start": start,
         "end": end,
@@ -765,9 +739,9 @@ def assess_risk_impl(
     events = pd.DataFrame()
     covered: list[str] = []
     excluded: list[dict[str, str]] = []
-    if scope in {"rainy", "all"} and source_event_ids:
-        flow, events, covered, excluded = _event_data_coverage(deps, source_event_ids, points)
-        coverage_failure = _coverage_guard_result(deps, source_event_ids, covered, excluded)
+    if scope in {"rainy", "all"} and requested_event_ids:
+        flow, events, covered, excluded = _event_data_coverage(deps, requested_event_ids, points)
+        coverage_failure = _coverage_guard_result(deps, requested_event_ids, covered, excluded)
         if coverage_failure:
             return coverage_failure
 
@@ -779,8 +753,8 @@ def assess_risk_impl(
             dry_flow, dry_stats, _ = _dry_inputs(deps, points=points)
         sites = io.load_sites(root=deps.paths.root)
         event_table = pd.DataFrame()
-        if scope in {"rainy", "all"} and source_event_ids:
-            event_table = analyze_event_response(flow, events, source_event_ids)
+        if scope in {"rainy", "all"} and requested_event_ids:
+            event_table = analyze_event_response(flow, events, requested_event_ids)
         result = assess_risk(
             dry_stats,
             event_table,
@@ -788,9 +762,8 @@ def assess_risk_impl(
             sites=sites,
             flow=flow,
             events=events,
-            event_ids=source_event_ids,
+            event_ids=requested_event_ids,
         )
-        result["rainy_risk"] = _public_event_frame(deps, result["rainy_risk"])
         destinations = [
             _route_table_result(
                 deps, dry_stats, "旱天分析", points, export, start=start, end=end

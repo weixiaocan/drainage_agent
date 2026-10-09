@@ -16,7 +16,6 @@ from agent.tools.analysis_tools import (
     _event_data_coverage,
     _event_options,
     _resolve_implicit_flow_year,
-    _source_event_ids,
     _window_bounds,
     analyze_event_response_impl,
     analyze_patterns_impl,
@@ -118,9 +117,7 @@ def generate_report_impl(
                     f"请求的时间范围 [{start or '不限'}, {end or '不限'}] 内无监测数据覆盖，"
                     "无法生成报告。请修改时间范围后重试。"
                 )
-    requested_event_ids = _source_event_ids(
-        deps, list(event_ids or deps.session.selected_event_ids)
-    )
+    requested_event_ids = [int(event_id) for event_id in (event_ids or deps.session.selected_event_ids)]
     requests_rainy_analysis = _section_requested(
         sections, REPORT_RAINY_RISK_SECTIONS | {"事件响应", "响应", "RDII"}
     )
@@ -374,10 +371,9 @@ def generate_report_impl(
 
     if wants_risk:
         window_events = tables.get("rainfall_events", pd.DataFrame())
-        event_id_column = "source_event_id" if time_range and "source_event_id" in window_events.columns else "event_id"
         available_ids = (
-            set(pd.to_numeric(window_events.get(event_id_column), errors="coerce").dropna().astype(int).tolist())
-            if not window_events.empty and event_id_column in window_events.columns
+            set(pd.to_numeric(window_events.get("event_id"), errors="coerce").dropna().astype(int).tolist())
+            if not window_events.empty and "event_id" in window_events.columns
             else set()
         )
         if wants_rainy_risk and not selected_event_ids:
@@ -388,18 +384,6 @@ def generate_report_impl(
                 options=_event_options(window_events),
             )
         risk_event_ids = list(selected_event_ids)
-        public_event_ids = list(selected_event_ids)
-        source_to_local: dict[int, int] = {}
-        if time_range and "source_event_id" in window_events.columns:
-            local_to_source = {
-                int(local): int(source)
-                for local, source in zip(window_events["event_id"], window_events["source_event_id"])
-            }
-            source_to_local = {source: local for local, source in local_to_source.items()}
-            selected_set = set(selected_event_ids)
-            if selected_set and not selected_set.issubset(available_ids) and selected_set.issubset(local_to_source):
-                risk_event_ids = [local_to_source[event_id] for event_id in selected_event_ids]
-            public_event_ids = [source_to_local.get(event_id, event_id) for event_id in risk_event_ids]
         outside = sorted(set(risk_event_ids) - available_ids)
         if wants_rainy_risk and time_range and outside:
             return error(f"降雨场次 {outside} 不在报告时间窗 [{start or '不限'}, {end or '不限'}] 内。")
@@ -434,12 +418,7 @@ def generate_report_impl(
             tables["dry_analysis"] = dry_analysis if dry_analysis is not None else pd.DataFrame()
             tables["dry_risk"] = dry_risk if dry_risk is not None else pd.DataFrame()
         if wants_rainy_risk:
-            public_rainy_risk = rainy_risk.copy() if rainy_risk is not None else pd.DataFrame()
-            if source_to_local and "event_id" in public_rainy_risk.columns:
-                public_rainy_risk["event_id"] = public_rainy_risk["event_id"].map(
-                    lambda value: source_to_local.get(int(value), int(value)) if pd.notna(value) else value
-                )
-            tables["rainy_overflow_risk"] = public_rainy_risk
+            tables["rainy_overflow_risk"] = rainy_risk.copy() if rainy_risk is not None else pd.DataFrame()
         if wants_rainy_risk and tables["rainy_overflow_risk"].empty:
             return error("雨天风险计算结果为空，拒绝生成带空雨天风险章节的报告。")
 
@@ -448,7 +427,7 @@ def generate_report_impl(
         "start": start,
         "end": end,
         "sections": report_sections,
-        "event_ids": public_event_ids if wants_risk else selected_event_ids,
+        "event_ids": risk_event_ids if wants_risk else selected_event_ids,
     }
 
     def work() -> tuple[str, dict[str, Any]]:
@@ -488,7 +467,7 @@ def generate_report_impl(
         if report_start or report_end:
             summary += f" 报告正文按实际有效数据范围 [{report_start or '不限'}, {report_end or '不限'}] 填充。"
         if wants_rainy_risk:
-            summary += f" 窗口内降雨场次编号 {public_event_ids}。"
+            summary += f" 降雨场次编号 {risk_event_ids}。"
         return summary, result
 
     return _run(deps, "generate_report", work, params=params, use_cache=False)
