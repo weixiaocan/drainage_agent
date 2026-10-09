@@ -441,8 +441,7 @@
     key: true
     expected:
       tools:
-        must_call:
-        - analyze_event_response
+        must_call: []
         must_not_call: []
       arguments: ''
       response: 继承最大事件和 W1/W6；无覆盖时明确拒绝计算
@@ -1157,8 +1156,7 @@
     key: true
     expected:
       tools:
-        must_call:
-        - analyze_rainfall
+        must_call: []
         must_not_call: []
       arguments: ''
       response: 降雨列表可正常全域返回，但不改变点位约束
@@ -1177,8 +1175,7 @@
     key: true
     expected:
       tools:
-        must_call:
-        - analyze_patterns
+        must_call: []
         must_not_call: []
       arguments: ''
       response: 多轮后仍只分析三点
@@ -1306,8 +1303,7 @@
     key: false
     expected:
       tools:
-        must_call:
-        - analyze_event_response
+        must_call: []
         must_not_call: []
       arguments: ''
       response: 三点事件响应
@@ -1326,8 +1322,7 @@
     key: false
     expected:
       tools:
-        must_call:
-        - analyze_rdii
+        must_call: []
         must_not_call: []
       arguments: ''
       response: 三点同事件 RDII

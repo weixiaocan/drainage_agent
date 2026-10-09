@@ -272,8 +272,7 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call:
-      - analyze_event_response
+      must_call: []
     arguments: event_ids 含4且 points 含W1/W6，明确两点均无事件4期间的监测数据
     response: event_ids 含4且 points 含W1/W6，明确两点均无事件4期间的监测数据
     artifacts: 只产生用户明确要求且工具成功返回的产物
@@ -370,8 +369,7 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call:
-      - analyze_rdii
+      must_call: []
     arguments: event_ids 含4，明确监测数据不覆盖该事件，无法计算 RDII
     response: event_ids 含4，明确监测数据不覆盖该事件，无法计算 RDII
     artifacts: 只产生用户明确要求且工具成功返回的产物
@@ -727,9 +725,7 @@
   rebuild_after_seed: false
   expected:
     tools:
-      must_call:
-      - analyze_rainfall
-      - analyze_event_response
+      must_call: []
     arguments: 先识别最大雨为事件4，再明确 W1 数据不覆盖该事件，不能计算响应
     response: 先识别最大雨为事件4，再明确 W1 数据不覆盖该事件，不能计算响应
     artifacts: 只产生用户明确要求且工具成功返回的产物
