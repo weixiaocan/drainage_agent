@@ -48,7 +48,7 @@ var/        SQLite 元数据 + 文件系统产物（按 项目/工作空间 隔�
    - `_PythonApprovalAgent`：工具要求 Python 审批时，结束本轮并返回审批请求。
    - `_FilterConfirmationAgent`：存在待确认的筛选结果时，明确确认则落定基线并续跑上一轮请求；含糊回复则追问；`data_filter` 产生新结果时结束本轮等待确认。
 4. Pydantic AI 循环：系统提示词 + 历史 + 工具定义 → 模型选择工具和参数 → 执行 → 结果回填 → 直到模型给出最终回复。
-5. 每次工具调用经过 `traced_tool`：检查取消 → 点位门禁 → 执行 `*_impl` → 记录参数、状态、耗时；返回 `needs_confirmation` / `needs_approval` 时抛出控制异常交给第 3 步的包装处理。
+5. 每次工具调用经过 `traced_tool`：日期格式校验 → 检查取消 → 会话范围补全（用户未写明年份时按数据年份修正日期；未指定的点位、时间窗按会话范围补全；只看旱天时风险评估收窄为旱天） → 点位门禁 → 执行 `*_impl` → 在结果中写明实际时间范围并记录参数、状态、耗时；工具内部异常转为 `error` 结果，不中断对话；返回 `needs_confirmation` / `needs_approval` 时抛出控制异常交给第 3 步的包装处理。
 6. 最终回复经过 `output_validator`，不通过时让模型重试（最多 2 次）：拒绝把内部推理写进回复；回复中的小数大多在上下文和工具结果里找不到时，视为凭记忆给数，要求先调工具（参数一致的结果直接复用）。历史超过阈值时 `compact_history` 压缩并保留已确立的口径/点位/时间约束。
 7. 保存历史与状态，结束运行记录，Web 层挑选本轮新产生的可下载文件返回。
 
@@ -68,6 +68,7 @@ var/        SQLite 元数据 + 文件系统产物（按 项目/工作空间 隔�
 
 | 门禁 | 位置 | 行为 |
 |---|---|---|
+| 会话分析范围 | `agent/tools/scope_tool.py`、`SessionState` | `set_analysis_scope` 记录口径、点位、时间窗（顺序执行）；每轮通过 instructions 告知模型；工具参数缺省时按范围补全，显式参数优先 |
 | 点位校验 | `agent/core` `invalid_point_result` | 请求点位全部不存在时返回 `needs_input` 和有效点位 |
 | 降雨场次必填 | `analysis_tools._require_event_ids` | 雨天类分析缺 `event_ids` 时返回场次选项，不允许模型编造 |
 | 数据覆盖 | `analysis_tools` 覆盖检查 | 时间窗或场次无监测数据时拒绝计算并说明 |
