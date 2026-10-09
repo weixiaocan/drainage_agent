@@ -281,6 +281,7 @@ def try_usage(result) -> dict | None:
             "input_tokens": getattr(u, "input_tokens", None),
             "output_tokens": getattr(u, "output_tokens", None),
             "total_tokens": getattr(u, "total_tokens", None),
+            "cache_read_tokens": getattr(u, "cache_read_tokens", None),
         }
     except Exception:
         return None

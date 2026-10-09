@@ -5,6 +5,7 @@ import uuid
 from time import monotonic
 from pathlib import Path
 import re
+from dataclasses import replace
 from typing import Any
 
 import pandas as pd
@@ -225,7 +226,7 @@ def _summarize_texts(texts: list[str], *, max_items: int = 12, max_chars: int = 
 
 
 def _build_compact_summary_message(older_messages: list[ModelMessage]) -> ModelRequest:
-    """Summarize compacted turns. Scope constraints live in SessionState and reach the model via instructions."""
+    """Summarize compacted turns. Scope constraints live in SessionState and reach the model via the per-turn scope note."""
     texts = [_message_text(message) for message in older_messages]
     content = (
         f"{COMPACT_SUMMARY_MARKER}\n"
@@ -233,6 +234,25 @@ def _build_compact_summary_message(older_messages: list[ModelMessage]) -> ModelR
         f"{_summarize_texts(texts)}"
     )
     return ModelRequest(parts=[UserPromptPart(content=content)])
+
+
+SCOPE_NOTE_PREFIX = "[当前会话分析范围] "
+
+
+def attach_scope_note(ctx: RunContext[AgentDeps], messages: list[ModelMessage]) -> list[ModelMessage]:
+    """Put the session scope next to the new user prompt instead of before the history.
+
+    The note is appended once per turn and stays in history, so the request prefix never
+    changes and the provider's prefix cache keeps hitting when the scope changes.
+    """
+    last = messages[-1] if messages else None
+    if not isinstance(last, ModelRequest):
+        return messages
+    prompts = [part for part in last.parts if isinstance(part, UserPromptPart)]
+    if not prompts or any(str(part.content).startswith(SCOPE_NOTE_PREFIX) for part in prompts):
+        return messages
+    note = UserPromptPart(content=SCOPE_NOTE_PREFIX + describe_scope(ctx.deps.session))
+    return [*messages[:-1], replace(last, parts=[note, *last.parts])]
 
 
 def compact_history(ctx: RunContext[AgentDeps], messages: list[ModelMessage]) -> list[ModelMessage]:
@@ -489,18 +509,13 @@ def build_agent(deps: AgentDeps) -> Any:
         agent = Agent(
             model,
             deps_type=AgentDeps,
-            system_prompt=load_system_prompt(deps.paths.root),
+            # instructions, not system_prompt: a system prompt lives in the first history message
+            # and is lost once compact_history drops that message.
+            instructions=load_system_prompt(deps.paths.root),
             model_settings=ModelSettings(request_limit=100, timeout=90),
             retries={"output": 3, "tools": 2},
-            capabilities=[ProcessHistory(compact_history)],
+            capabilities=[ProcessHistory(compact_history), ProcessHistory(attach_scope_note)],
         )
-
-        @agent.instructions
-        def current_analysis_scope(ctx: RunContext[AgentDeps]) -> str:
-            return (
-                f"当前会话分析范围（系统记录）：{describe_scope(ctx.deps.session)}。"
-                "工具参数未指定的点位、时间窗会按此范围自动补全，口径为只看旱天时风险评估只算旱天。"
-            )
 
         @agent.output_validator
         def validate_user_facing_output(ctx: RunContext[AgentDeps], output: str) -> str:
