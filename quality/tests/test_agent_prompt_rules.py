@@ -268,20 +268,28 @@ def test_reply_quoting_context_or_deriving_a_few_values_passes() -> None:
     assert reject_ungrounded_numbers(derived, context) == derived
 
 
-def test_grounding_text_includes_tool_results_and_arguments() -> None:
-    from types import SimpleNamespace
+def test_grounding_text_counts_history_and_tool_io_but_not_current_turn_text() -> None:
+    from pydantic_ai.messages import (
+        ModelRequest, ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart, UserPromptPart,
+    )
 
     from agent.core import grounding_text
 
     messages = [
-        SimpleNamespace(parts=[SimpleNamespace(content="分析 W1", args=None)]),
-        SimpleNamespace(parts=[SimpleNamespace(content=None, args={"start": "2026-03-08"})]),
-        SimpleNamespace(parts=[SimpleNamespace(content={"kz": 3.38}, args=None)]),
+        ModelRequest(parts=[UserPromptPart(content="分析 W1")]),
+        ModelResponse(parts=[TextPart(content="上一轮结论 Kz 3.38")]),
+        ModelRequest(parts=[UserPromptPart(content="再看一下")]),
+        ModelResponse(parts=[ToolCallPart(tool_name="analyze_patterns", args={"start": "2026-03-08"})]),
+        ModelRequest(parts=[ToolReturnPart(tool_name="analyze_patterns", content={"kz": 4.62})]),
+        ModelResponse(parts=[TextPart(content="被拒绝的回复 9.99")]),
+        ModelRequest(parts=[RetryPromptPart(content="回复中的数值（如 9.99）找不到")]),
+        ModelResponse(parts=[TextPart(content="待校验的回复 7.77")]),
     ]
 
     text = grounding_text(messages)
 
-    assert "分析 W1" in text and "2026-03-08" in text and "3.38" in text
+    assert "3.38" in text and "2026-03-08" in text and "4.62" in text
+    assert "9.99" not in text and "7.77" not in text
 
 
 @pytest.mark.parametrize(

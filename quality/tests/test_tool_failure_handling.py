@@ -56,3 +56,48 @@ def test_unparseable_date_asks_the_model_to_retry(tmp_path: Path, monkeypatch) -
     retries = [part for part in seen if isinstance(part, RetryPromptPart)]
     assert called == []
     assert retries and "YYYY-MM-DD" in str(retries[0].content)
+
+
+def test_memory_only_reply_with_wrong_values_is_retried_then_flagged(tmp_path: Path) -> None:
+    # Mirrors M012 turn 10: no tool call this turn, correct and recalled-but-wrong values mixed in one table.
+    deps = make_deps(tmp_path)
+    wrapper, agent = _pydantic_agent(deps)
+    history_reply = "W1 日均流量 3342.65 m³/d，流速 0.0328 m/s，最大液位 2.92 m，管径 1.5 m，最大充满度 1.95。"
+    fabricated = (
+        "| 点位 | 日均流量 | 流速 | 最大液位 | 管径 | 最大充满度 |\n|---|---|---|---|---|---|\n"
+        "| W1 | 3634.96 | 0.35 | 2.36 | 1.55 | 1.95 |"
+    )
+    attempts: list[str] = []
+
+    def respond(messages, info: AgentInfo) -> ModelResponse:
+        attempts.append("call")
+        return ModelResponse(parts=[TextPart(content=fabricated)])
+
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="W1 的旱天风险？")]),
+        ModelResponse(parts=[TextPart(content=history_reply)]),
+    ]
+    with agent.override(model=FunctionModel(respond)):
+        result = wrapper.run_sync("再整体看风险。", deps=deps, message_history=history)
+
+    assert len(attempts) == 4  # first answer + 3 retries
+    assert result.output.startswith(fabricated)
+    assert "未通过系统自动核对" in result.output
+
+
+def test_reply_quoting_history_without_tools_passes_unchanged(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    wrapper, agent = _pydantic_agent(deps)
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    history = [
+        ModelRequest(parts=[UserPromptPart(content="W1 的旱天风险？")]),
+        ModelResponse(parts=[TextPart(content="W1 日均流量 3342.65 m³/d，最大充满度 1.95，溢流风险值 0.54。")]),
+    ]
+    quoted = "W1 最大充满度 1.95，溢流风险值 0.54，日均流量 3342.65 m³/d。"
+    with agent.override(model=FunctionModel(lambda messages, info: ModelResponse(parts=[TextPart(content=quoted)]))):
+        result = wrapper.run_sync("W1 风险再说一下", deps=deps, message_history=history)
+
+    assert result.output == quoted

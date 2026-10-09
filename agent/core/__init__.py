@@ -96,11 +96,28 @@ def ungrounded_decimals(output: str, context_text: str) -> list[float]:
     return [value for value in _decimals(output) if not _is_grounded(value, known)]
 
 
+def _last_user_prompt_index(messages: list[Any]) -> int:
+    return max(
+        (index for index, message in enumerate(messages)
+         if any(isinstance(part, UserPromptPart) for part in getattr(message, "parts", []))),
+        default=-1,
+    )
+
+
 def grounding_text(messages: list[Any]) -> str:
-    """All text the model could legitimately quote: prompts, replies, tool arguments and tool results."""
+    """Text the reply may legitimately quote numbers from.
+
+    Earlier turns count in full. In the current turn only tool-call arguments and tool results count:
+    the reply under validation, earlier rejected attempts and retry prompts quoting the suspect
+    numbers are all part of ctx.messages and would otherwise ground the reply in itself.
+    """
+    current_turn = _last_user_prompt_index(messages)
     chunks: list[str] = []
-    for message in messages:
+    for index, message in enumerate(messages):
         for part in getattr(message, "parts", []):
+            kind = getattr(part, "part_kind", None)
+            if index > current_turn and kind not in {"tool-call", "tool-return"}:
+                continue
             content = getattr(part, "content", None)
             if content is not None:
                 chunks.append(content if isinstance(content, str) else str(content))
@@ -110,22 +127,37 @@ def grounding_text(messages: list[Any]) -> str:
     return "\n".join(chunks)
 
 
-def reject_ungrounded_numbers(output: str, context_text: str) -> str:
-    """Retry when most reported decimals were never produced by a tool or stated in context.
+def reject_ungrounded_numbers(output: str, context_text: str, *, used_tools: bool = True) -> str:
+    """Retry when reported decimals were never produced by a tool or stated in context.
 
-    Numbers quoted from earlier results pass without extra tool calls; a few derived values
-    (differences, multiples) are tolerated. A reply dominated by unseen numbers is treated as
-    recalled from memory, e.g. after history compaction dropped the original results.
+    When this turn called tools, a few derived values (differences, multiples) are tolerated and only
+    a reply dominated by unseen numbers is rejected. When it answered purely from the conversation,
+    three unseen decimals are enough: M012 mixed recalled-but-wrong values into an otherwise correct table.
     """
     values = _decimals(output)
     unseen = ungrounded_decimals(output, context_text)
-    if len(unseen) >= UNGROUNDED_MIN_COUNT and len(unseen) >= len(values) * UNGROUNDED_MIN_RATIO:
+    suspicious = len(unseen) >= UNGROUNDED_MIN_COUNT and (
+        not used_tools or len(unseen) >= len(values) * UNGROUNDED_MIN_RATIO
+    )
+    if suspicious:
         sample = "、".join(f"{value:g}" for value in unseen[:5])
         raise ModelRetry(
             f"回复中的数值（如 {sample}）在当前上下文和工具结果中找不到。"
             "请先调用对应工具获取结果（参数一致的已有结果会直接复用），不要凭记忆给出数值。"
         )
     return output
+
+
+def current_turn_used_tools(messages: list[Any]) -> bool:
+    """Whether any tool was called after the latest user prompt."""
+    return any(
+        getattr(part, "part_kind", None) == "tool-call"
+        for message in messages[_last_user_prompt_index(messages) + 1:]
+        for part in getattr(message, "parts", [])
+    )
+
+
+UNVERIFIED_REPLY_NOTE = "\n\n> 提示：本回复未通过系统自动核对，其中的数值或表述请以重新运行分析工具的结果为准。"
 
 
 def request_cancel(session_id: str) -> None:
@@ -567,9 +599,18 @@ def build_agent(deps: AgentDeps) -> Any:
 
         @agent.output_validator
         def validate_user_facing_output(ctx: RunContext[AgentDeps], output: str) -> str:
-            output = reject_internal_monologue(output)
-            output = reject_english_prose(output)
-            return reject_ungrounded_numbers(output, grounding_text(ctx.messages))
+            try:
+                output = reject_internal_monologue(output)
+                output = reject_english_prose(output)
+                return reject_ungrounded_numbers(
+                    output, grounding_text(ctx.messages),
+                    used_tools=current_turn_used_tools(ctx.messages),
+                )
+            except ModelRetry:
+                # Out of retries: deliver the reply with a warning instead of failing the whole turn.
+                if ctx.retry >= ctx.max_retries:
+                    return output + UNVERIFIED_REPLY_NOTE
+                raise
 
         def traced_tool(ctx: RunContext[AgentDeps], tool_name: str, args: dict[str, Any], func: Any) -> dict:
             call_id = uuid.uuid4().hex
