@@ -32,92 +32,42 @@ def test_final_response_validator_accepts_user_facing_answer() -> None:
     assert reject_internal_monologue(answer) == answer
 
 
-def test_prompt_requires_fresh_result_reuse_and_stale_rerun() -> None:
-    prompt = read_prompt()
-    assert "`list_results`" in prompt
-    assert "`fresh=true`" in prompt
-    assert "直接复用" in prompt
-    assert "禁止重复调用" in prompt
-
-
-def test_prompt_documents_v2_workflow_order() -> None:
-    prompt = read_prompt()
-    expected_order = (
-        "`data_filter → check_data → analyze_rainfall → "
-        "analyze_event_response → analyze_rdii → analyze_patterns → assess_risk`"
-    )
-    assert expected_order in prompt
-    assert "范围不明确时先问清楚再调用" in prompt
-    assert "“完整”明确表示全网、全部数据覆盖时段、全部章节" in prompt
-    assert "generate_report(points=null, start=null, end=null, sections=null, event_ids=null)" in prompt
-    assert "不要再次询问范围" in prompt
-    assert "只能输出面向用户的最终问题" in prompt
-    assert "禁止展示参数推断、工具选择和内部规划过程" in prompt
-    assert "禁止在调用前单独跑" in prompt
-    assert "失败时告知原因并停止" in prompt
-    assert "不要编造" in prompt
-
-
-def test_prompt_documents_routing_rules() -> None:
-    prompt = read_prompt()
-    assert "数据质量" in prompt
-    assert "`check_data`" in prompt
-    assert "`data_filter`" in prompt
-    assert "`analyze_rainfall`" in prompt
-    assert "`run_python`" in prompt
-    assert "默认 `export=false`" in prompt
-    assert "输出/导出/保存/落盘/生成文件" in prompt
-
-
-def test_prompt_does_not_delegate_data_coverage_guard_to_agent() -> None:
+def test_prompt_has_the_structured_sections_and_stays_short() -> None:
     prompt = read_prompt()
 
-    assert "数据覆盖" in prompt
-    assert all(
-        tool in prompt
-        for tool in (
-            "`analyze_event_response`",
-            "`analyze_rdii`",
-            "`assess_risk`",
-            "`analyze_patterns`",
-        )
-    )
-    assert "点位无覆盖时明确告知" in prompt
-    assert "不调分析工具，不猜测原因" in prompt
-    assert "剔除无覆盖点位并说明理由" in prompt
-    assert "年份必须从当前任务对应的数据时间范围推断" in prompt
-    assert "流量监测数据年份为准" in prompt
-    assert "降雨数据年份为准" in prompt
-    assert "若跨多个年份而无法唯一确定，再向用户询问" in prompt
-    assert "不要为了确定流量任务的年份而调用 `analyze_rainfall`" in prompt
-    assert "降雨事件存在" in prompt
-    assert "推荐替代事件前必须验证" in prompt
+    for heading in ("## 判断优先级", "## 分析范围：默认值与何时追问", "## 工具使用", "## run_python", "## 回复"):
+        assert heading in prompt
+    # The previous prompt grew to 12.5k characters through per-failure patches; keep the rewrite compact.
+    assert len(prompt) <= 6000
 
 
-def test_prompt_avoids_redundant_scope_and_baseline_confirmations() -> None:
+def test_prompt_mentions_every_registered_tool() -> None:
+    tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
+    tools = {
+        node.name for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and any(isinstance(d, ast.Attribute) and d.attr == "tool" for d in node.decorator_list)
+    }
     prompt = read_prompt()
 
-    assert "合法的 `W数字` 形式直接视为监测点位编号" in prompt
-    assert "未指定时间范围表示使用该数据的完整可用覆盖时段" in prompt
-    assert "缺少旱天筛选基线时直接调用 `data_filter`" in prompt
-    assert "禁止询问用户是否需要执行筛选" in prompt
+    assert [tool for tool in sorted(tools) if f"`{tool}`" not in prompt] == []
 
 
-def test_prompt_defines_full_month_against_available_data() -> None:
+def test_prompt_keeps_key_contracts() -> None:
     prompt = read_prompt()
 
-    assert "用户只说“全月”但没有指定月份" in prompt
-    assert "数据仅覆盖一个自然月" in prompt
-    assert "直接按该数据月份的完整可用范围分析" in prompt
+    for phrase in ("`needs_input`", "`needs_confirmation`", "`export=false`", "全局编号",
+                   "largest_monitoring_covered_event_id", "最大充满度", "溢流风险值", "`clear`"):
+        assert phrase in prompt
 
 
-def test_prompt_rejects_direct_comparison_across_mismatched_scopes() -> None:
+def test_dry_report_sections_match_between_prompt_and_tool_description() -> None:
     prompt = read_prompt()
+    core = CORE_PATH.read_text(encoding="utf-8")
+    sections = ["监测概况", "旱天排污规律统计分析", "旱天风险"]
 
-    assert "比较两个分析结果前必须核对" in prompt
-    assert "不具备直接可比性" in prompt
-    assert "禁止直接给出高低、优劣或排名结论" in prompt
-    assert "请求用户选择一个统一口径后再比较" in prompt
+    assert "“旱天报告”的章节为" + "、".join(sections) in prompt
+    assert '"旱天报告"取 ' + str(sections).replace("'", '"') in core
 
 
 def test_core_registers_exactly_the_documented_tools() -> None:
@@ -144,42 +94,6 @@ def test_core_registers_exactly_the_documented_tools() -> None:
         "run_python",
         "set_analysis_scope",
     }
-
-
-def test_prompt_requires_needs_input_for_event_ids() -> None:
-    prompt = read_prompt()
-    assert "`status=needs_input`" in prompt
-    assert "`event_ids`" in prompt
-    assert "`options`" in prompt
-
-
-def test_prompt_does_not_treat_discovered_events_as_user_selection() -> None:
-    prompt = read_prompt()
-    assert "工具发现的可用场次不等于用户已选择场次" in prompt
-    assert "列出所有可用场次" in prompt
-
-
-def test_prompt_requires_report_scope_and_nonempty_rainy_risk() -> None:
-    prompt = read_prompt()
-    assert "`points`" in prompt
-    assert "`start/end`" in prompt
-    assert "`sections`" in prompt
-    assert "`event_ids`" in prompt
-
-
-def test_prompt_documents_exception_and_quality_reminders() -> None:
-    prompt = read_prompt()
-    assert "有效天数" in prompt
-    assert "剔除比例" in prompt
-    assert "缺失率" in prompt
-    assert "工具返回 `error`" in prompt
-
-
-def test_prompt_requires_valid_readable_markdown_tables() -> None:
-    prompt = read_prompt()
-
-    assert "每条记录单独一行" in prompt
-    assert "禁止并排拼接两张表" in prompt
 
 
 def test_tool_call_with_unknown_point_requests_valid_points(monkeypatch) -> None:
@@ -219,22 +133,11 @@ def test_known_point_ids_falls_back_to_flow_when_site_headers_are_unreadable(
     }
 
 
-def test_prompt_requires_public_professional_terms() -> None:
-    prompt = read_prompt()
-    assert "最大充满度" in prompt
-    assert "溢流风险值" in prompt
-    assert "禁止使用“装满率”" in prompt
-    assert "禁止向用户展示 `max_fullness`、`overflow_value`" in prompt
-    assert "负流量的成因" in prompt
-    assert "不得写成已确认原因" in prompt
-    assert "largest_monitoring_covered_event_id" in prompt
-
-
 def test_run_python_prompt_matches_sandbox_prelude() -> None:
     import re
 
     prompt = read_prompt()
-    section = prompt[prompt.index("## run_python"):prompt.index("## 回复风格")]
+    section = prompt[prompt.index("## run_python"):prompt.index("## 回复")]
     prelude = (PROJECT_ROOT / "sandbox_runtime" / "prelude.py").read_text(encoding="utf-8")
     sandbox_functions = set(re.findall(r"^def ([a-z]\w*)\(", prelude, flags=re.M))
     named_functions = set(re.findall(r"`(\w+)\(", section))
