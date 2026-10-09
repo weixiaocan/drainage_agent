@@ -329,10 +329,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - assess_risk
+        must_not_call: []
       arguments: ''
-      response: 要求用户选择降雨场次并展示选项
+      response: 不得自行指定场次；可先调用雨天风险工具，工具要求选择场次后，列出可用场次请用户选择
       inherited:
       - task
       - points=all

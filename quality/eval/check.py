@@ -623,9 +623,7 @@ def check_report_no_placeholders_or_fake_sites(case: CaseRecord, ctx: CheckConte
     return [result(case, name, "artifact", "pass", "no template blacklist terms or fake site ids found")]
 
 
-def _selected_section_kinds(case: CaseRecord) -> set[str]:
-    params = _report_params(case)
-    sections = params.get("sections")
+def _section_kinds(sections: Any) -> set[str]:
     if not isinstance(sections, list) or not sections:
         return set()
     text = "\n".join(str(section) for section in sections)
@@ -641,16 +639,37 @@ def _selected_section_kinds(case: CaseRecord) -> set[str]:
     return selected
 
 
+def _report_sections_by_file(case: CaseRecord) -> dict[str, Any]:
+    """Map each report file name to the sections of the generate_report call that wrote it."""
+    sections_by_call: dict[str, Any] = {}
+    by_file: dict[str, Any] = {}
+    for event in _trace_events(case):
+        if event.get("tool_name") != "generate_report":
+            continue
+        if event.get("event") == "tool_call":
+            sections_by_call[str(event.get("call_id"))] = (event.get("args") or {}).get("sections")
+        elif event.get("event") == "tool_result" and event.get("status") == "ok":
+            for artifact in event.get("artifacts") or []:
+                by_file[Path(str(artifact)).name] = sections_by_call.get(str(event.get("call_id")))
+    return by_file
+
+
 def check_report_excludes_unselected_sections(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
     name = "report_excludes_unselected_sections"
     reports = [path for path in _report_paths(case) if path.suffix.lower() == ".docx"]
     if not reports:
         return [result(case, name, "artifact", "skip", "no docx report artifact found")]
-    selected = _selected_section_kinds(case)
-    if not selected:
-        return [result(case, name, "artifact", "skip", "generate_report sections unavailable")]
+    # Each report is judged by the request that produced it; a later request must not
+    # retroactively fail an earlier full report.
+    by_file = _report_sections_by_file(case)
+    fallback = _report_params(case).get("sections")
     failures: list[str] = []
+    checked: list[str] = []
     for report in reports:
+        selected = _section_kinds(by_file.get(report.name, fallback))
+        if not selected:
+            continue
+        checked.append(report.name)
         text = _document_text(report)
         for kind, keywords in SECTION_KEYWORDS.items():
             if kind in selected:
@@ -660,7 +679,9 @@ def check_report_excludes_unselected_sections(case: CaseRecord, ctx: CheckContex
                 failures.append(f"{report.name}: unselected {kind} section keyword(s) {found[:5]}")
     if failures:
         return [result(case, name, "artifact", "fail", " | ".join(failures))]
-    return [result(case, name, "artifact", "pass", f"only selected section kinds present: {sorted(selected)}")]
+    if not checked:
+        return [result(case, name, "artifact", "skip", "generate_report sections unavailable")]
+    return [result(case, name, "artifact", "pass", f"reports contain only their selected sections: {checked}")]
 
 
 def _date_forms(ts: pd.Timestamp) -> set[str]:

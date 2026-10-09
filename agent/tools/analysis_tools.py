@@ -173,6 +173,7 @@ def _window_data_coverage(
         frames.append(point_flow)
 
     window_flow = pd.concat(frames, ignore_index=True) if frames else flow.iloc[0:0].copy()
+    requested_flow = flow[flow["point_id"].astype(str).isin(requested_points)]
     actual_start = window_flow["timestamp"].min() if not window_flow.empty else None
     actual_end = window_flow["timestamp"].max() if not window_flow.empty else None
     coverage = {
@@ -180,8 +181,25 @@ def _window_data_coverage(
         "requested_end": str(end) if end is not None else None,
         "actual_start": actual_start.isoformat(sep=" ") if actual_start is not None else None,
         "actual_end": actual_end.isoformat(sep=" ") if actual_end is not None else None,
+        **_data_span(requested_flow),
     }
     return window_flow.reset_index(drop=True), covered, excluded, coverage
+
+
+def _data_span(flow: pd.DataFrame) -> dict[str, str | None]:
+    """First and last day with data, so a no-coverage answer can name the period that does have data."""
+    if flow.empty:
+        return {"data_start": None, "data_end": None}
+    return {
+        "data_start": flow["timestamp"].min().date().isoformat(),
+        "data_end": flow["timestamp"].max().date().isoformat(),
+    }
+
+
+def _data_span_note(coverage: dict[str, str | None], what: str) -> str:
+    if coverage.get("data_start") is None:
+        return f"所选点位没有任何{what}。"
+    return f"所选点位的{what}实际覆盖 {coverage['data_start']} 至 {coverage['data_end']}。"
 
 
 def _window_coverage_guard_result(
@@ -189,6 +207,7 @@ def _window_coverage_guard_result(
     excluded: list[dict[str, str]],
     start: str | None,
     end: str | None,
+    coverage: dict[str, str | None],
 ) -> ToolResult | None:
     if covered:
         return None
@@ -196,7 +215,10 @@ def _window_coverage_guard_result(
     return needs_input(
         "data_coverage",
         "请选择有数据覆盖的时间窗或点位。",
-        summary=f"时间窗 [{start or '不限'}, {end or '不限'}] 内点位 {point_labels} 无数据覆盖，无法分析。",
+        summary=(
+            f"时间窗 [{start or '不限'}, {end or '不限'}] 内点位 {point_labels} 无数据覆盖，无法分析。"
+            + _data_span_note(coverage, "旱天数据")
+        ),
         options=excluded,
     )
 
@@ -260,6 +282,7 @@ def check_data_impl(
 
     def work() -> tuple[str, dict[str, Any]]:
         flow = io.load_flow(points=points, root=deps.paths.root)
+        span = _data_span(flow)
         coverage = None
         if windowed:
             start_ts, end_ts = _window_bounds(start, end)
@@ -272,6 +295,7 @@ def check_data_impl(
                 "requested_end": end,
                 "actual_start": flow["timestamp"].min().isoformat(sep=" ") if not flow.empty else None,
                 "actual_end": flow["timestamp"].max().isoformat(sep=" ") if not flow.empty else None,
+                **span,
             }
         stats_df = check_data(flow)
         if windowed and not stats_df.empty:
@@ -288,6 +312,10 @@ def check_data_impl(
             _remove_sheet(deps.paths.combined_xlsx, "数据体检")
         avg = float(stats_df["collection_rate"].mean()) if not stats_df.empty else 0.0
         summary = f"数据收集率统计完成：处理 {len(stats_df)} 个点位，平均收集率 {avg:.1%}。"
+        if coverage is not None and stats_df.empty:
+            summary = (
+                f"时间窗 [{start or '不限'}, {end or '不限'}] 内没有监测数据。" + _data_span_note(span, "监测数据")
+            )
         data = {"table": stats_df.to_dict(orient="records"), "result_destinations": [destination]}
         if coverage is not None:
             data["window_coverage"] = coverage
@@ -527,7 +555,7 @@ def analyze_patterns_impl(
             window_flow, covered, excluded, coverage = _window_data_coverage(deps, points, start, end)
         except ValueError as exc:
             return error(str(exc))
-        coverage_failure = _window_coverage_guard_result(covered, excluded, start, end)
+        coverage_failure = _window_coverage_guard_result(covered, excluded, start, end, coverage)
         if coverage_failure:
             return coverage_failure
 
@@ -743,7 +771,7 @@ def assess_risk_impl(
             )
         except ValueError as exc:
             return error(str(exc))
-        coverage_failure = _window_coverage_guard_result(dry_covered, dry_excluded, start, end)
+        coverage_failure = _window_coverage_guard_result(dry_covered, dry_excluded, start, end, window_coverage)
         if coverage_failure:
             return coverage_failure
 

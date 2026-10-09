@@ -524,6 +524,8 @@ def test_patterns_time_window_rejects_no_coverage(
     assert result["status"] == "needs_input"
     assert result["missing"] == "data_coverage"
     assert "无数据覆盖" in result["summary"]
+    first_day = flow["timestamp"].min().date().isoformat()
+    assert f"实际覆盖 {first_day} 至" in result["summary"]
 
 
 def test_patterns_time_window_uses_partial_point_coverage_and_reports_range(
@@ -1229,6 +1231,18 @@ def test_check_data_time_window_uses_only_window_rows(tmp_path: Path) -> None:
     assert result["data"]["table"][0]["collection_rate"] == 1.0
     assert result["data"]["window_coverage"]["actual_start"].startswith("2026-01-01 00:10:00")
     assert not deps.paths.combined_xlsx.exists()
+
+
+def test_check_data_empty_window_names_the_covered_period(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_two_point_data(deps)
+
+    result = check_data_impl(deps, points=["W1"], start="2026-02-01", end="2026-02-28")
+
+    assert result["status"] == "ok"
+    assert result["data"]["table"] == []
+    assert "内没有监测数据" in result["summary"]
+    assert "实际覆盖 2026-01-01 至 2026-01-01" in result["summary"]
 
 
 def test_report_with_selected_sections_only_computes_selected_data(
