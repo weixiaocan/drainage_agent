@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from agent.deps import AgentDeps, SessionState
+from agent.tools.analysis_tools import _resolve_implicit_flow_year, _resolve_implicit_rainfall_year
+from analysis import io
 from agent.tools.report_tool import REPORT_RAINFALL_SECTIONS, REPORT_RAINY_RISK_SECTIONS, _section_requested
 from agent.types import ToolResult, needs_input, ok
 
@@ -49,7 +51,7 @@ def set_analysis_scope_impl(
     if points:
         session.focus_points = [str(point).strip().upper() for point in points if str(point).strip()]
     if start is not None or end is not None:
-        session.time_window = [start, end]
+        session.time_window = list(_resolve_implicit_flow_year(deps, start, end))
     return ok(f"当前会话分析范围：{describe_scope(session)}。", scope=describe_scope(session))
 
 
@@ -61,6 +63,17 @@ def apply_session_scope(deps: AgentDeps, tool_name: str, args: dict[str, Any]) -
     """
     session = deps.session
     notes: list[str] = []
+    if tool_name in TIME_TOOLS and (args.get("start") is not None or args.get("end") is not None):
+        resolved = _resolve_implicit_flow_year(deps, args.get("start"), args.get("end"))
+        if list(resolved) != [args.get("start"), args.get("end")]:
+            args["start"], args["end"] = resolved
+            notes.append(f"日期年份按数据修正为 {resolved[0] or '数据起点'} 至 {resolved[1] or '数据终点'}")
+    if tool_name == "analyze_rainfall" and args.get("time_range"):
+        rain = io.load_rain(root=deps.paths.root)
+        resolved_range = _resolve_implicit_rainfall_year(deps, rain, list(args["time_range"]))
+        if list(resolved_range) != list(args["time_range"]):
+            args["time_range"] = list(resolved_range)
+            notes.append(f"日期年份按数据修正为 {resolved_range[0]} 至 {resolved_range[1]}")
     if session.focus_points and tool_name in POINT_TOOLS and "points" in args and not args["points"]:
         args["points"] = list(session.focus_points)
         notes.append(f"点位按会话范围补全为 {'、'.join(session.focus_points)}")

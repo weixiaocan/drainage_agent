@@ -112,6 +112,18 @@ def _coverage_guard_result(
     covered: list[str],
     excluded: list[dict[str, str]],
 ) -> ToolResult | None:
+    # Missing rainfall data or unknown event ids must not be reported as "no monitoring data at this point".
+    events = _load_event_table(deps)
+    if events.empty:
+        return error("缺少降雨数据，无法识别降雨场次。请先导入降雨数据后再做雨天分析。")
+    unknown = sorted({int(event_id) for event_id in event_ids} - set(events["event_id"].astype(int)))
+    if unknown:
+        return needs_input(
+            "event_ids",
+            "请从现有降雨场次中选择。",
+            summary=f"降雨数据中不存在场次 {unknown}（共识别 {len(events)} 场）。",
+            options=_event_options(events),
+        )
     if covered:
         return None
     deps.session.unavailable_event_ids = sorted(

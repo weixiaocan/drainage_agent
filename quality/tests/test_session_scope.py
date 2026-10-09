@@ -85,3 +85,27 @@ def test_agent_applies_recorded_scope_to_a_later_tool_call(tmp_path: Path, monke
     assert captured == [{"scope": "dry", "event_ids": None, "points": ["W1", "W6"], "start": None, "end": None, "export": False}]
     risk_return = [p for p in seen if isinstance(p, ToolReturnPart) and p.tool_name == "assess_risk"][0]
     assert "按会话范围" in risk_return.content["summary"]
+
+
+def test_implicit_years_follow_the_data_before_tools_run(tmp_path: Path) -> None:
+    from quality.tests.test_agent_tools_pytest import write_sample_data
+
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)  # flow and rainfall data are in 2026
+    deps.session.current_user_prompt = "生成 W1 在 1 月 1 日的报告"  # no year typed by the user
+
+    args = {"points": ["W1"], "start": "2024-01-01", "end": "2024-01-01", "sections": None}
+    notes, _ = apply_session_scope(deps, "check_data", args)
+    assert args["start"].startswith("2026-01-01") and any("年份" in note for note in notes)
+
+    rain_args = {"time_range": ["2024-01-01", "2024-01-02"]}
+    apply_session_scope(deps, "analyze_rainfall", rain_args)
+    assert all(value.startswith("2026") for value in rain_args["time_range"])
+
+    set_analysis_scope_impl(deps, start="2024-01-01", end="2024-01-31")
+    assert all(value.startswith("2026") for value in deps.session.time_window)
+
+    deps.session.current_user_prompt = "看 2024 年 1 月"  # an explicit year is kept
+    explicit = {"start": "2024-01-01", "end": "2024-01-31"}
+    apply_session_scope(deps, "check_data", explicit)
+    assert explicit == {"start": "2024-01-01", "end": "2024-01-31"}

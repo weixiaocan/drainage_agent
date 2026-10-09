@@ -1029,6 +1029,7 @@ def test_requested_event_response_and_rdii_are_written_to_combined_workbook(
         "_event_data_coverage",
         lambda *_args, **_kwargs: (pd.DataFrame(), pd.DataFrame(), ["W1", "W2"], []),
     )
+    patch_tools(monkeypatch, "_load_event_table", lambda _deps: pd.DataFrame({"event_id": [1]}))
 
     result = generate_report_impl(
         deps,
@@ -1573,6 +1574,7 @@ def test_window_report_uses_global_event_ids(
 
     patch_tools(monkeypatch,"analyze_rainfall_impl", fake_rain)
     patch_tools(monkeypatch,"assess_risk_impl", fake_risk)
+    patch_tools(monkeypatch, "_load_event_table", lambda _deps: pd.DataFrame({"event_id": [6]}))
     patch_tools(monkeypatch,
         "_event_data_coverage",
         lambda *_args, **_kwargs: (
@@ -1735,3 +1737,24 @@ def test_risk_without_site_geometry_is_not_reported_as_safe() -> None:
     assert dry["running_risk"] == MISSING_DIAMETER
     assert dry["overflow_risk"] == MISSING_DEPTH
     assert pd.isna(rainy["overflow_value"]) and rainy["overflow_risk"] == MISSING_DEPTH
+
+
+def test_rain_analysis_without_rainfall_data_says_so(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+    deps.paths.rainfall_file.unlink()
+
+    result = analyze_rdii_impl(deps, event_ids=[6], points=["W1"])
+
+    assert result["status"] == "error"
+    assert "缺少降雨数据" in result["summary"]
+
+
+def test_unknown_event_id_lists_the_real_events(tmp_path: Path) -> None:
+    deps = make_deps(tmp_path)
+    write_sample_data(deps)
+
+    result = analyze_event_response_impl(deps, event_ids=[99], points=["W1"])
+
+    assert result["status"] == "needs_input"
+    assert "不存在场次 [99]" in result["summary"]
