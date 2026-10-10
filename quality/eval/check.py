@@ -564,35 +564,36 @@ def check_report_has_independent_curve_images(case: CaseRecord, ctx: CheckContex
     reports = [path for path in _report_paths(case) if path.suffix.lower() == ".docx"]
     if not reports:
         return [result(case, name, "artifact", "skip", "no docx report artifact found")]
-    sections = _report_params(case).get("sections")
-    if isinstance(sections, list) and sections and not any(
-        any(marker in str(section) for marker in ("旱天", "排污规律", "特征曲线"))
-        for section in sections
-    ):
-        return [result(case, name, "artifact", "skip", "report has no dry-weather curve section")]
-    expected_points = _expected_points_for_report(case, ctx)
-    if not expected_points:
-        return [result(case, name, "artifact", "skip", "no expected report points resolved")]
     generated = case.root / "results" / "generated"
-    curve_files = (
-        sorted(path for path in generated.rglob("*.png") if path.is_file())
+    curve_names = (
+        {path.name for path in generated.rglob("*.png") if path.is_file()}
         if generated.exists()
-        else []
+        else set()
     )
+    by_file = _report_args_by_file(case)
     missing: list[str] = []
-    for point in expected_points:
-        flow = [path for path in curve_files if path.name == f"{point}_流量特征曲线.png"]
-        level = [path for path in curve_files if path.name == f"{point}_液位特征曲线.png"]
-        if not flow:
-            missing.append(f"{point} flow")
-        if not level:
-            missing.append(f"{point} level")
     shape_failures: list[str] = []
-    minimum_curve_images = 2 * len(expected_points)
+    expected_points: list[str] = []
     for report in reports:
+        args = _args_for_report(case, report, by_file)
+        if not _has_curve_section(args.get("sections")):
+            continue
+        points = args.get("points")
+        report_points = (
+            sorted({str(point).upper() for point in points})
+            if isinstance(points, list) and points
+            else _expected_points_for_report(case, ctx)
+        )
+        expected_points.extend(point for point in report_points if point not in expected_points)
+        for point in report_points:
+            for kind, label in (("流量", "flow"), ("液位", "level")):
+                if f"{point}_{kind}特征曲线.png" not in curve_names and f"{point} {label}" not in missing:
+                    missing.append(f"{point} {label}")
         count = _inline_shape_count(report)
-        if count < minimum_curve_images:
-            shape_failures.append(f"{report.name}: inline images {count} < expected curve images {minimum_curve_images}")
+        if count < 2 * len(report_points):
+            shape_failures.append(f"{report.name}: inline images {count} < expected curve images {2 * len(report_points)}")
+    if not expected_points:
+        return [result(case, name, "artifact", "skip", "no report with a dry-weather curve section")]
     if missing or shape_failures:
         pieces = []
         if missing:
@@ -636,22 +637,41 @@ def _section_kinds(sections: Any) -> set[str]:
         selected.add("risk")
     if any(token in text for token in ("监测", "概况", "数据质量")):
         selected.add("monitoring")
+    if selected and "rainfall" not in selected and "monitoring" not in selected:
+        # generate_report adds the monitoring overview to every dry-weather-only report.
+        selected.add("monitoring")
     return selected
 
 
-def _report_sections_by_file(case: CaseRecord) -> dict[str, Any]:
-    """Map each report file name to the sections of the generate_report call that wrote it."""
-    sections_by_call: dict[str, Any] = {}
-    by_file: dict[str, Any] = {}
+def _has_curve_section(sections: Any) -> bool:
+    if not isinstance(sections, list) or not sections:
+        return True
+    return any(
+        "排污规律" in str(section) or "特征曲线" in str(section)
+        or ("旱天" in str(section) and "风险" not in str(section))
+        for section in sections
+    )
+
+
+def _report_args_by_file(case: CaseRecord) -> dict[str, dict[str, Any]]:
+    """Map each report file name to the arguments of the generate_report call that wrote it."""
+    args_by_call: dict[str, dict[str, Any]] = {}
+    by_file: dict[str, dict[str, Any]] = {}
     for event in _trace_events(case):
         if event.get("tool_name") != "generate_report":
             continue
         if event.get("event") == "tool_call":
-            sections_by_call[str(event.get("call_id"))] = (event.get("args") or {}).get("sections")
+            args_by_call[str(event.get("call_id"))] = event.get("args") or {}
         elif event.get("event") == "tool_result" and event.get("status") == "ok":
             for artifact in event.get("artifacts") or []:
-                by_file[Path(str(artifact)).name] = sections_by_call.get(str(event.get("call_id")))
+                by_file[Path(str(artifact)).name] = args_by_call.get(str(event.get("call_id")), {})
     return by_file
+
+
+def _args_for_report(case: CaseRecord, report: Path, by_file: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    # Each report is judged by the request that produced it; a later request must not
+    # retroactively fail an earlier report. Without a trace, fall back to the latest call.
+    return by_file.get(report.name) or _report_params(case)
 
 
 def check_report_excludes_unselected_sections(case: CaseRecord, ctx: CheckContext) -> list[CheckResult]:
@@ -659,14 +679,11 @@ def check_report_excludes_unselected_sections(case: CaseRecord, ctx: CheckContex
     reports = [path for path in _report_paths(case) if path.suffix.lower() == ".docx"]
     if not reports:
         return [result(case, name, "artifact", "skip", "no docx report artifact found")]
-    # Each report is judged by the request that produced it; a later request must not
-    # retroactively fail an earlier full report.
-    by_file = _report_sections_by_file(case)
-    fallback = _report_params(case).get("sections")
+    by_file = _report_args_by_file(case)
     failures: list[str] = []
     checked: list[str] = []
     for report in reports:
-        selected = _section_kinds(by_file.get(report.name, fallback))
+        selected = _section_kinds(_args_for_report(case, report, by_file).get("sections"))
         if not selected:
             continue
         checked.append(report.name)
@@ -700,13 +717,20 @@ def check_report_period_matches_real_data_bounds(case: CaseRecord, ctx: CheckCon
         return [result(case, name, "artifact", "skip", "no docx report artifact found")]
     if ctx.flow_start is None or ctx.flow_end is None:
         return [result(case, name, "artifact", "skip", "real flow data bounds unavailable")]
-    params = _report_params(case)
-    if params.get("start") or params.get("end"):
-        return [result(case, name, "artifact", "skip", "report has explicit start/end; skip full-period guard for baseline compatibility")]
     start_forms = _date_forms(ctx.flow_start)
     end_forms = _date_forms(ctx.flow_end)
+    by_file = _report_args_by_file(case)
     failures: list[str] = []
+    checked: list[str] = []
     for report in reports:
+        args = _args_for_report(case, report, by_file)
+        # Only full-period reports with a monitoring overview are expected to state the data bounds.
+        if args.get("start") or args.get("end"):
+            continue
+        kinds = _section_kinds(args.get("sections"))
+        if kinds and "monitoring" not in kinds:
+            continue
+        checked.append(report.name)
         text = _document_text(report)
         has_start = any(form in text for form in start_forms)
         has_end = any(form in text for form in end_forms)
@@ -716,6 +740,8 @@ def check_report_period_matches_real_data_bounds(case: CaseRecord, ctx: CheckCon
             )
     if failures:
         return [result(case, name, "artifact", "fail", " | ".join(failures))]
+    if not checked:
+        return [result(case, name, "artifact", "skip", "no full-period report with a monitoring overview")]
     return [result(case, name, "artifact", "pass", f"report contains real flow bounds {ctx.flow_start.date()} to {ctx.flow_end.date()}")]
 
 

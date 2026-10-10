@@ -199,7 +199,10 @@ def _data_span(flow: pd.DataFrame) -> dict[str, str | None]:
 def _data_span_note(coverage: dict[str, str | None], what: str) -> str:
     if coverage.get("data_start") is None:
         return f"所选点位没有任何{what}。"
-    return f"所选点位的{what}实际覆盖 {coverage['data_start']} 至 {coverage['data_end']}。"
+    return (
+        f"所选点位的{what}实际覆盖 {coverage['data_start']} 至 {coverage['data_end']}；"
+        "是否改用该时段由用户决定，不要自行改用。"
+    )
 
 
 def _window_coverage_guard_result(
