@@ -33,7 +33,8 @@ def test_missing_arguments_are_filled_and_explicit_ones_win(tmp_path: Path) -> N
 
     explicit = {"points": ["W4"], "start": "2026-03-08", "end": None}
     notes, _ = apply_session_scope(deps, "analyze_patterns", explicit)
-    assert explicit == {"points": ["W4"], "start": "2026-03-08", "end": None} and notes == []
+    assert explicit == {"points": ["W4"], "start": "2026-03-08", "end": None}
+    assert len(notes) == 2 and "未记入会话范围" in notes[0]
 
     rainfall = {"time_range": None}
     apply_session_scope(deps, "analyze_rainfall", rainfall)
@@ -140,3 +141,19 @@ def test_scope_recorded_in_the_same_step_reaches_sibling_tool_calls(tmp_path: Pa
     assert captured and (captured[0]["start"], captured[0]["end"]) == ("2026-02-01", "2026-02-28")
     result = [p for p in seen if isinstance(p, ToolReturnPart) and p.tool_name == "analyze_patterns"][0]
     assert "本次实际时间范围：2026-02-01 至 2026-02-28" in result.content["summary"]
+
+
+def test_window_given_only_in_a_tool_call_is_flagged_as_unrecorded(tmp_path: Path) -> None:
+    from agent.tools.scope_tool import apply_session_scope, set_analysis_scope_impl
+
+    deps = make_deps(tmp_path)
+    args = {"points": ["W1"], "start": "2026-03-11", "end": None}
+
+    notes, blocked = apply_session_scope(deps, "generate_report", args)
+
+    assert blocked is None
+    assert any("未记入会话范围" in note for note in notes)
+
+    set_analysis_scope_impl(deps, start="2026-03-11")
+    notes, _ = apply_session_scope(deps, "generate_report", {"points": ["W1"], "start": "2026-03-11", "end": None})
+    assert not any("未记入会话范围" in note for note in notes)

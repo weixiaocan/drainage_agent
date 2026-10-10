@@ -665,7 +665,7 @@ def build_agent(deps: AgentDeps) -> Any:
             points: list[str] | None = None,
             export: bool = False,
         ) -> dict:
-            """统计降雨事件期间各点位响应指标；event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表。"""
+            """统计降雨事件期间（含雨后 12 小时）各点位的最大液位、平均流量和峰值流量。用户问某场雨的“响应”、雨天流量或液位变化时用这个工具，会话口径为只看旱天时也照常使用。event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表。"""
             args = {"event_ids": event_ids, "points": points, "export": export}
             return traced_tool(ctx, "analyze_event_response", args, lambda: analyze_event_response_impl(ctx.deps, **args))
 
@@ -690,7 +690,7 @@ def build_agent(deps: AgentDeps) -> Any:
             output: str = "all",
             export: bool = False,
         ) -> dict:
-            """计算指定降雨事件的 RDII 指标；event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表和 RDII 曲线 PNG 图。"""
+            """计算指定降雨事件的 RDII（雨水入流入渗量，即雨天流量超出旱天基线的部分）。只在用户问 RDII、入流入渗时使用；问“响应”用 analyze_event_response。event_ids 未给时返回 needs_input。export=true 时生成可下载的 CSV 结果表和 RDII 曲线 PNG 图。"""
             args = {"event_ids": event_ids, "points": points, "output": output, "export": export}
             return traced_tool(ctx, "analyze_rdii", args, lambda: analyze_rdii_impl(ctx.deps, **args))
 

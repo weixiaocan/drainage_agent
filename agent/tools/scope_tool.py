@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
+
 from agent.deps import AgentDeps, SessionState
 from agent.tools.analysis_tools import _resolve_implicit_flow_year, _resolve_implicit_rainfall_year
 from analysis import io
@@ -68,6 +70,9 @@ def apply_session_scope(deps: AgentDeps, tool_name: str, args: dict[str, Any]) -
         if list(resolved) != [args.get("start"), args.get("end")]:
             args["start"], args["end"] = resolved
             notes.append(f"日期年份按数据修正为 {resolved[0] or '数据起点'} 至 {resolved[1] or '数据终点'}")
+        if not _same_window((args.get("start"), args.get("end")), session.time_window):
+            # A window given only in a tool call is forgotten next turn unless it is recorded.
+            notes.append("本次时间窗未记入会话范围；如这是用户要求的范围，调用 set_analysis_scope 记录，后续沿用")
     if tool_name == "analyze_rainfall" and args.get("time_range"):
         rain = io.load_rain(root=deps.paths.root)
         resolved_range = _resolve_implicit_rainfall_year(deps, rain, list(args["time_range"]))
@@ -101,6 +106,19 @@ def apply_session_scope(deps: AgentDeps, tool_name: str, args: dict[str, Any]) -
     if notes:
         notes.append("如用户要求其他范围，先调用 set_analysis_scope 修改")
     return notes, None
+
+
+def _same_window(window: tuple[Any, Any], recorded: Any) -> bool:
+    if not recorded:
+        return False
+
+    def day(value: Any) -> Any:
+        return None if value is None else pd.Timestamp(value).normalize()
+
+    try:
+        return [day(value) for value in window] == [day(value) for value in recorded]
+    except (TypeError, ValueError):
+        return False
 
 
 def used_range_note(tool_name: str, args: dict[str, Any]) -> list[str]:
