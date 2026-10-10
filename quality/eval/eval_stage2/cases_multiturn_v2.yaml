@@ -759,10 +759,9 @@
     expected:
       tools:
         must_call: []
-        must_not_call:
-        - analyze_patterns
+        must_not_call: []
       arguments: ''
-      response: 继承排污规律和全网范围，替换为2月上旬后仍拒绝
+      response: 继承排污规律和全网范围，替换为2月上旬；可以调用工具核实，但无覆盖时不得给出分析结果，应说明实际覆盖时段
       inherited:
       - task
       - points=all
