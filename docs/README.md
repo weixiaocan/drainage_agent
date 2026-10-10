@@ -12,5 +12,6 @@
 - `ANALYSIS_RUN_CONTRACT.md`：分析运行的输入、身份、版本和复用契约。
 - `REPORT_TEMPLATE_CONTRACT.md`：自定义报告模板的占位符契约。
 - `PERFORMANCE.md`：性能与容量基线。
+- `DEPLOY_DEMO.md`：公开演示环境的部署、升级、验证和回滚步骤。
 
 README 只描述已实现的行为；未实现的目标写在 `NEXT_VERSION_ISSUES.md`。

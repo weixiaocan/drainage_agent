@@ -191,6 +191,7 @@ var/               本地运行状态，不作为源码发布内容
 - [报告模板契约](docs/REPORT_TEMPLATE_CONTRACT.md)
 - [评测策略](docs/EVALUATION.md)
 - [性能基线](docs/PERFORMANCE.md)
+- [公开演示部署](docs/DEPLOY_DEMO.md)
 - [架构决策](docs/adr/)
 
 ## License

@@ -1,0 +1,39 @@
+# Public demo overrides on top of docker-compose.yml. See docs/DEPLOY_DEMO.md.
+#   docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+services:
+  drainage-agent:
+    container_name: drainage-agent-demo
+    # Reached only through the reverse proxy network; no host port.
+    ports: !reset []
+    environment:
+      DRAINAGE_DEMO_MODE: "true"
+    volumes: !override
+      - drainage-demo-state:/app/var
+      - sandbox-jobs:/var/lib/sandbox-jobs
+    networks:
+      - default
+      - public-proxy
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.5
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  sandbox-controller:
+    restart: unless-stopped
+
+networks:
+  public-proxy:
+    external: true
+    name: ${DEMO_PROXY_NETWORK:?set DEMO_PROXY_NETWORK to the reverse proxy network}
+
+volumes:
+  drainage-demo-state:
