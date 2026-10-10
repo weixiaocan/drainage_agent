@@ -22,6 +22,9 @@ DRAINAGE_DEMO_REQUESTS_PER_MINUTE=3
 DRAINAGE_DEMO_MAX_CONCURRENT_CHATS=2
 DRAINAGE_DEMO_DAILY_CHATS_PER_VISITOR=20
 DRAINAGE_DEMO_DAILY_CHATS_TOTAL=300
+# 可选：构建时使用的 pip 镜像（国内服务器访问 PyPI 很慢时设置）
+PIP_INDEX_URL=http://mirrors.tencentyun.com/pypi/simple
+PIP_TRUSTED_HOST=mirrors.tencentyun.com
 ```
 
 `COMPOSE_PROJECT_NAME` 必须与沙箱任务卷的前缀一致，控制器按 `<项目名>_sandbox-jobs` 挂载任务卷。
@@ -30,8 +33,9 @@ DRAINAGE_DEMO_DAILY_CHATS_TOTAL=300
 
 ```bash
 cd /opt/apps/drainage-agent
-git pull --ff-only
-docker build -f Dockerfile.sandbox -t drainage-python-sandbox:local .
+git pull --ff-only   # 服务器连不上 GitHub 时，可在本机 git bundle 后用 scp 传过去再 git fetch
+set -a; . ./.env; set +a
+docker build --build-arg PIP_INDEX_URL --build-arg PIP_TRUSTED_HOST \n  -f Dockerfile.sandbox -t drainage-python-sandbox:local .
 # 镜像 ID 变化时更新 .env 中的 SANDBOX_IMAGE_DIGEST
 docker image inspect drainage-python-sandbox:local --format '{{.Id}}'
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build

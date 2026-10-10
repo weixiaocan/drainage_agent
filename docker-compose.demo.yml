@@ -3,6 +3,10 @@
 services:
   drainage-agent:
     container_name: drainage-agent-demo
+    build:
+      args:
+        - PIP_INDEX_URL
+        - PIP_TRUSTED_HOST
     # Reached only through the reverse proxy network; no host port.
     ports: !reset []
     environment:
@@ -28,6 +32,10 @@ services:
       start_period: 60s
 
   sandbox-controller:
+    build:
+      args:
+        - PIP_INDEX_URL
+        - PIP_TRUSTED_HOST
     restart: unless-stopped
 
 networks:
