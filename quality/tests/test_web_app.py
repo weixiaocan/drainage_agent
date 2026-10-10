@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from agent.core import build_agent
+
 import logging
 from pathlib import Path
 from typing import Any
@@ -125,6 +127,45 @@ def test_demo_mode_blocks_data_mutation_and_exposes_health(
         limited = demo_client.post("/api/chat", json={"message": ""})
         assert limited.status_code == 429
         assert limited.headers["retry-after"] == "60"
+
+
+def test_demo_mode_caps_daily_chats_per_visitor_and_site(
+    tmp_path: Path,
+    fake_agent: FakeAgent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRAINAGE_DEMO_MODE", "true")
+    monkeypatch.setenv("DRAINAGE_DEMO_REQUESTS_PER_MINUTE", "100")
+    monkeypatch.setenv("DRAINAGE_DEMO_DAILY_CHATS_PER_VISITOR", "2")
+    monkeypatch.setenv("DRAINAGE_DEMO_DAILY_CHATS_TOTAL", "3")
+    app = create_app(tmp_path, deps_factory=make_deps, agent_factory=lambda _deps: fake_agent)
+
+    def ask(ip: str):
+        return demo_client.post("/api/chat", json={"message": ""}, headers={"x-forwarded-for": ip})
+
+    with TestClient(app) as demo_client:
+        assert ask("1.1.1.1").status_code == 400
+        assert ask("1.1.1.1").status_code == 400
+        visitor_limited = ask("1.1.1.1")
+        assert visitor_limited.status_code == 429
+        assert "每人每天 2 次" in visitor_limited.json()["detail"]
+        assert ask("2.2.2.2").status_code == 400
+        site_limited = ask("3.3.3.3")
+        assert site_limited.status_code == 429
+        assert "全站" in site_limited.json()["detail"]
+
+
+def test_demo_mode_keeps_run_python(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent.deps import AgentSettings
+    from quality.tests.test_agent_tools_pytest import make_deps as make_tool_deps
+
+    monkeypatch.setenv("DRAINAGE_DEMO_MODE", "true")
+    deps = make_tool_deps(tmp_path)
+    deps.settings = AgentSettings(model="test", base_url="https://api.example.test/v1", api_key="test-key-not-used")
+
+    agent = build_agent(deps)._inner._inner
+
+    assert "run_python" in agent._function_toolset.tools
 
 
 def test_index_renders_agent_markdown(client: TestClient) -> None:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import uuid
 from time import monotonic
 from pathlib import Path
@@ -768,9 +767,6 @@ def build_agent(deps: AgentDeps) -> Any:
             args = {"purpose": purpose, "code": code, "inputs": inputs,
                     "outputs": outputs, "overwrite": overwrite}
             return traced_tool(ctx, "run_python", args, lambda: run_python_impl(ctx.deps, **args))
-
-        if os.getenv("DRAINAGE_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}:
-            agent._function_toolset.tools.pop("run_python", None)
 
         return _PythonApprovalAgent(_FilterConfirmationAgent(agent))
     except ImportError as exc:

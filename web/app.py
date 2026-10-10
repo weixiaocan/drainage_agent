@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict, deque
 from copy import copy
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from threading import Lock
@@ -35,6 +36,9 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+DEMO_TIMEZONE = timezone(timedelta(hours=8))
 
 
 def _demo_request_is_blocked(method: str, path: str) -> bool:
@@ -107,6 +111,12 @@ def create_app(
     app.state.demo_max_concurrent_chats = max(
         1, int(os.getenv("DRAINAGE_DEMO_MAX_CONCURRENT_CHATS", "2"))
     )
+    app.state.demo_daily_per_visitor = max(
+        1, int(os.getenv("DRAINAGE_DEMO_DAILY_CHATS_PER_VISITOR", "20"))
+    )
+    app.state.demo_daily_total = max(1, int(os.getenv("DRAINAGE_DEMO_DAILY_CHATS_TOTAL", "300")))
+    app.state.demo_daily_day = None
+    app.state.demo_daily_counts = defaultdict(int)
 
     @app.middleware("http")
     async def public_demo_guard(request: Request, call_next: Callable[..., Any]) -> Response:
@@ -134,6 +144,22 @@ def create_app(
                     content={"detail": "演示请求过于频繁，请一分钟后再试。"},
                     headers={"Retry-After": "60"},
                 )
+            # Daily quotas cap model cost; counts live in memory and restart with the process.
+            today = datetime.now(DEMO_TIMEZONE).date()
+            if app.state.demo_daily_day != today:
+                app.state.demo_daily_day = today
+                app.state.demo_daily_counts = defaultdict(int)
+            counts = app.state.demo_daily_counts
+            if counts[client_ip] >= app.state.demo_daily_per_visitor:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": f"今天的演示提问次数已用完（每人每天 {app.state.demo_daily_per_visitor} 次），请明天再来。"},
+                )
+            if sum(counts.values()) >= app.state.demo_daily_total:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "今天全站的演示提问次数已用完，请明天再来。"},
+                )
             if app.state.demo_active_chats >= app.state.demo_max_concurrent_chats:
                 return JSONResponse(
                     status_code=503,
@@ -141,6 +167,7 @@ def create_app(
                     headers={"Retry-After": "10"},
                 )
             hits.append(now)
+            counts[client_ip] += 1
             app.state.demo_active_chats += 1
         try:
             return await call_next(request)
