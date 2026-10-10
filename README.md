@@ -127,7 +127,7 @@ GLM_MODEL=glm-5.2
 
 发布基线包括：
 
-- 377 项通过、15 项按环境跳过的 pytest 单元与集成测试（含用脚本化模型驱动的端到端 Agent 测试）；
+- 380 项通过、15 项按环境跳过的 pytest 单元与集成测试（含用脚本化模型驱动的端到端 Agent 测试）；
 - 12/12 确定性 `run_python` 安全 Eval，以及显式启用后 14 项真实 Docker 沙箱测试（13 项攻击 + 1 项 prelude 执行）；
 - Agent Eval（deepseek-chat，2026-10-09，在 Docker Compose 部署内运行，`run_python` 用例真实执行沙箱，逐条人工判定）：
   - 单轮 40 条：40 条通过（会话范围与提示词重构前为 39 条）；
@@ -146,7 +146,7 @@ python -m quality.eval.eval_stage2.run_eval quality/eval/eval_stage2/cases_multi
 docker build -t drainage-agent .
 ```
 
-完整策略和证据见 [评测策略](docs/EVALUATION.md) 与 [v1.0 发布验收](docs/RELEASE_READINESS.md)。需要真实模型并产生费用的 CI 冒烟只在 GitHub Actions 中手动触发。
+完整策略见 [评测策略](docs/EVALUATION.md)。需要真实模型并产生费用的 CI 冒烟只在 GitHub Actions 中手动触发。
 
 ## 项目结构
 
@@ -161,8 +161,8 @@ web/routes/        按业务分组的 API 路由
 app/               Web 与 CLI 启动入口
 resources/         脱敏演示数据和内置报告模板
 quality/tests/     pytest 单元与集成测试
-quality/eval/      Agent Eval 题库、运行器、总结和 HTML 证据
-docs/              产品、契约、架构决策、评测和发布文档
+quality/eval/      Agent Eval 题库、运行器和自动检查
+docs/              架构、契约、架构决策和评测文档
 var/               本地运行状态，不作为源码发布内容
 ```
 
@@ -184,7 +184,6 @@ var/               本地运行状态，不作为源码发布内容
 ## 文档
 
 - [架构说明](docs/ARCHITECTURE.md)
-- [产品规格](docs/PRD.md)
 - [领域词汇](CONTEXT.md)
 - [标准数据契约](docs/STANDARD_DATA_CONTRACT.md)
 - [报告模板契约](docs/REPORT_TEMPLATE_CONTRACT.md)

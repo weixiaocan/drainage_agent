@@ -28,7 +28,7 @@ var/projects/{project_id}/batches/{batch_id}/standard/
 └── sites.csv
 ```
 
-`flow.csv` 和筛选基线沿用 Ticket 07 的公共接口。降雨、事件响应、RDII
+`flow.csv` 和筛选基线沿用标准数据契约的公共接口。降雨、事件响应、RDII
 读取 `rainfall.csv`；风险分析按范围读取所需输入。Web 和 Agent 只传递
 `AnalysisRequest`，不自行计算基线身份或绕过前置条件。
 
@@ -65,6 +65,5 @@ var/projects/{project_id}/batches/{batch_id}/results/{algorithm}/{run_id}/result
 
 ## 集成边界
 
-Ticket 05 的导入画像和映射建议不属于分析身份。Ticket 09 只迁移上述核心
-分析，不引入外部队列或通用工作流引擎。后续分析必须通过扩展 Runner 的
+导入画像和映射建议不属于分析身份。分析运行不引入外部队列或通用工作流引擎。后续分析必须通过扩展 Runner 的
 请求验证、算法版本及处理器接入，不得在 Web 或 Agent 新建第二套状态机。

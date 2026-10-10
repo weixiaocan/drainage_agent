@@ -1,25 +1,16 @@
 # 项目文档
 
-## 当前权威文档
-
-- `ARCHITECTURE.md`：当前代码的模块划分、一轮对话的执行路径和代码强制的门禁。
-- `PRD.md`：成熟开源版本的产品规格、用户故事、范围和验收要求。
+- `../README.md`：安装、运行、评测结果和安全边界。
+- `ARCHITECTURE.md`：模块划分、一轮对话的执行路径和代码强制的门禁。
 - `../CONTEXT.md`：排水监测分析领域的统一业务语言。
 - `adr/`：已经确认且需要长期保留原因的架构决策。
-- `EVALUATION.md`：项目级评测策略、测试分层和发布门槛。
-- `RELEASE_READINESS.md`：v1.0 发布验收结论、证据和剩余门禁。
-- `NEXT_VERSION_ISSUES.md`：v1.0 之后待规划的产品与工程升级事项。
-- `RUN_PYTHON_SECURITY_SPEC.md`：当前 `run_python` 强制执行的安全不变量和部署要求。
+- `EVALUATION.md`：评测策略、测试分层和发布门槛。
+- `NEXT_VERSION_ISSUES.md`：待规划的产品与工程升级事项。
+- `RUN_PYTHON_SECURITY_SPEC.md`：`run_python` 强制执行的安全不变量和部署要求。
 - `RUN_PYTHON_THREAT_MODEL.md`：模型代码执行的资产、攻击面、信任边界和残余风险。
-- `adr/0015-isolate-model-generated-python.md`：隔离模型生成 Python 的架构决策。
-- `STANDARD_DATA_CONTRACT.md`：批次标准流量数据的 v1 文件格式、manifest 和公开读取契约。
+- `STANDARD_DATA_CONTRACT.md`：标准流量数据的文件格式、manifest 和公开读取契约。
+- `ANALYSIS_RUN_CONTRACT.md`：分析运行的输入、身份、版本和复用契约。
+- `REPORT_TEMPLATE_CONTRACT.md`：自定义报告模板的占位符契约。
+- `PERFORMANCE.md`：性能与容量基线。
 
-## 运行文档
-
-- `../README.md`：当前版本的安装、运行和工具说明。
-
-## 历史材料
-
-- `history/EVAL_V2_RETROSPECTIVE.md`：主体功能开发阶段的评测过程与经验总结，不代表当前发布基线。
-
-发生冲突时，领域词汇和已接受的 ADR 优先于 PRD；PRD 优先于历史材料。README 应描述当前已实现行为，不能把 PRD 中尚未实现的目标写成现有能力。
+README 只描述已实现的行为；未实现的目标写在 `NEXT_VERSION_ISSUES.md`。

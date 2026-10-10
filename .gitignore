@@ -19,3 +19,6 @@ quality/eval/*/results.jsonl
 quality/eval/*/results.jsonl.tmp
 .scratch/capacity/
 .scratch/*.log
+quality/eval/*/report_*.html
+quality/eval/*/results_*.jsonl
+quality/eval/*/results_*_checks.json

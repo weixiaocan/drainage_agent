@@ -119,8 +119,8 @@ Eval schema v2 在此基础上额外保存场景维度、隔离环境配置、�
 |---|---|---|
 | 确定性能力 | 已建立 | `quality/tests/` 覆盖领域计算、状态门禁、项目隔离、后台任务、报告和持久化；发布前仍须以当次 pytest 结果确认。 |
 | Web 前后端连通 | 已完成人工验收 | FastAPI `TestClient` 已覆盖主要接口与页面返回行为，真实浏览器业务流程已人工验收；Playwright/Selenium 自动化属于可选的长期维护增强。 |
-| 单轮 Agent Eval | 已完成基线 | schema v2 正式题库 40 条，最终人工总结见 `single_turn_final_summary.json`。 |
-| 多轮 Agent Eval | 已完成基线 | schema v2 正式题库 15 组，最终人工总结见 `multiturn_final_summary.json`。 |
+| 单轮 Agent Eval | 已完成基线 | schema v2 正式题库 40 条，最新结果见 README“质量与评测”。 |
+| 多轮 Agent Eval | 已完成基线 | schema v2 正式题库 15 组，最新结果见 README“质量与评测”。 |
 | 真实端到端验收 | 已完成人工验收 | 已完成真实模型 CI 冒烟和真实 Web 演示；将其固化为自动化 E2E 属于可选的长期维护增强，不是当前演示版发布阻塞项。 |
 
 ### `run_python` 安全升级证据（2026-08-14）
@@ -202,7 +202,3 @@ GitHub Actions 的 `Quality Gate` 分成两个层级：
 - 真实模型 CI 冒烟集通过 `workflow_dispatch` 手动触发。它需要仓库 Secret `AGENT_API_KEY`，可选配置 `AGENT_BASE_URL` 和 `AGENT_MODEL`；运行结束后保存 JSONL 结果与客观检查文件 30 天。
 
 完整 40 条单轮和 15 条多轮评测仍在版本发布前手动运行。日常修改只在线复测受影响场景；历史故障对应的确定性规则必须由 pytest 长期保护。
-
-## 历史材料
-
-主体功能开发阶段的详细评测过程保存在 `docs/history/EVAL_V2_RETROSPECTIVE.md`。其中的通过率、问题清单和阶段结论仅代表当时状态，不是当前发布基线。

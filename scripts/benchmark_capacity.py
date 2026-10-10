@@ -39,7 +39,7 @@ def benchmark(root: Path, *, points: int, days: int) -> dict[str, object]:
         lambda: generate(source, points=points, days=days)
     )
     projects = ProjectRepository(database, files)
-    project = projects.create("Ticket 13 合成容量基准")
+    project = projects.create("合成容量基准")
     batch = projects.create_batch(project.id, "容量基准批次")
     importer = BatchDataImporter(database, files)
     content = source.read_bytes()
