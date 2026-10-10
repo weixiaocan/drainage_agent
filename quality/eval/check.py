@@ -19,7 +19,9 @@ if str(PROJECT) not in sys.path:
 from analysis.io import load_flow, load_rain, load_sites
 
 
-Status = Literal["pass", "fail", "skip"]
+# "warn" marks efficiency or style deviations (an extra tool, an extra question) that do not
+# make the result wrong; only "fail" counts against the pass rate.
+Status = Literal["pass", "warn", "fail", "skip"]
 Basis = Literal["trace", "artifact"]
 
 ANALYSIS_TOOLS = {
@@ -523,7 +525,7 @@ def check_single_analysis_no_unrelated_tools(case: CaseRecord, ctx: CheckContext
             if rainy_event_risk:
                 allowed.add("analyze_event_response")
         bad = [call.tool for call in turn.tool_calls if call.tool in ANALYSIS_TOOLS and call.tool not in allowed]
-        status: Status = "fail" if bad else "pass"
+        status: Status = "warn" if bad else "pass"
         reason = f"unrelated analysis tools called: {bad}; intent={sorted(intents)}" if bad else f"tools match intent={sorted(intents)}"
         checks.append(result(case, name, "trace", status, reason, turn.n))
     if not checks:
@@ -832,7 +834,9 @@ def check_expected_tool_contract(case: CaseRecord, ctx: CheckContext) -> list[Ch
                 reasons.append(f"missing required tools: {missing}")
             if forbidden:
                 reasons.append(f"called forbidden tools: {forbidden}")
-            checks.append(result(case, name, "trace", "fail", "; ".join(reasons), turn_number))
+            # A forbidden call can change results; a missing call usually means the model asked first.
+            status: Status = "fail" if forbidden else "warn"
+            checks.append(result(case, name, "trace", status, "; ".join(reasons), turn_number))
         else:
             checks.append(result(case, name, "trace", "pass", f"tool contract satisfied: {actual}", turn_number))
     return checks or [result(case, name, "trace", "skip", "no machine-readable tool names")]
@@ -874,7 +878,7 @@ def run_checks(cases: list[CaseRecord], ctx: CheckContext) -> list[CheckResult]:
 
 
 def _status_rank(status: Status) -> int:
-    return {"fail": 0, "pass": 1, "skip": 2}[status]
+    return {"fail": 0, "warn": 1, "pass": 2, "skip": 3}[status]
 
 
 def print_text_report(results: list[CheckResult]) -> None:
@@ -887,11 +891,12 @@ def print_text_report(results: list[CheckResult]) -> None:
             turn = f" turn={item.turn}" if item.turn is not None else ""
             print(f"  {item.status.upper():4} {item.check} ({item.basis}{turn}) - {item.reason}")
     passed = sum(1 for item in results if item.status == "pass")
+    warned = sum(1 for item in results if item.status == "warn")
     failed_items = [item for item in results if item.status == "fail"]
     skipped = sum(1 for item in results if item.status == "skip")
     failed_cases = sorted({item.case_id for item in failed_items})
     print(
-        f"\n客观项 {passed} 通过/{len(failed_items)} 失败/{skipped} 跳过"
+        f"\n客观项 {passed} 通过/{len(failed_items)} 失败/{warned} 提醒/{skipped} 跳过"
         + (f"，涉及用例: {', '.join(failed_cases)}" if failed_cases else "")
     )
 
@@ -899,14 +904,16 @@ def print_text_report(results: list[CheckResult]) -> None:
 def print_summary_report(results: list[CheckResult]) -> None:
     passed = sum(1 for item in results if item.status == "pass")
     failed_items = [item for item in results if item.status == "fail"]
+    warned_items = [item for item in results if item.status == "warn"]
     skipped = sum(1 for item in results if item.status == "skip")
-    print(f"客观项 {passed} 通过 / {len(failed_items)} 失败 / {skipped} 跳过")
-    if not failed_items:
-        return
-    print("失败项:")
-    for item in sorted(failed_items, key=lambda value: (value.case_id, value.check, value.turn or 0)):
-        turn = f" turn={item.turn}" if item.turn is not None else ""
-        print(f"  - {item.case_id}{turn} | {item.check} | {item.reason}")
+    print(f"客观项 {passed} 通过 / {len(failed_items)} 失败 / {len(warned_items)} 提醒 / {skipped} 跳过")
+    for title, items in (("失败项", failed_items), ("提醒项（不计入失败）", warned_items)):
+        if not items:
+            continue
+        print(f"{title}:")
+        for item in sorted(items, key=lambda value: (value.case_id, value.check, value.turn or 0)):
+            turn = f" turn={item.turn}" if item.turn is not None else ""
+            print(f"  - {item.case_id}{turn} | {item.check} | {item.reason}")
 
 
 def default_results_paths(stage: str) -> list[Path]:

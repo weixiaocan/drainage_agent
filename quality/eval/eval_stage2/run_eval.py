@@ -568,7 +568,7 @@ def repeat_summary(round_paths: list[Path]) -> dict[str, list[bool]]:
 def print_repeat_summary(round_paths: list[Path]) -> None:
     summary = repeat_summary(round_paths)
     stable = sum(all(values) for values in summary.values())
-    print(f"\n多轮次客观项汇总（{len(round_paths)} 轮，客观项全部通过的轮次 / 总轮次）:")
+    print(f"\n多轮次客观项汇总（{len(round_paths)} 轮，没有失败项的轮次 / 总轮次；提醒项不计入）:")
     for case_id, values in summary.items():
         marker = "" if all(values) else ("  <-- 不稳定" if any(values) else "  <-- 每轮都失败")
         print(f"  {case_id}: {sum(values)}/{len(values)}{marker}")

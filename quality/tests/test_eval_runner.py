@@ -653,3 +653,19 @@ def test_repeat_summary_reports_per_round_objective_pass(tmp_path) -> None:
         rounds.append(path)
 
     assert repeat_summary(rounds) == {"M001": [True, True, True], "M002": [True, False, True]}
+
+
+def test_missing_tool_warns_but_forbidden_tool_fails(tmp_path: Path) -> None:
+    results = tmp_path / "results.jsonl"
+    turns = [
+        {"n": 1, "prompt": "改成 3 月 8 日到 10 日", "expected": {"tools": {"must_call": ["analyze_patterns"]}},
+         "tool_calls": [{"tool": "set_analysis_scope", "args": {}}]},
+        {"n": 2, "prompt": "不要生成文件", "expected": {"tools": {"must_not_call": ["generate_report"]}},
+         "tool_calls": [{"tool": "generate_report", "args": {}}]},
+    ]
+    results.write_text(json.dumps({"id": "M001", "turns": turns, "root": str(tmp_path / "artifacts")},
+                                  ensure_ascii=False), encoding="utf-8")
+
+    checked = check_expected_tool_contract(load_cases(results)[0], CheckContext(tmp_path, set(), None, None, None, None))
+
+    assert [(item.turn, item.status) for item in checked] == [(1, "warn"), (2, "fail")]
