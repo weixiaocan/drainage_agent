@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
-# Optional package mirror for builds in restricted networks; pip reads these as env vars.
+# Optional package mirrors for builds in restricted networks; pip reads its two as env vars.
 ARG PIP_INDEX_URL
 ARG PIP_TRUSTED_HOST
+ARG APT_MIRROR
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,7 +15,10 @@ WORKDIR /app
 RUN groupadd --system --gid 10002 sandbox-jobs \
     && useradd --system --uid 10001 --gid sandbox-jobs --no-create-home --shell /usr/sbin/nologin drainage
 
-RUN apt-get update \
+RUN if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|http://deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         fontconfig \
         fonts-noto-cjk \

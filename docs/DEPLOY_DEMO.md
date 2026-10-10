@@ -25,6 +25,8 @@ DRAINAGE_DEMO_DAILY_CHATS_TOTAL=300
 # 可选：构建时使用的 pip 镜像（国内服务器访问 PyPI 很慢时设置）
 PIP_INDEX_URL=http://mirrors.tencentyun.com/pypi/simple
 PIP_TRUSTED_HOST=mirrors.tencentyun.com
+# 可选：Debian 软件源镜像（替换 http://deb.debian.org）
+APT_MIRROR=http://mirrors.tencentyun.com
 ```
 
 `COMPOSE_PROJECT_NAME` 必须与沙箱任务卷的前缀一致，控制器按 `<项目名>_sandbox-jobs` 挂载任务卷。
