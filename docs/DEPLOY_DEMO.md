@@ -35,7 +35,8 @@ PIP_TRUSTED_HOST=mirrors.tencentyun.com
 cd /opt/apps/drainage-agent
 git pull --ff-only   # 服务器连不上 GitHub 时，可在本机 git bundle 后用 scp 传过去再 git fetch
 set -a; . ./.env; set +a
-docker build --build-arg PIP_INDEX_URL --build-arg PIP_TRUSTED_HOST \n  -f Dockerfile.sandbox -t drainage-python-sandbox:local .
+docker build --build-arg PIP_INDEX_URL --build-arg PIP_TRUSTED_HOST \
+  -f Dockerfile.sandbox -t drainage-python-sandbox:local .
 # 镜像 ID 变化时更新 .env 中的 SANDBOX_IMAGE_DIGEST
 docker image inspect drainage-python-sandbox:local --format '{{.Id}}'
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
